@@ -234,6 +234,43 @@ pub fn register(lua: &LuaRuntime, commands: CmdBuf, outputs: WidgetOutputs) -> a
         )?;
     }
 
+    // imgui.input_text(label, text) -> text
+    {
+        let cmds = commands.clone();
+        let out = outputs.clone();
+        imgui_table.set(
+            "input_text",
+            l.create_function(move |_, (label, text): (String, String)| {
+                let actual = match out.lock().unwrap().get(&label) {
+                    Some(WidgetValue::Text(s)) => s.clone(),
+                    _ => text.clone(),
+                };
+                cmds.lock().unwrap().push(ImguiCommand::InputText {
+                    label,
+                    text: actual.clone(),
+                });
+                Ok(actual)
+            })?,
+        )?;
+    }
+
+    // imgui.input_text_submitted(label) -> bool
+    // Returns true for one frame when Enter was pressed on the input_text.
+    {
+        let out = outputs.clone();
+        imgui_table.set(
+            "input_text_submitted",
+            l.create_function(move |_, label: String| {
+                let key = format!("{label}__submitted");
+                let submitted = matches!(
+                    out.lock().unwrap().get(&key),
+                    Some(WidgetValue::Bool(true))
+                );
+                Ok(submitted)
+            })?,
+        )?;
+    }
+
     l.globals().set("imgui", imgui_table)?;
     Ok(())
 }

@@ -374,15 +374,39 @@ impl ApplicationHandler for App {
                     let dx = position.x - state.drag_prev_pos[0];
                     let dy = position.y - state.drag_prev_pos[1];
                     let size = state.render_ctx.window.inner_size();
-                    // Map pixel delta to world-space offset using perspective projection.
-                    // Camera FOV = 35 degrees, so visible height at model distance is:
-                    //   world_height = 2 * camera_distance * tan(fov/2)
                     let fov_rad = 35.0f32.to_radians();
                     let world_height = 2.0 * state.camera_distance * (fov_rad / 2.0).tan();
                     let px_to_world = world_height / size.height as f32;
                     state.model_offset[0] += dx as f32 * px_to_world;
                     state.model_offset[1] -= dy as f32 * px_to_world;
                     state.drag_prev_pos = [position.x, position.y];
+                }
+                // Right-click drag: rotate avatar by quaternion
+                if state.right_dragging {
+                    let dx = (position.x - state.right_drag_prev[0]) as f32;
+                    let dy = (position.y - state.right_drag_prev[1]) as f32;
+                    state.right_drag_prev = [position.x, position.y];
+                    let sensitivity = 0.005;
+                    let yaw = -dx * sensitivity;   // horizontal → Y-axis rotation
+                    let pitch = -dy * sensitivity;  // vertical → X-axis rotation
+                    // Build delta quaternion from yaw (Y) and pitch (X) rotations
+                    let (sy, cy) = (yaw / 2.0).sin_cos();
+                    let (sp, cp) = (pitch / 2.0).sin_cos();
+                    // q_yaw = (0, sin, 0, cos), q_pitch = (sin, 0, 0, cos)
+                    // delta = q_yaw * q_pitch
+                    let dq = quat_mul([0.0, sy, 0.0, cy], [sp, 0.0, 0.0, cp]);
+                    state.avatar_rotation = quat_mul(dq, state.avatar_rotation);
+                    // Normalize to prevent drift
+                    let len = (state.avatar_rotation[0].powi(2)
+                        + state.avatar_rotation[1].powi(2)
+                        + state.avatar_rotation[2].powi(2)
+                        + state.avatar_rotation[3].powi(2))
+                    .sqrt();
+                    if len > 0.0 {
+                        for c in &mut state.avatar_rotation {
+                            *c /= len;
+                        }
+                    }
                 }
             }
             WindowEvent::MouseInput {
@@ -421,9 +445,44 @@ impl ApplicationHandler for App {
                     }
                 }
             }
+            // Right-click: rotate avatar
+            WindowEvent::MouseInput {
+                state: btn_state,
+                button: winit::event::MouseButton::Right,
+                ..
+            } => {
+                let imgui_wants = state.show_imgui
+                    && state.imgui.as_ref().map_or(false, |im| im.want_capture_mouse());
+                if !imgui_wants {
+                    match btn_state {
+                        ElementState::Pressed => {
+                            state.right_dragging = true;
+                            state.right_drag_prev = [
+                                state.last_cursor_pos.x,
+                                state.last_cursor_pos.y,
+                            ];
+                        }
+                        ElementState::Released => {
+                            state.right_dragging = false;
+                        }
+                    }
+                }
+            }
             _ => {}
         }
     }
+}
+
+/// Quaternion multiplication: q = a * b, format [x, y, z, w].
+fn quat_mul(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    let [ax, ay, az, aw] = a;
+    let [bx, by, bz, bw] = b;
+    [
+        aw * bx + ax * bw + ay * bz - az * by,
+        aw * by - ax * bz + ay * bw + az * bx,
+        aw * bz + ax * by - ay * bx + az * bw,
+        aw * bw - ax * bx - ay * by - az * bz,
+    ]
 }
 
 fn save_prefs(state: &AppState) {

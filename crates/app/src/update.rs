@@ -309,11 +309,18 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     // Rotate model 180° around Y to face camera (matching testbed: scene.rotation.y = Math.PI)
     // This must be applied to joint matrices too, not just the camera uniform,
     // because skinned vertices bypass camera.model in the shader.
+    let avatar_rot = glam::Quat::from_xyzw(
+        state.avatar_rotation[0],
+        state.avatar_rotation[1],
+        state.avatar_rotation[2],
+        state.avatar_rotation[3],
+    );
     let model_matrix = glam::Mat4::from_translation(glam::Vec3::new(
         state.model_offset[0],
         state.model_offset[1],
         0.0,
-    )) * glam::Mat4::from_rotation_y(std::f32::consts::PI);
+    )) * glam::Mat4::from_quat(avatar_rot)
+      * glam::Mat4::from_rotation_y(std::f32::consts::PI);
 
     // Compute world matrices for all nodes via FK, then build per-joint skinning matrices
     let world_matrices = state
@@ -544,6 +551,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         av.display.debug_overlay = state.show_debug_overlay;
         av.display.camera_distance = state.camera_distance;
         av.display.model_offset = state.model_offset;
+        av.display.avatar_rotation = state.avatar_rotation;
         av.display.bg_image_path = state.background.image_path.clone().unwrap_or_default();
         av.display.avatar_on_top = state.avatar_on_top;
         av.display.spring_physics_enabled = state.spring_physics_enabled;
@@ -1105,6 +1113,9 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         if av.display.camera_distance != snap.display.camera_distance {
             state.camera_distance = av.display.camera_distance;
         }
+        if av.display.avatar_rotation != snap.display.avatar_rotation {
+            state.avatar_rotation = av.display.avatar_rotation;
+        }
         if av.display.model_offset != snap.display.model_offset {
             state.model_offset = av.display.model_offset;
         }
@@ -1221,6 +1232,73 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         sc.abort_whisper();
                         log::info!("[App] Whisper abort requested");
                     }
+                }
+                avatar_sdk::AvatarAction::NotionRefresh => {
+                    let handle = state.avatar_handle.state.clone();
+                    if let Ok(mut s) = handle.lock() {
+                        s.notion.loading = true;
+                        s.notion.error.clear();
+                    }
+                    std::thread::spawn(move || {
+                        match crate::notion::fetch_today_tasks() {
+                            Ok(tasks) => {
+                                if let Ok(mut s) = handle.lock() {
+                                    s.notion.tasks = tasks;
+                                    s.notion.loading = false;
+                                }
+                            }
+                            Err(e) => {
+                                if let Ok(mut s) = handle.lock() {
+                                    s.notion.error = e;
+                                    s.notion.loading = false;
+                                }
+                            }
+                        }
+                    });
+                }
+                avatar_sdk::AvatarAction::NotionComplete(page_id) => {
+                    std::thread::spawn(move || {
+                        if let Err(e) = crate::notion::complete_task(&page_id) {
+                            log::warn!("[Notion] Failed to complete task: {e}");
+                        }
+                    });
+                }
+                avatar_sdk::AvatarAction::NotionCreateChild(parent_id, title) => {
+                    let handle = state.avatar_handle.state.clone();
+                    std::thread::spawn(move || {
+                        match crate::notion::create_child_page(&parent_id, &title) {
+                            Ok(()) => {
+                                if let Ok(tasks) = crate::notion::fetch_today_tasks() {
+                                    if let Ok(mut s) = handle.lock() {
+                                        s.notion.tasks = tasks;
+                                    }
+                                }
+                            }
+                            Err(e) => log::warn!("[Notion] Failed to create child: {e}"),
+                        }
+                    });
+                }
+                avatar_sdk::AvatarAction::BrowseIdleAnimation => {
+                    use dear_file_browser::{FileDialog, DialogMode, FileFilter};
+                    let dialog = FileDialog::new(DialogMode::OpenFile)
+                        .filter(FileFilter::new("Animation", vec![
+                            "fbx".into(), "glb".into(), "gltf".into(),
+                        ]));
+                    if let Ok(sel) = dialog.open_blocking() {
+                        if let Some(path) = sel.file_path_name() {
+                            let p = path.to_string_lossy().to_string();
+                            state.idle_animation =
+                                crate::init::load_idle_animation(&state.vrm_model, &p);
+                            state.animation_path = Some(p);
+                            log::info!("[App] Idle animation changed via file dialog");
+                        }
+                    }
+                }
+                avatar_sdk::AvatarAction::LoadIdleAnimation(path) => {
+                    state.idle_animation =
+                        crate::init::load_idle_animation(&state.vrm_model, &path);
+                    state.animation_path = Some(path);
+                    log::info!("[App] Idle animation loaded from path");
                 }
                 avatar_sdk::AvatarAction::BrowseBackgroundImage => {
                     use dear_file_browser::{FileDialog, DialogMode, FileFilter};

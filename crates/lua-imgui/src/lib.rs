@@ -26,6 +26,7 @@ pub enum WidgetValue {
     Float(f32),
     Bool(bool),
     Color3([f32; 3]),
+    Text(String),
 }
 
 /// Shared widget output map — written by replay, read by Lua bindings.

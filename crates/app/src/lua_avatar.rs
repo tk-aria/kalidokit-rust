@@ -244,6 +244,37 @@ pub fn register(lua_imgui: &LuaImgui, handle: &AvatarHandle) -> anyhow::Result<(
         )?;
     }
 
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "get_avatar_rotation",
+            l.create_function(move |_, ()| {
+                let r = h.lock().unwrap().display.avatar_rotation;
+                Ok((r[0], r[1], r[2], r[3]))
+            })?,
+        )?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "set_avatar_rotation",
+            l.create_function(move |_, (x, y, z, w): (f32, f32, f32, f32)| {
+                h.lock().unwrap().display.avatar_rotation = [x, y, z, w];
+                Ok(())
+            })?,
+        )?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "reset_avatar_rotation",
+            l.create_function(move |_, ()| {
+                h.lock().unwrap().display.avatar_rotation = [0.0, 0.0, 0.0, 1.0];
+                Ok(())
+            })?,
+        )?;
+    }
+
     // ── Tracking ──
 
     {
@@ -533,6 +564,111 @@ pub fn register(lua_imgui: &LuaImgui, handle: &AvatarHandle) -> anyhow::Result<(
             l.create_function(move |_, ()| {
                 a.lock().unwrap().push(AvatarAction::AbortWhisper);
                 Ok(())
+            })?,
+        )?;
+    }
+
+    // ── Idle Animation ──
+
+    {
+        let a = handle.actions.clone();
+        avatar_table.set(
+            "browse_idle_animation",
+            l.create_function(move |_, ()| {
+                a.lock().unwrap().push(AvatarAction::BrowseIdleAnimation);
+                Ok(())
+            })?,
+        )?;
+    }
+    {
+        let a = handle.actions.clone();
+        avatar_table.set(
+            "load_idle_animation",
+            l.create_function(move |_, path: String| {
+                a.lock().unwrap().push(AvatarAction::LoadIdleAnimation(path));
+                Ok(())
+            })?,
+        )?;
+    }
+
+    // ── Notion ──
+
+    {
+        let a = handle.actions.clone();
+        avatar_table.set(
+            "notion_refresh",
+            l.create_function(move |_, ()| {
+                a.lock().unwrap().push(AvatarAction::NotionRefresh);
+                Ok(())
+            })?,
+        )?;
+    }
+    {
+        let a = handle.actions.clone();
+        avatar_table.set(
+            "notion_complete",
+            l.create_function(move |_, page_id: String| {
+                a.lock().unwrap().push(AvatarAction::NotionComplete(page_id));
+                Ok(())
+            })?,
+        )?;
+    }
+    {
+        let a = handle.actions.clone();
+        avatar_table.set(
+            "notion_create_child",
+            l.create_function(move |_, (parent_id, title): (String, String)| {
+                a.lock()
+                    .unwrap()
+                    .push(AvatarAction::NotionCreateChild(parent_id, title));
+                Ok(())
+            })?,
+        )?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "get_notion_tasks",
+            l.create_function(move |lua, ()| {
+                let s = h.lock().unwrap();
+                let tbl = lua.create_table()?;
+                for (i, task) in s.notion.tasks.iter().enumerate() {
+                    let t = lua.create_table()?;
+                    t.set("id", task.id.clone())?;
+                    t.set("title", task.title.clone())?;
+                    t.set("time", task.time.clone())?;
+                    t.set("duration", task.duration.clone())?;
+                    t.set("priority", task.priority.clone())?;
+                    t.set("status", task.status.clone())?;
+                    let children = lua.create_table()?;
+                    for (j, child) in task.children.iter().enumerate() {
+                        let c = lua.create_table()?;
+                        c.set("id", child.id.clone())?;
+                        c.set("title", child.title.clone())?;
+                        children.set(j + 1, c)?;
+                    }
+                    t.set("children", children)?;
+                    tbl.set(i + 1, t)?;
+                }
+                Ok(tbl)
+            })?,
+        )?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "get_notion_loading",
+            l.create_function(move |_, ()| {
+                Ok(h.lock().unwrap().notion.loading)
+            })?,
+        )?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "get_notion_error",
+            l.create_function(move |_, ()| {
+                Ok(h.lock().unwrap().notion.error.clone())
             })?,
         )?;
     }

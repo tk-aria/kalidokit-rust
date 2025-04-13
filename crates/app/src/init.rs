@@ -407,6 +407,12 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
                     log::warn!("Failed to load speech log script: {e}");
                 }
             }
+            let notion_path = std::path::Path::new("assets/scripts/notion_tasks.lua");
+            if notion_path.exists() {
+                if let Err(e) = li.load_script(notion_path) {
+                    log::warn!("Failed to load notion tasks script: {e}");
+                }
+            }
             log::info!("Lua-ImGui initialized (command buffer mode + avatar SDK)");
             Some(li)
         }
@@ -473,6 +479,9 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         avatar_on_top: false,
         spring_physics_enabled: true,
         speech_capture,
+        avatar_rotation: [0.0, 0.0, 0.0, 1.0], // identity quaternion (x,y,z,w)
+        right_dragging: false,
+        right_drag_prev: [0.0, 0.0],
     })
 }
 
@@ -480,7 +489,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
 ///
 /// Extracts the VRM bind pose rotations and passes them to the animation player
 /// so delta rotations from Mixamo can be correctly applied.
-fn load_idle_animation(
+pub fn load_idle_animation(
     vrm_model: &vrm::model::VrmModel,
     path: &str,
 ) -> Option<vrm::animation_player::AnimationPlayer> {

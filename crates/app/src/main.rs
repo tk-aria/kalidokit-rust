@@ -4,6 +4,7 @@ mod drawio;
 mod init;
 mod lua_avatar;
 mod mascot;
+mod notion;
 mod rig_config;
 mod state;
 mod terminal;

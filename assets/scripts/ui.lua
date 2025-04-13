@@ -38,4 +38,9 @@ function update(dt)
     if speech_log_update then
         speech_log_update(dt)
     end
+
+    -- Notion tasks
+    if notion_tasks_update then
+        notion_tasks_update(dt)
+    end
 end

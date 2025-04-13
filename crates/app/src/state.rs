@@ -112,6 +112,12 @@ pub struct AppState {
     pub spring_physics_enabled: bool,
     /// Speech capture (VAD + STT) running in a background thread.
     pub speech_capture: Option<speech_capture::SpeechCapture>,
+    /// Avatar rotation quaternion (right-click drag to rotate).
+    pub avatar_rotation: [f32; 4],
+    /// Whether right-click drag rotation is active.
+    pub right_dragging: bool,
+    /// Previous cursor position for right-click drag.
+    pub right_drag_prev: [f64; 2],
 }
 
 /// Visibility state for each ImGui panel.

@@ -241,7 +241,21 @@ pub fn replay_inner(commands: &[ImguiCommand], ui: &Ui, outputs: &crate::WidgetO
             }
             ImguiCommand::InputText { label, text } => {
                 let mut buf = text.clone();
-                ui.input_text(label, &mut buf).build();
+                let changed = ui.input_text(label, &mut buf)
+                    .enter_returns_true(true)
+                    .build();
+                let mut out = outputs.lock().unwrap();
+                if changed {
+                    // Enter was pressed — store with a special "submitted" marker
+                    out.insert(format!("{label}__submitted"), crate::WidgetValue::Bool(true));
+                    out.insert(label.clone(), crate::WidgetValue::Text(buf));
+                } else if buf != *text {
+                    out.insert(label.clone(), crate::WidgetValue::Text(buf));
+                    out.remove(&format!("{label}__submitted"));
+                } else {
+                    // Only remove submitted flag, keep text for editing state
+                    out.remove(&format!("{label}__submitted"));
+                }
                 i += 1;
             }
             ImguiCommand::CollapsingHeaderBegin { label, default_open } => {

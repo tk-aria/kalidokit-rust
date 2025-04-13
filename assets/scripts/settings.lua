@@ -39,6 +39,14 @@ function settings_update(dt)
     local sp = imgui.checkbox("Spring Physics", avatar.get_spring_physics())
     avatar.set_spring_physics(sp)
 
+    imgui.separator()
+    local rx, ry, rz, rw = avatar.get_avatar_rotation()
+    imgui.text(string.format("Rotation: (%.2f, %.2f, %.2f, %.2f)", rx, ry, rz, rw))
+    local reset_rot = imgui.checkbox("Reset Rotation", false)
+    if reset_rot then
+        avatar.reset_avatar_rotation()
+    end
+
     imgui.collapsing_header_end()
 
     -- ── Tracking (default open) ──
@@ -66,6 +74,11 @@ function settings_update(dt)
 
     local ia = imgui.checkbox("Idle Animation (I)", avatar.get_idle_animation())
     avatar.set_idle_animation(ia)
+
+    local browse_anim = imgui.checkbox("Browse Idle Anim...", false)
+    if browse_anim then
+        avatar.browse_idle_animation()
+    end
 
     local vc = imgui.checkbox("Virtual Camera (C)", avatar.get_vcam())
     avatar.set_vcam(vc)

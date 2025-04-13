@@ -9,5 +9,6 @@ pub mod state;
 
 pub use action::{ActionQueue, AvatarAction};
 pub use state::{
-    AvatarState, DisplayState, InfoState, LightState, LightingState, SpeechState, TrackingState,
+    AvatarState, DisplayState, InfoState, LightState, LightingState, NotionChild, NotionState,
+    NotionTask, SpeechState, TrackingState,
 };

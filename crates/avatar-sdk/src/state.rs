@@ -8,6 +8,7 @@ pub struct AvatarState {
     pub tracking: TrackingState,
     pub lighting: LightingState,
     pub speech: SpeechState,
+    pub notion: NotionState,
 }
 
 impl Default for AvatarState {
@@ -18,8 +19,36 @@ impl Default for AvatarState {
             tracking: TrackingState::default(),
             lighting: LightingState::default(),
             speech: SpeechState::default(),
+            notion: NotionState::default(),
         }
     }
+}
+
+/// A Notion task entry.
+#[derive(Debug, Clone)]
+pub struct NotionTask {
+    pub id: String,
+    pub title: String,
+    pub time: String,
+    pub duration: String,
+    pub priority: String,
+    pub status: String,
+    pub children: Vec<NotionChild>,
+}
+
+/// A child item of a Notion task.
+#[derive(Debug, Clone)]
+pub struct NotionChild {
+    pub id: String,
+    pub title: String,
+}
+
+/// Notion task list state.
+#[derive(Debug, Clone, Default)]
+pub struct NotionState {
+    pub tasks: Vec<NotionTask>,
+    pub loading: bool,
+    pub error: String,
 }
 
 /// Speech recognition state (written by STT callback, read by Lua).
@@ -99,6 +128,8 @@ pub struct DisplayState {
     pub avatar_on_top: bool,
     /// Enable spring-physics simulation on the avatar (hair/cloth secondary motion).
     pub spring_physics_enabled: bool,
+    /// Avatar rotation quaternion [x, y, z, w] (right-click drag to rotate).
+    pub avatar_rotation: [f32; 4],
 }
 
 impl Default for DisplayState {
@@ -113,6 +144,7 @@ impl Default for DisplayState {
             bg_image_path: String::new(),
             avatar_on_top: false,
             spring_physics_enabled: true,
+            avatar_rotation: [0.0, 0.0, 0.0, 1.0],
         }
     }
 }

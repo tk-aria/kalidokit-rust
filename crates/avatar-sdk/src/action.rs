@@ -16,6 +16,16 @@ pub enum AvatarAction {
     ResetSpeech,
     /// Abort current Whisper inference (if stalled).
     AbortWhisper,
+    /// Refresh Notion tasks (async).
+    NotionRefresh,
+    /// Complete a Notion task (async). Arg: page_id.
+    NotionComplete(String),
+    /// Create a child page under a Notion task (async). Args: (parent_page_id, title).
+    NotionCreateChild(String, String),
+    /// Open file dialog to select idle animation (FBX/GLB).
+    BrowseIdleAnimation,
+    /// Load idle animation from a specific path.
+    LoadIdleAnimation(String),
 }
 
 /// Queue of pending avatar actions, drained each frame by the app.
