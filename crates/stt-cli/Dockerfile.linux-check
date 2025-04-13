@@ -1,0 +1,15 @@
+FROM rust:1.86-bookworm
+
+RUN apt-get update && apt-get install -y \
+    cmake pkg-config libclang-dev clang \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY . .
+
+# CPU-only build (no CUDA driver needed for check)
+RUN cargo check -p stt-cli 2>&1 | tail -10 && echo "=== CHECK OK ==="
+
+# Also verify CUDA feature compiles (whisper-rs/cuda just adds a feature flag,
+# actual CUDA libs are only needed at link time for --release)
+RUN cargo check -p stt-cli --features cuda 2>&1 | tail -10 && echo "=== CUDA CHECK OK ==="

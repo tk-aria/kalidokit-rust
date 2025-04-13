@@ -1,0 +1,25 @@
+[package]
+name = "stt-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Cross-platform Opus/OGG/WAV/MP3 → STT CLI using Whisper"
+
+[[bin]]
+name = "stt-cli"
+path = "src/main.rs"
+
+[dependencies]
+whisper-rs = "0.16"
+symphonia = { version = "0.5", features = ["ogg", "wav", "mp3", "flac", "vorbis"] }
+symphonia-adapter-libopus = "0.2"
+rubato = "0.15"
+clap = { version = "4", features = ["derive"] }
+env_logger = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+default = []
+metal = ["whisper-rs/metal"]
+cuda = ["whisper-rs/cuda"]
