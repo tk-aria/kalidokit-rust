@@ -529,10 +529,10 @@ impl HumanoidBones {
 
 **ファイル**: `crates/vrm/src/blendshape.rs` (~120行)
 
-- [ ] `BlendShapePreset` enum: `Blink, BlinkL, BlinkR, A, I, U, E, O, Joy, Angry, Sorrow, Fun, Neutral`
-- [ ] `BlendShapePreset::from_str(s: &str) -> Option<Self>`: JSON文字列→enum変換
-- [ ] `BlendShapeBinding` 構造体: `mesh_index`, `morph_target_index`, `weight`
-- [ ] `BlendShapeGroup` 構造体:
+- [x] `BlendShapePreset` enum: `Blink, BlinkL, BlinkR, A, I, U, E, O, Joy, Angry, Sorrow, Fun, Neutral`
+- [x] `BlendShapePreset::from_str(s: &str) -> Option<Self>`: JSON文字列→enum変換
+- [x] `BlendShapeBinding` 構造体: `mesh_index`, `morph_target_index`, `weight`
+- [x] `BlendShapeGroup` 構造体:
   - `from_vrm_json(json: &serde_json::Value) -> Result<Self>`: VRM拡張JSONからパース
   - `set(preset, value: f32)`: プリセットの重みを設定
   - `get_all_weights(num_targets) -> Vec<f32>`: 全MorphTargetの重み配列を取得 (GPU転送用)
