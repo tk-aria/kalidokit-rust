@@ -612,9 +612,9 @@ fn read_accessor_as<T: bytemuck::Pod>(blob: &[u8], accessor: &gltf::Accessor) ->
 
 **ファイル**: `crates/renderer/src/mesh.rs` (~100行)
 
-- [ ] `GpuMesh` 構造体: `vertex_buffer`, `index_buffer`, `num_indices`
-- [ ] `GpuMesh::from_mesh_data(device, mesh_data) -> Self`: CPU側 `MeshData` → GPU Buffer 変換
-- [ ] `GpuMesh::draw(render_pass)`: `set_vertex_buffer` + `set_index_buffer` + `draw_indexed`
+- [x] `GpuMesh` 構造体: `vertex_buffer`, `index_buffer`, `num_indices`
+- [x] `GpuMesh::from_vertices_indices(device, vertices, indices) -> Self`: CPU側データ → GPU Buffer 変換
+- [x] `GpuMesh::draw(render_pass)`: `set_vertex_buffer` + `set_index_buffer` + `draw_indexed`
 
 ```rust
 use wgpu::util::DeviceExt;
