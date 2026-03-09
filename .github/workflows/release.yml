@@ -85,6 +85,7 @@ jobs:
           # - compile_no_warning_as_error: GCC 14.2 false positives with -Werror
           # - ENABLE_BACKTRACE=OFF: execinfo.h unavailable on musl
           # - BUILD_UNIT_TESTS=OFF: flatbuffers uses strtoll_l (glibc-only) in test code
+          # - FLATBUFFERS_LOCALE_INDEPENDENT=0: musl lacks strtoll_l/strtoull_l
           ./build.sh --config Release \
             --update --build --parallel $(nproc) \
             --skip_tests \
@@ -94,7 +95,8 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_SHARED_LIB=OFF \
             --cmake_extra_defines onnxruntime_ENABLE_BACKTRACE=OFF \
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
-            --cmake_extra_defines FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src
+            --cmake_extra_defines FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src \
+            --cmake_extra_defines CMAKE_CXX_FLAGS="-DFLATBUFFERS_LOCALE_INDEPENDENT=0"
 
           # Copy build output for caching
           mkdir -p /tmp/ort-build
