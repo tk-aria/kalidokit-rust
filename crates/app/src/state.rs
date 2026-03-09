@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use renderer::context::RenderContext;
 use renderer::scene::Scene;
 use solver::types::{RiggedFace, RiggedHand, RiggedPose};
@@ -11,6 +13,8 @@ pub struct AppState {
     pub vrm_model: VrmModel,
     pub tracker: HolisticTracker,
     pub rig: RigState,
+    pub last_frame_time: Instant,
+    pub rig_dirty: bool,
 }
 
 /// Current rig solver results (face/pose/hand).

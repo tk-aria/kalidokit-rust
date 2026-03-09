@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::Result;
 use renderer::context::RenderContext;
@@ -60,5 +61,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         vrm_model,
         tracker,
         rig: RigState::default(),
+        last_frame_time: Instant::now(),
+        rig_dirty: true,
     })
 }

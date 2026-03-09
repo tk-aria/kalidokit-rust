@@ -479,3 +479,14 @@ rustup component add rustfmt
 
 ### 結果
 - Step 7.2 完了: MToonシェーダー実装
+
+### Step 7.3: パフォーマンス最適化
+- フレームレート制御: `std::time::Instant` + `TARGET_FRAME_DURATION` (16ms/60fps)
+  - update_frame() 先頭で経過時間チェック、16ms未満なら早期リターン
+- GPU バッファ更新最小化: `rig_dirty` フラグ + `rig_changed` ローカル変数
+  - ソルバー結果が変化した時のみ `apply_rig_to_model()` と `scene.prepare()` を実行
+- AppState に `last_frame_time: Instant` と `rig_dirty: bool` フィールド追加
+- ML推論スレッド分離は将来実装 (現状シングルスレッド)
+
+### 結果
+- Step 7.3 完了: フレームレート制御 + GPU更新最小化
