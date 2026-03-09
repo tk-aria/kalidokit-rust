@@ -26,7 +26,7 @@ jobs:
             build-base cmake python3 py3-numpy py3-pip py3-flatbuffers git curl bash \
             linux-headers pkgconfig perl \
             libx11-dev libxkbcommon-dev wayland-dev mesa-dev \
-            openssl-dev zlib-dev
+            openssl-dev zlib-dev eigen-dev
 
       - uses: actions/checkout@v4
 
@@ -44,7 +44,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/ort-build
-          key: ort-musl-static-v1.20.1-alpine321
+          key: ort-musl-static-v1.20.1-alpine321-syseigen
 
       - name: Build ONNX Runtime from source (static, musl)
         if: steps.ort-cache.outputs.cache-hit != 'true'
@@ -56,10 +56,13 @@ jobs:
           cd /tmp/ort-src
 
           # Build static libraries only (no shared lib, no tests)
+          # Use system Eigen to avoid FetchContent hash mismatch
           ./build.sh --config Release \
             --update --build --parallel $(nproc) \
             --skip_tests \
             --allow_running_as_root \
+            --use_preinstalled_eigen \
+            --eigen_path /usr/include/eigen3 \
             --cmake_extra_defines CMAKE_POSITION_INDEPENDENT_CODE=ON \
             --cmake_extra_defines onnxruntime_BUILD_SHARED_LIB=OFF
 
