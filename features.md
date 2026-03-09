@@ -583,9 +583,9 @@ fn read_accessor_as<T: bytemuck::Pod>(blob: &[u8], accessor: &gltf::Accessor) ->
 
 **ファイル**: `crates/vrm/src/look_at.rs` (~60行)
 
-- [ ] `LookAtApplyer` 構造体: `horizontal_inner/outer`, `vertical_up/down` のカーブパラメータ
-- [ ] `apply(euler: &EulerAngles) -> Quat`: 瞳孔方向からボーン回転またはBlendShape値を計算
-- [ ] VRM JSON からパース: `extensions.VRM.firstPerson.lookAtTypeName` ("Bone" or "BlendShape")
+- [x] `LookAtApplyer` 構造体: `horizontal_inner/outer`, `vertical_up/down` のカーブパラメータ
+- [x] `apply(euler: &EulerAngles) -> Quat`: 瞳孔方向からボーン回転またはBlendShape値を計算
+- [x] VRM JSON からパース: `extensions.VRM.firstPerson.lookAtTypeName` ("Bone" or "BlendShape")
 
 ### Step 2.7: Phase 2 検証
 
