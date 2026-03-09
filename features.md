@@ -701,10 +701,10 @@ impl DepthTexture {
 
 **ファイル**: `crates/renderer/src/texture.rs` (~100行)
 
-- [ ] `GpuTexture` 構造体: `texture`, `view`, `sampler`
-- [ ] `GpuTexture::from_image(device, queue, image)`: `image::DynamicImage` → GPU Texture
-- [ ] `GpuTexture::from_bytes(device, queue, bytes, width, height)`: raw bytes → GPU Texture
-- [ ] `GpuTexture::default_white(device, queue) -> Self`: デフォルトの白テクスチャ (1x1) 生成メソッド
+- [x] `GpuTexture` 構造体: `texture`, `view`, `sampler`
+- [x] `GpuTexture::from_image(device, queue, image)`: `image::DynamicImage` → GPU Texture
+- [x] `GpuTexture::from_bytes(device, queue, bytes, width, height)`: raw bytes → GPU Texture
+- [x] `GpuTexture::default_white(device, queue) -> Self`: デフォルトの白テクスチャ (1x1) 生成メソッド
 
 ```rust
 pub struct GpuTexture {

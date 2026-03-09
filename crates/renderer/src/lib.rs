@@ -5,4 +5,5 @@ pub mod mesh;
 pub mod morph;
 pub mod pipeline;
 pub mod skin;
+pub mod texture;
 pub mod vertex;
