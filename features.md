@@ -661,9 +661,9 @@ impl GpuMesh {
 
 **ファイル**: `crates/renderer/src/morph.rs` (~80行)
 
-- [ ] `MorphData` 構造体: `weight_buffer: Buffer`, `bind_group: BindGroup`
-- [ ] `MorphData::new(device, max_targets)`: Storage Buffer 作成
-- [ ] `MorphData::update(queue, weights: &[f32])`: `queue.write_buffer` でGPU転送
+- [x] `MorphData` 構造体: `weight_buffer: Buffer`, `bind_group: BindGroup`
+- [x] `MorphData::new(device, max_targets)`: Storage Buffer 作成
+- [x] `MorphData::update(queue, weights: &[f32])`: `queue.write_buffer` でGPU転送
 
 ### Step 3.4: renderer::depth — デプスバッファ
 
