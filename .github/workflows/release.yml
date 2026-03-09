@@ -44,7 +44,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/ort-build
-          key: ort-musl-static-v1.20.1-alpine321-v7
+          key: ort-musl-static-v1.20.1-alpine321-v8
 
       - name: Build ONNX Runtime from source (static, musl)
         if: steps.ort-cache.outputs.cache-hit != 'true'
@@ -74,8 +74,8 @@ jobs:
           sed -i 's|backtrace(array, size)|0|; s|backtrace_symbols(array, nSize)|nullptr|' \
             onnxruntime/core/platform/posix/stacktrace.cc || true
 
-          # Remove Eigen hash check (GitLab regenerates archives, changing the hash)
-          sed -i 's|^eigen;\(.*\);.*|eigen;\1;|' cmake/deps.txt
+          # Fix Eigen hash (GitLab regenerated the archive with a new hash)
+          sed -i 's|^eigen;\(.*\);be8be39fdbc6e60e94fa7870b280707069b5b81a|eigen;\1;32b145f525a8308d7ab1c09388b2e288312d8eba|' cmake/deps.txt
 
           # Build static libraries only (no shared lib, no tests)
           ./build.sh --config Release \
