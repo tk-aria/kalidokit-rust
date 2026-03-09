@@ -19,12 +19,7 @@ pub struct CameraUniform {
 impl Camera {
     pub fn build_view_proj(&self) -> Mat4 {
         let view = Mat4::look_at_rh(self.position, self.target, Vec3::Y);
-        let proj = Mat4::perspective_rh(
-            self.fov.to_radians(),
-            self.aspect,
-            self.near,
-            self.far,
-        );
+        let proj = Mat4::perspective_rh(self.fov.to_radians(), self.aspect, self.near, self.far);
         proj * view
     }
 
@@ -65,10 +60,7 @@ mod tests {
         let cam1 = Camera::default();
         let mut cam2 = Camera::default();
         cam2.aspect = 4.0 / 3.0;
-        assert_ne!(
-            cam1.build_view_proj(),
-            cam2.build_view_proj()
-        );
+        assert_ne!(cam1.build_view_proj(), cam2.build_view_proj());
     }
 
     #[test]

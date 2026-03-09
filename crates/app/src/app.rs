@@ -200,10 +200,7 @@ impl ApplicationHandler for App {
                     pass.set_pipeline(&state.pipeline);
                     pass.set_bind_group(0, &state.camera_bind_group, &[]);
                     pass.set_vertex_buffer(0, state.vertex_buffer.slice(..));
-                    pass.set_index_buffer(
-                        state.index_buffer.slice(..),
-                        wgpu::IndexFormat::Uint32,
-                    );
+                    pass.set_index_buffer(state.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                     pass.draw_indexed(0..TRIANGLE_INDICES.len() as u32, 0, 0..1);
                 }
                 state.ctx.queue.submit(std::iter::once(encoder.finish()));

@@ -14,8 +14,7 @@ pub fn preprocess_image(
     );
     let rgb = resized.to_rgb8();
 
-    let mut tensor =
-        Array4::<f32>::zeros((1, 3, target_height as usize, target_width as usize));
+    let mut tensor = Array4::<f32>::zeros((1, 3, target_height as usize, target_width as usize));
     for y in 0..target_height {
         for x in 0..target_width {
             let pixel = rgb.get_pixel(x, y);

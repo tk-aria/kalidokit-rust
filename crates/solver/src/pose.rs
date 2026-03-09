@@ -6,11 +6,7 @@ use glam::{Vec2, Vec3};
 /// Computes bone rotations for hips, spine, chest, arms, and legs.
 /// 3D landmarks are in meters relative to hip center.
 /// 2D landmarks are normalized to video dimensions.
-pub fn solve(
-    landmarks_3d: &[Vec3],
-    landmarks_2d: &[Vec2],
-    video: &VideoInfo,
-) -> RiggedPose {
+pub fn solve(landmarks_3d: &[Vec3], landmarks_2d: &[Vec2], video: &VideoInfo) -> RiggedPose {
     let hips = calc_hip_transform(landmarks_3d, landmarks_2d, video);
     let spine = calc_spine_rotation(landmarks_3d);
 
@@ -24,18 +20,10 @@ pub fn solve(
     // 27=left_ankle, 28=right_ankle
     // 29=left_heel, 30=right_heel
 
-    let right_upper_arm = calc_limb_rotation(
-        landmarks_3d[12], landmarks_3d[14], landmarks_3d[16],
-    );
-    let right_lower_arm = calc_limb_rotation(
-        landmarks_3d[14], landmarks_3d[16], landmarks_3d[18],
-    );
-    let left_upper_arm = calc_limb_rotation(
-        landmarks_3d[11], landmarks_3d[13], landmarks_3d[15],
-    );
-    let left_lower_arm = calc_limb_rotation(
-        landmarks_3d[13], landmarks_3d[15], landmarks_3d[17],
-    );
+    let right_upper_arm = calc_limb_rotation(landmarks_3d[12], landmarks_3d[14], landmarks_3d[16]);
+    let right_lower_arm = calc_limb_rotation(landmarks_3d[14], landmarks_3d[16], landmarks_3d[18]);
+    let left_upper_arm = calc_limb_rotation(landmarks_3d[11], landmarks_3d[13], landmarks_3d[15]);
+    let left_lower_arm = calc_limb_rotation(landmarks_3d[13], landmarks_3d[15], landmarks_3d[17]);
 
     RiggedPose {
         hips,
@@ -45,18 +33,10 @@ pub fn solve(
         right_lower_arm,
         left_upper_arm,
         left_lower_arm,
-        right_upper_leg: calc_limb_rotation(
-            landmarks_3d[24], landmarks_3d[26], landmarks_3d[28],
-        ),
-        right_lower_leg: calc_limb_rotation(
-            landmarks_3d[26], landmarks_3d[28], landmarks_3d[30],
-        ),
-        left_upper_leg: calc_limb_rotation(
-            landmarks_3d[23], landmarks_3d[25], landmarks_3d[27],
-        ),
-        left_lower_leg: calc_limb_rotation(
-            landmarks_3d[25], landmarks_3d[27], landmarks_3d[29],
-        ),
+        right_upper_leg: calc_limb_rotation(landmarks_3d[24], landmarks_3d[26], landmarks_3d[28]),
+        right_lower_leg: calc_limb_rotation(landmarks_3d[26], landmarks_3d[28], landmarks_3d[30]),
+        left_upper_leg: calc_limb_rotation(landmarks_3d[23], landmarks_3d[25], landmarks_3d[27]),
+        left_lower_leg: calc_limb_rotation(landmarks_3d[25], landmarks_3d[27], landmarks_3d[29]),
         left_hand: EulerAngles::default(),
         right_hand: EulerAngles::default(),
     }
