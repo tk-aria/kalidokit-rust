@@ -950,8 +950,8 @@ fn calc_finger_rotations(lm: &[Vec3], indices: &[usize]) -> [EulerAngles; 3] {
 
 **ファイル**: `crates/tracker/src/preprocess.rs` (既存、~40行)
 
-- [ ] `preprocess_image(image, width, height) -> Array4<f32>` を完成 (既存コード修正)
-- [ ] `normalize_landmarks(raw_output, image_width, image_height) -> Vec<Vec3>` を追加: モデル出力→正規化座標
+- [x] `preprocess_image(image, width, height) -> Array4<f32>` を完成 (既存コード修正)
+- [x] `normalize_landmarks(raw_output, image_width, image_height) -> Vec<Vec3>` を追加: モデル出力→正規化座標
 
 ### Step 5.2: tracker::face_mesh — 顔メッシュ検出
 
