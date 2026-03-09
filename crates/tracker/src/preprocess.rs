@@ -3,7 +3,11 @@ use image::DynamicImage;
 use ndarray::Array4;
 
 /// Convert an image to a model input tensor [1, 3, H, W] normalized to 0-1.
-pub fn preprocess_image(image: &DynamicImage, target_width: u32, target_height: u32) -> Array4<f32> {
+pub fn preprocess_image(
+    image: &DynamicImage,
+    target_width: u32,
+    target_height: u32,
+) -> Array4<f32> {
     let resized = image.resize_exact(
         target_width,
         target_height,

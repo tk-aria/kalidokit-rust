@@ -34,14 +34,8 @@ impl HolisticTracker {
     /// Each detector runs independently; if one fails, others still produce results.
     pub fn detect(&mut self, frame: &DynamicImage) -> anyhow::Result<HolisticResult> {
         let face_landmarks = self.face_detector.detect(frame).unwrap_or(None);
-        let (pose_3d, pose_2d) = self
-            .pose_detector
-            .detect(frame)
-            .unwrap_or((None, None));
-        let left_hand = self
-            .left_hand_detector
-            .detect(frame, true)
-            .unwrap_or(None);
+        let (pose_3d, pose_2d) = self.pose_detector.detect(frame).unwrap_or((None, None));
+        let left_hand = self.left_hand_detector.detect(frame, true).unwrap_or(None);
         let right_hand = self
             .right_hand_detector
             .detect(frame, false)

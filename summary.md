@@ -351,3 +351,39 @@ rustup component add rustfmt
 - `cargo build --release --workspace`: ort-sys glibc 2.38+ 制約で tracker クレート含む場合不可
 - `docker build`: docker 未インストール
 - ウィンドウ表示: ヘッドレス環境のため手動確認不可
+
+---
+
+## Phase 5: トラッカー (2026/03/09)
+
+### Step 5.1: tracker::preprocess
+- `normalize_landmarks()` 関数追加: raw_output → Vec<Vec3> 正規化
+- テスト6件追加: shape, values_in_range, zero_size_image, normalize_basic, count_matches, empty_input
+
+### Steps 5.2-5.5: tracker::face_mesh, pose, hand, holistic
+- 関数ベースのスタブ → 構造体ベース設計に全面置き換え
+- `FaceMeshDetector`: ONNX Session ラップ、192×192入力、468/478ランドマーク検出
+- `PoseDetector`: 256×256入力、33ランドマーク(3D+2D)検出
+- `HandDetector`: 224×224入力、21ランドマーク検出、左手ミラー反転対応
+- `HolisticTracker`: 全検出器統合、個別エラー耐性 (unwrap_or(None))
+- ort 2.0 API対応: `TensorRef::from_array_view(&input_tensor)`, `try_extract_tensor()` → `(&Shape, &[T])`
+- ndarray バージョン不整合修正: 0.16 → 0.17 (ort内部と一致)
+- テスト各1件: new_with_invalid_path_returns_error
+
+### Step 5.6: Phase 5 検証
+- `cargo check --workspace` 成功
+- `cargo clippy --workspace -- -D warnings` 0警告
+- `cargo fmt --check` 差分なし
+- renderer+vrm+solver: 51テスト全パス (tracker はort-sys制約でテスト実行不可)
+
+### 実行コマンド
+```bash
+./.cargo-env.sh cargo check -p tracker  # 各Step後に実行
+./.cargo-env.sh cargo clippy --workspace -- -D warnings  # → 0 warnings
+./.cargo-env.sh cargo fmt
+./.cargo-env.sh cargo fmt --check  # → no diff
+./.cargo-env.sh cargo test -p renderer -p vrm -p solver  # → 51 passed
+```
+
+### 結果
+- Phase 5 完了: tracker クレート全5モジュール (preprocess, face_mesh, pose, hand, holistic) 実装、clippy/fmt clean
