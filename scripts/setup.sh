@@ -102,7 +102,7 @@ cmd_install() {
   # インストールディレクトリ作成
   if [ ! -d "$install_path" ]; then
     echo "Creating install directory: $install_path"
-    mkdir -p -- "$install_path"
+    mkdir -p "$install_path"
   fi
 
   # 一時ディレクトリ
@@ -142,7 +142,7 @@ cmd_install() {
     echo "  or: sudo sh setup.sh install" 1>&2
     return 1
   fi
-  chmod 755 -- "$install_path/$binary"
+  chmod 755 "$install_path/$binary"
 
   # assets
   if [ -d "$tmp_dir/${archive_dir}/assets" ]; then
