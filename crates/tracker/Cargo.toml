@@ -1,0 +1,11 @@
+[package]
+name = "tracker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ort = { workspace = true }
+image = { workspace = true }
+ndarray = { workspace = true }
+glam = { workspace = true }
+anyhow = { workspace = true }

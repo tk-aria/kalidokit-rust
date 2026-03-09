@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/app",
+    "crates/solver",
+    "crates/tracker",
+]
+
+[workspace.dependencies]
+bevy = "0.16"
+bevy_vrm = "0.1"
+glam = "0.29"
+ort = "2.0"
+nokhwa = { version = "0.10", features = ["input-native"] }
+image = "0.25"
+ndarray = "0.16"
+anyhow = "1.0"
