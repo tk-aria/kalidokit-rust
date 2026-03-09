@@ -2,3 +2,8 @@
 Cargo.lock
 *.onnx
 *.vrm
+
+# Build artifacts
+kalidokit-rust
+kalidokit-rust2
+keylogger

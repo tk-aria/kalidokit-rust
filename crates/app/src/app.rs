@@ -30,12 +30,20 @@ impl ApplicationHandler for App {
 
         match pollster::block_on(crate::init::init_all(window)) {
             Ok(app_state) => {
+                // Request initial redraw to kick-start the render loop
+                app_state.render_ctx.window.request_redraw();
                 self.state = Some(app_state);
             }
             Err(e) => {
                 log::error!("Failed to initialize application: {}", e);
                 event_loop.exit();
             }
+        }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(state) = &self.state {
+            state.render_ctx.window.request_redraw();
         }
     }
 

@@ -69,38 +69,36 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         state.rig_dirty = false;
     }
 
-    // 4. Update GPU buffers (only recompute if rig changed)
-    if rig_changed || state.rig_dirty {
-        let joint_matrices = state
-            .vrm_model
-            .humanoid_bones
-            .compute_joint_matrices(&state.vrm_model.node_transforms);
-        let num_morph_targets = state
-            .vrm_model
-            .meshes
-            .iter()
-            .flat_map(|m| &m.morph_targets)
-            .count()
-            .max(1);
-        let morph_weights = state
-            .vrm_model
-            .blend_shapes
-            .get_all_weights(num_morph_targets);
+    // 4. Update GPU buffers
+    let joint_matrices = state
+        .vrm_model
+        .humanoid_bones
+        .compute_joint_matrices(&state.vrm_model.node_transforms);
+    let num_morph_targets = state
+        .vrm_model
+        .meshes
+        .iter()
+        .flat_map(|m| &m.morph_targets)
+        .count()
+        .max(1);
+    let morph_weights = state
+        .vrm_model
+        .blend_shapes
+        .get_all_weights(num_morph_targets);
 
-        let camera = renderer::camera::Camera {
-            aspect: state.render_ctx.config.width as f32
-                / state.render_ctx.config.height.max(1) as f32,
-            ..renderer::camera::Camera::default()
-        };
-        let camera_uniform = camera.to_uniform(glam::Mat4::IDENTITY);
+    let camera = renderer::camera::Camera {
+        aspect: state.render_ctx.config.width as f32
+            / state.render_ctx.config.height.max(1) as f32,
+        ..renderer::camera::Camera::default()
+    };
+    let camera_uniform = camera.to_uniform(glam::Mat4::IDENTITY);
 
-        state.scene.prepare(
-            &state.render_ctx.queue,
-            &joint_matrices,
-            &morph_weights,
-            &camera_uniform,
-        );
-    }
+    state.scene.prepare(
+        &state.render_ctx.queue,
+        &joint_matrices,
+        &morph_weights,
+        &camera_uniform,
+    );
 
     // 5. Render
     state.scene.render(&state.render_ctx)?;
