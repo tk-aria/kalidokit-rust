@@ -529,5 +529,31 @@ rustup component add rustfmt
 | Phase 4 | ソルバー (face/pose/hand) | 23 | 完了 |
 | Phase 5 | トラッカー (ONNX) | 0 (ort-sys制約) | 完了 |
 | Phase 6 | 統合メインループ | 0 (ort-sys制約) | 完了 |
-| Phase 7 | SpringBone/MToon/最適化/CI | 9 | 完了 |
+| Phase 7 | SpringBone/MToon/最適化/CI/Release | 9 | 完了 |
 | **合計** | | **60** | **全Phase完了** |
+
+---
+
+## Step 7.6: GitHub Release ワークフロー (2026/03/09)
+
+### 実行内容
+- `.github/workflows/release.yml` 新規作成 (~110行)
+- タグプッシュ (`v*`) で自動実行
+- matrix strategy で4ターゲット並列ビルド:
+  - `x86_64-unknown-linux-gnu` (ubuntu-latest, tar.gz)
+  - `x86_64-apple-darwin` (macos-latest, tar.gz)
+  - `aarch64-apple-darwin` (macos-latest, tar.gz)
+  - `x86_64-pc-windows-msvc` (windows-latest, zip)
+- `assets/` ディレクトリをバイナリと共にパッケージ
+- `softprops/action-gh-release@v2` で GitHub Release 作成 + アーティファクトアップロード
+- `generate_release_notes: true` でリリースノート自動生成
+
+### 使い方
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+# → GitHub Actions が自動でリリースを作成し、各プラットフォームのバイナリをアップロード
+```
+
+### 結果
+- Step 7.6 完了: クロスプラットフォームリリースワークフロー作成
