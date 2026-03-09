@@ -27,7 +27,7 @@ jobs:
             linux-headers pkgconfig perl \
             libx11-dev libxkbcommon-dev wayland-dev mesa-dev \
             openssl-dev openssl-libs-static zlib-dev zlib-static \
-            clang-dev clang-static llvm-dev
+            clang-dev
 
       - uses: actions/checkout@v4
 
@@ -108,8 +108,6 @@ jobs:
           ORT_LIB_PATH: /tmp/ort-build
           ORT_LIB_PROFILE: Release
           HOME: /root
-          LIBCLANG_STATIC: "1"
-          LIBCLANG_PATH: /usr/lib/llvm19/lib
         run: |
           . "$HOME/.cargo/env"
           cargo build --release --target x86_64-unknown-linux-musl
