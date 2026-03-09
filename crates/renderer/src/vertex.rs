@@ -52,4 +52,11 @@ mod tests {
         let bytes = bytemuck::bytes_of(&v);
         assert_eq!(bytes.len(), 32);
     }
+
+    #[test]
+    #[should_panic]
+    fn cast_slice_wrong_size_panics() {
+        let bad_bytes: [u8; 5] = [0; 5];
+        let _: &[Vertex] = bytemuck::cast_slice(&bad_bytes);
+    }
 }

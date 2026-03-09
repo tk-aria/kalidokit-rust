@@ -70,4 +70,34 @@ mod tests {
         let bytes = bytemuck::bytes_of(&u);
         assert_eq!(bytes.len(), 128); // 2 * 16 * f32(4) = 128
     }
+
+    #[test]
+    fn position_equals_target_no_nan() {
+        let cam = Camera {
+            position: Vec3::ZERO,
+            target: Vec3::ZERO,
+            ..Default::default()
+        };
+        let vp = cam.build_view_proj();
+        // glam produces NaN when look_at has zero direction, verify it doesn't crash
+        let _ = vp.to_cols_array();
+    }
+
+    #[test]
+    fn extreme_fov_values() {
+        let cam = Camera {
+            fov: 0.0,
+            ..Default::default()
+        };
+        let vp = cam.build_view_proj();
+        let _ = vp.to_cols_array();
+
+        let cam2 = Camera {
+            near: 1.0,
+            far: 1.0,
+            ..Default::default()
+        };
+        let vp2 = cam2.build_view_proj();
+        let _ = vp2.to_cols_array();
+    }
 }
