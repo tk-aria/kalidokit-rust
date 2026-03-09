@@ -70,22 +70,20 @@ cd kalidokit-rust-<VERSION>-x86_64-unknown-linux-gnu
 > sudo apt-get install -y libvulkan1 libx11-6 libxkbcommon0 libwayland-client0
 > ```
 
-### macOS (Intel / Apple Silicon)
+### macOS (Apple Silicon / Intel)
 
 ```bash
-# Intel Mac
-curl -LO https://github.com/tk-aria/kalidokit-rust/releases/latest/download/kalidokit-rust-<VERSION>-x86_64-apple-darwin.tar.gz
-tar xzf kalidokit-rust-<VERSION>-x86_64-apple-darwin.tar.gz
-
-# Apple Silicon (M1/M2/M3/M4)
+# Apple Silicon (M1/M2/M3/M4) & Intel Mac (Rosetta 2 経由で動作)
 curl -LO https://github.com/tk-aria/kalidokit-rust/releases/latest/download/kalidokit-rust-<VERSION>-aarch64-apple-darwin.tar.gz
 tar xzf kalidokit-rust-<VERSION>-aarch64-apple-darwin.tar.gz
 
 # 実行
-cd kalidokit-rust-<VERSION>-*-apple-darwin
+cd kalidokit-rust-<VERSION>-aarch64-apple-darwin
 ./kalidokit-rust
 ```
 
+> **Intel Mac**: aarch64 バイナリは Rosetta 2 経由で動作します。
+>
 > **注意**: 初回実行時に「開発元を検証できない」と表示された場合:
 > ```bash
 > xattr -cr kalidokit-rust

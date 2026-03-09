@@ -1235,7 +1235,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 **ファイル**: `.github/workflows/release.yml` (~120行)
 
 - [x] タグプッシュ (`v*`) 時に自動実行するリリースワークフロー:
-  1. Windows (x86_64-pc-windows-msvc), macOS (x86_64-apple-darwin, aarch64-apple-darwin), Linux (x86_64-unknown-linux-gnu) の3プラットフォーム向けにビルド
+  1. Windows (x86_64-pc-windows-msvc), macOS (aarch64-apple-darwin), Linux (x86_64-unknown-linux-gnu) の3プラットフォーム向けにビルド (注: macOS x86_64 は ort-sys が prebuilt binary 未提供のため除外、Intel Mac は Rosetta 2 経由で aarch64 バイナリを実行可能)
   2. 各バイナリを `.tar.gz` (Linux/macOS) / `.zip` (Windows) で圧縮
   3. GitHub Release を作成し、全アーティファクトをアップロード
 - [x] matrix strategy で各OS/targetを並列ビルド
