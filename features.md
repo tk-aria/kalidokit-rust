@@ -863,13 +863,10 @@ pub fn find_rotation(from: glam::Vec3, to: glam::Vec3) -> glam::Quat {
 
 **ファイル**: `crates/solver/src/pose.rs` (~200行)
 
-- [ ] `solve(lm3d, lm2d, video) -> RiggedPose` を実装
-- [ ] `calc_hip_transform`: ランドマーク 23/24(左右Hip) から位置・回転を計算
-  - 位置: 23-24 の中点を正規化
-  - 回転: 肩 (11,12) と腰 (23,24) のベクトルからオイラー角算出
-- [ ] `calc_spine_rotation`: 肩中点と腰中点のベクトルから脊椎回転を計算
-- [ ] `calc_limb_rotation(a, b, c) -> EulerAngles`: 3関節から腕/脚の回転を計算
-  - AB→BCベクトルのクロス積/ドット積からオイラー角を算出
+- [x] `solve(lm3d, lm2d, video) -> RiggedPose` を実装
+- [x] `calc_hip_transform`: ランドマーク 23/24(左右Hip) から位置・回転を計算
+- [x] `calc_spine_rotation`: 肩中点と腰中点のベクトルから脊椎回転を計算
+- [x] `calc_limb_rotation(a, b, c) -> EulerAngles`: 3関節から腕/脚の回転を計算
 
 ```rust
 fn calc_limb_rotation(a: Vec3, b: Vec3, c: Vec3) -> EulerAngles {
