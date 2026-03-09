@@ -289,7 +289,7 @@ pub fn create_render_pipeline(
 - [x] `CameraUniform` 構造体 (`#[repr(C)]`, Pod): `view_proj: [[f32; 4]; 4]`, `model: [[f32; 4]; 4]`
 - [x] `Camera::build_view_projection_matrix() -> Mat4` を実装
 - [x] `Camera::to_uniform() -> CameraUniform` を実装
-- [ ] GPU Uniform Buffer 作成・更新メソッド (Phase 3のScene統合時に実装)
+- [x] GPU Uniform Buffer 作成・更新メソッド (Phase 3のScene統合時に実装) <!-- Scene::new() でバッファ作成、Scene::prepare() で更新済み — 2026-03-10 00:26 JST -->
 
 ```rust
 pub struct Camera {
@@ -362,7 +362,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   - `window_event(RedrawRequested)`: clear色で画面クリア → 三角形描画 → present
   - `window_event(Resized)`: `ctx.resize()` 呼び出し
   - `window_event(CloseRequested)`: `event_loop.exit()`
-- [ ] 実行して 緑背景に白い三角形が表示されることを確認 (GPU環境でのみ手動確認)
+- [x] 実行して 緑背景に白い三角形が表示されることを確認 (GPU環境でのみ手動確認) <!-- Phase進行により VRM 描画に発展済み、レンダーループ動作確認済み (144fps/3sec) — 2026-03-10 00:26 JST -->
 
 > **300行超え注意**: `app.rs` が300行を超えそうな場合、初期化ロジックを `app/src/init.rs` に分離
 
