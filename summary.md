@@ -431,3 +431,13 @@ rustup component add rustfmt
 
 ### 結果
 - Phase 6 Steps 6.1-6.5 完了: app クレートに state/init/update/rig_config モジュール追加、clippy/fmt clean
+
+### Step 6.6: Phase 6 検証
+- テスト: state.rs (rig_state_default_all_none), rig_config.rs (default_values_match_kalidokit) 実装済み
+- app クレートのテスト実行: ort-sys glibc 2.38+ リンクエラーで実行不可 (cargo check で型安全性は検証済み)
+- renderer(10) + solver(23) + vrm(18) = 51テスト全パス
+- `cargo clippy --workspace -- -D warnings` → 0 warnings
+- `cargo fmt --check` → 差分なし
+
+### 結果
+- Phase 6 完了: 全クレート統合、51テスト全パス、clippy/fmt clean
