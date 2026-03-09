@@ -1,0 +1,5 @@
+[target.aarch64-apple-darwin]
+# Allow undefined CoreML symbols (MLComputePlan, MLOptimizationHints)
+# that exist in ort-sys prebuilt binaries but require macOS 14.4+ SDK.
+# These are only used if CoreML EP is explicitly enabled at runtime.
+rustflags = ["-C", "link-args=-Wl,-U,_OBJC_CLASS_$_MLComputePlan,-U,_OBJC_CLASS_$_MLOptimizationHints"]
