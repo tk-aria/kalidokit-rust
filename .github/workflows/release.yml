@@ -44,7 +44,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/ort-build
-          key: ort-musl-static-v1.20.1-alpine321-v6
+          key: ort-musl-static-v1.20.1-alpine321-v7
 
       - name: Build ONNX Runtime from source (static, musl)
         if: steps.ort-cache.outputs.cache-hit != 'true'
@@ -74,16 +74,16 @@ jobs:
           sed -i 's|backtrace(array, size)|0|; s|backtrace_symbols(array, nSize)|nullptr|' \
             onnxruntime/core/platform/posix/stacktrace.cc || true
 
+          # Remove Eigen hash check (GitLab regenerates archives, changing the hash)
+          sed -i 's|^eigen;\(.*\);.*|eigen;\1;|' cmake/deps.txt
+
           # Build static libraries only (no shared lib, no tests)
-          # Use ORT's bundled Eigen (system Eigen has API incompatibilities)
-          # Disable FETCHCONTENT_TRY_FIND_PACKAGE_MODE to avoid hash mismatches
           ./build.sh --config Release \
             --update --build --parallel $(nproc) \
             --skip_tests \
             --allow_running_as_root \
             --cmake_extra_defines CMAKE_POSITION_INDEPENDENT_CODE=ON \
-            --cmake_extra_defines onnxruntime_BUILD_SHARED_LIB=OFF \
-            --cmake_extra_defines "FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER"
+            --cmake_extra_defines onnxruntime_BUILD_SHARED_LIB=OFF
 
           # Copy build output for caching
           mkdir -p /tmp/ort-build
