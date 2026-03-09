@@ -356,13 +356,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 **ファイル**: `crates/app/src/main.rs` (~120行), `crates/app/src/app.rs` (~150行)
 
-- [ ] `main.rs`: `EventLoop::new()` → `event_loop.run_app(&mut app)` のエントリポイント
-- [ ] `app.rs`: `App` 構造体に `ApplicationHandler` トレイトを実装
+- [x] `main.rs`: `EventLoop::new()` → `event_loop.run_app(&mut app)` のエントリポイント
+- [x] `app.rs`: `App` 構造体に `ApplicationHandler` トレイトを実装
   - `resumed()`: ウィンドウ作成 (`Arc::new(window)`) → `RenderContext::new(arc_window)` → Pipeline作成 → 三角形Vertex/Index Buffer作成
   - `window_event(RedrawRequested)`: clear色で画面クリア → 三角形描画 → present
   - `window_event(Resized)`: `ctx.resize()` 呼び出し
   - `window_event(CloseRequested)`: `event_loop.exit()`
-- [ ] 実行して 緑背景に白い三角形が表示されることを確認
+- [ ] 実行して 緑背景に白い三角形が表示されることを確認 (GPU環境でのみ手動確認)
 
 > **300行超え注意**: `app.rs` が300行を超えそうな場合、初期化ロジックを `app/src/init.rs` に分離
 

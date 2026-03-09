@@ -109,3 +109,29 @@ conda install -y gcc_linux-64 binutils_linux-64 openssl pkg-config libclang kern
 
 ### 結果
 - `cargo check -p renderer` 成功
+
+---
+
+## Step 1.7: app — winit EventLoop + wgpu描画統合 (2026/03/09)
+
+### 実行内容
+
+1. **`crates/app/src/app.rs` 新規作成** (~195行)
+   - `App` 構造体 + `ApplicationHandler` トレイト実装
+   - `resumed()`: Arc<Window>作成 → RenderContext初期化 → Pipeline/Buffer/BindGroup作成
+   - `window_event(RedrawRequested)`: カメラUniform更新 → RenderPass → 三角形描画
+   - `window_event(Resized)`: ctx.resize() + カメラaspect更新
+   - `window_event(CloseRequested)`: event_loop.exit()
+   - 三角形頂点データ定数 (CCW, front-facing)
+
+2. **`crates/app/src/main.rs` 更新**: env_logger初期化 + EventLoop + run_app
+
+3. **`crates/app/Cargo.toml` に wgpu/glam/bytemuck 依存追加**
+
+### 実行コマンド
+```bash
+./.cargo-env.sh cargo check -p kalidokit-rust  # → Finished dev profile (warnings 0)
+```
+
+### 結果
+- `cargo check` 成功 (警告0)
