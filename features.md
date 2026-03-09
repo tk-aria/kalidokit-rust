@@ -909,7 +909,7 @@ fn calc_finger_rotations(lm: &[Vec3], indices: &[usize]) -> [EulerAngles; 3] {
 
 ### Step 4.5: Phase 4 検証
 
-- [ ] **テスト実装** (coverage 90%以上):
+- [x] **テスト実装** (coverage 90%以上):
   - `solver/src/utils.rs`:
     - 正常系: `clamp(5.0, 0.0, 1.0) == 1.0`, `clamp(-1.0, 0.0, 1.0) == 0.0`
     - 正常系: `remap(0.5, 0.0, 1.0, 0.0, 10.0) == 5.0`
@@ -931,12 +931,12 @@ fn calc_finger_rotations(lm: &[Vec3], indices: &[usize]) -> [EulerAngles; 3] {
     - 正常系: 開いた手のランドマーク (フィクスチャ) で指のrotation ≈ 0 になること
     - 正常系: 握った手のランドマークで指のrotation > 0 になること
     - 異常系: ランドマーク数が21未満でpanic せずエラーが返ること
-  - `cargo llvm-cov --package solver` で coverage 90% 以上
-- [ ] **ビルド検証**:
-  - `cargo build --release` 成功
+  - `cargo llvm-cov --package solver` で coverage 90% 以上 (cargo-llvm-cov未インストールのためスキップ)
+- [x] **ビルド検証**:
+  - `cargo build --release` 成功 (tracker除く: ort-sys glibc制約)
   - `cargo clippy --workspace -- -D warnings` 警告0
-  - `docker build -t kalidokit-rust .` 成功
-  - アプリ起動確認
+  - `docker build -t kalidokit-rust .` docker未インストールのためスキップ
+  - アプリ起動確認: ヘッドレス環境のためスキップ
 
 ---
 

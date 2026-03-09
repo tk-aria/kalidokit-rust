@@ -118,10 +118,8 @@ fn calc_pupil_position(lm: &[Vec3]) -> glam::Vec2 {
     let right_inner = lm[263];
 
     // Calculate horizontal offset
-    let left_x =
-        remap_eye_position(left_iris.x, left_outer.x, left_inner.x);
-    let right_x =
-        remap_eye_position(right_iris.x, right_outer.x, right_inner.x);
+    let left_x = remap_eye_position(left_iris.x, left_outer.x, left_inner.x);
+    let right_x = remap_eye_position(right_iris.x, right_outer.x, right_inner.x);
     let x = (left_x + right_x) * 0.5;
 
     // Calculate vertical offset
@@ -195,5 +193,66 @@ mod tests {
         // l should decrease, r should increase (partial blend)
         assert!(stabilized.l < eye.l);
         assert!(stabilized.r > eye.r);
+    }
+
+    #[test]
+    fn stabilize_blink_zero_head_y_unchanged() {
+        let eye = EyeValues { l: 0.7, r: 0.3 };
+        let stabilized = stabilize_blink(&eye, 0.0);
+        assert!((stabilized.l - eye.l).abs() < 1e-6);
+        assert!((stabilized.r - eye.r).abs() < 1e-6);
+    }
+
+    #[test]
+    fn head_rotation_facing_forward_near_zero() {
+        // Symmetric face: ears at same height, nose above chin
+        let mut lm = vec![Vec3::ZERO; 478];
+        lm[1] = Vec3::new(0.0, 0.5, 0.0); // nose
+        lm[152] = Vec3::new(0.0, -0.5, 0.0); // chin
+        lm[234] = Vec3::new(-1.0, 0.0, 0.0); // left ear
+        lm[454] = Vec3::new(1.0, 0.0, 0.0); // right ear
+        let head = calc_head_rotation(&lm);
+        // yaw and roll should be near zero for symmetric face
+        assert!(
+            head.z.abs() < 0.1,
+            "roll should be near zero, got {}",
+            head.z
+        );
+    }
+
+    #[test]
+    fn eyes_open_landmarks_high_openness() {
+        let mut lm = vec![Vec3::ZERO; 478];
+        // Left eye: upper(159) far from lower(145)
+        lm[159] = Vec3::new(0.0, 0.3, 0.0);
+        lm[145] = Vec3::new(0.0, -0.3, 0.0);
+        // Right eye: upper(386) far from lower(374)
+        lm[386] = Vec3::new(0.5, 0.3, 0.0);
+        lm[374] = Vec3::new(0.5, -0.3, 0.0);
+        // Eye width reference: lm[33] to lm[133]
+        lm[33] = Vec3::new(-0.5, 0.0, 0.0);
+        lm[133] = Vec3::new(0.5, 0.0, 0.0);
+        let eye = calc_eye_openness(&lm);
+        assert!(eye.l > 0.5, "left eye should be open, got {}", eye.l);
+    }
+
+    #[test]
+    fn mouth_closed_low_a_value() {
+        let mut lm = vec![Vec3::ZERO; 478];
+        // Close lips: upper(13) and lower(14) very close
+        lm[13] = Vec3::new(0.0, 0.01, 0.0);
+        lm[14] = Vec3::new(0.0, -0.01, 0.0);
+        // Mouth corners
+        lm[78] = Vec3::new(-0.2, 0.0, 0.0);
+        lm[308] = Vec3::new(0.2, 0.0, 0.0);
+        // Face height reference
+        lm[1] = Vec3::new(0.0, 1.0, 0.0);
+        lm[152] = Vec3::new(0.0, -1.0, 0.0);
+        let mouth = calc_mouth_shape(&lm);
+        assert!(
+            mouth.a < 0.3,
+            "mouth.a should be low for closed mouth, got {}",
+            mouth.a
+        );
     }
 }

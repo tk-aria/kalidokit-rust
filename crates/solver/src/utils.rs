@@ -66,4 +66,22 @@ mod tests {
         let rotated = q * glam::Vec3::X;
         assert!((rotated - glam::Vec3::Y).length() < 1e-5);
     }
+
+    #[test]
+    fn test_remap_equal_input_range() {
+        // in_min == in_max should produce inf/nan but not panic
+        let v = remap(5.0, 3.0, 3.0, 0.0, 10.0);
+        // Result is inf or nan — just ensure no panic
+        let _ = v;
+    }
+
+    #[test]
+    fn test_lerp_vec3() {
+        let a = glam::Vec3::ZERO;
+        let b = glam::Vec3::new(10.0, 20.0, 30.0);
+        let result = lerp_vec3(a, b, 0.5);
+        assert!((result.x - 5.0).abs() < 1e-6);
+        assert!((result.y - 10.0).abs() < 1e-6);
+        assert!((result.z - 15.0).abs() < 1e-6);
+    }
 }

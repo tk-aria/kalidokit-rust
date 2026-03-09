@@ -64,7 +64,9 @@ fn calc_wrist_rotation(lm: &[Vec3], side: Side) -> EulerAngles {
 
     // Compute euler angles from forward direction
     let yaw = forward.x.atan2(forward.z);
-    let pitch = (-forward.y).asin().clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
+    let pitch = (-forward.y)
+        .asin()
+        .clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
     let roll = normal.x.atan2(normal.y);
 
     // Mirror yaw for left hand
@@ -129,10 +131,10 @@ mod tests {
         // 21 landmarks: wrist at origin, fingers extending along +Y
         let mut lm = vec![Vec3::ZERO; 21];
         lm[0] = Vec3::new(0.0, 0.0, 0.0); // wrist
-        // Index base and little base for wrist rotation
+                                          // Index base and little base for wrist rotation
         lm[5] = Vec3::new(-0.5, 1.0, 0.0); // index base
         lm[17] = Vec3::new(0.5, 1.0, 0.0); // little base
-        // Fill finger joints with ascending Y positions
+                                           // Fill finger joints with ascending Y positions
         for finger in 0..5 {
             let base = 1 + finger * 4;
             for joint in 0..4 {
@@ -186,10 +188,10 @@ mod tests {
         // Bent finger: segments at 90 degrees
         let lm = vec![
             Vec3::ZERO,
-            Vec3::new(0.0, 0.0, 0.0),   // joint 0
-            Vec3::new(0.0, 1.0, 0.0),   // joint 1 (+Y)
-            Vec3::new(1.0, 1.0, 0.0),   // joint 2 (+X, 90deg bend)
-            Vec3::new(1.0, 0.0, 0.0),   // joint 3 (-Y, another 90deg)
+            Vec3::new(0.0, 0.0, 0.0), // joint 0
+            Vec3::new(0.0, 1.0, 0.0), // joint 1 (+Y)
+            Vec3::new(1.0, 1.0, 0.0), // joint 2 (+X, 90deg bend)
+            Vec3::new(1.0, 0.0, 0.0), // joint 3 (-Y, another 90deg)
         ];
         let rotations = calc_finger_rotations(&lm, &[1, 2, 3, 4]);
         // First joint: angle between (0→1) and (1→2) should be ~90deg
