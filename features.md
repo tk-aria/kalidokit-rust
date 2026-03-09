@@ -652,10 +652,10 @@ impl GpuMesh {
 
 **ファイル**: `crates/renderer/src/skin.rs` (~80行)
 
-- [ ] `SkinData` 構造体: `joint_buffer: Buffer`, `bind_group: BindGroup`
-- [ ] `SkinData::new(device, max_joints)`: Storage Buffer 作成
-- [ ] `SkinData::update(queue, joint_matrices: &[Mat4])`: `queue.write_buffer` でGPU転送
-- [ ] `SkinData::bind_group()`: BindGroup参照を返す
+- [x] `SkinData` 構造体: `joint_buffer: Buffer`, `bind_group: BindGroup`
+- [x] `SkinData::new(device, max_joints)`: Storage Buffer 作成
+- [x] `SkinData::update(queue, joint_matrices: &[Mat4])`: `queue.write_buffer` でGPU転送
+- [x] `SkinData::bind_group()`: BindGroup参照を返す
 
 ### Step 3.3: renderer::morph — MorphTarget GPUバッファ
 
