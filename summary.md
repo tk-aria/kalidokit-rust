@@ -55,3 +55,23 @@ conda install -y gcc_linux-64 binutils_linux-64 openssl pkg-config libclang kern
 
 ### 結果
 - `cargo check` 全5クレートで成功
+
+---
+
+## Step 1.2: renderer::context — wgpu初期化 (2026/03/09)
+
+### 実行内容
+
+1. **`crates/renderer/src/context.rs` 新規作成** (~47行)
+   - `RenderContext` 構造体: `device`, `queue`, `surface`, `config`, `window: Arc<Window>`
+   - `new(window: Arc<Window>) -> Result<Self>`: Instance→Adapter→Device/Queue→Surface設定
+   - `resize(width, height)`: SurfaceConfiguration更新
+2. **`crates/renderer/src/lib.rs`** に `pub mod context;` 追加
+
+### 実行コマンド
+```bash
+./.cargo-env.sh cargo check -p renderer  # → Finished dev profile
+```
+
+### 結果
+- `cargo check -p renderer` 成功

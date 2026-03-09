@@ -152,7 +152,7 @@ anyhow = { workspace = true }
 
 **ファイル**: `crates/renderer/src/context.rs` (~80行)
 
-- [ ] `RenderContext` 構造体を実装
+- [x] `RenderContext` 構造体を実装
   - フィールド: `device: Device`, `queue: Queue`, `surface: Surface`, `config: SurfaceConfiguration`
   - `new(window: &Window) -> Result<Self>` : Instance作成 → Adapter取得 → Device/Queue取得 → Surface設定
   - `resize(width, height)` : SurfaceConfigurationを更新して再configure
@@ -191,7 +191,7 @@ impl RenderContext {
 // AppState に RenderContext をライフタイム引数なしで保持可能。
 ```
 
-- [ ] `crates/renderer/src/lib.rs` に `pub mod context;` を追加
+- [x] `crates/renderer/src/lib.rs` に `pub mod context;` を追加
 
 ### Step 1.3: renderer::vertex — 頂点データ定義
 
