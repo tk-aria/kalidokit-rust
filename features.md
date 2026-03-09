@@ -757,10 +757,10 @@ impl GpuTexture {
 
 **ファイル**: `crates/renderer/src/scene.rs` (~150行)
 
-- [ ] `Scene` 構造体: `meshes`, `skin`, `morph`, `depth`, `pipeline`, `camera_bind_group`
-- [ ] `Scene::new(device, config, vrm_model)`: VRMモデルデータからGPUリソース群を初期化
-- [ ] `Scene::prepare(queue, joint_matrices, morph_weights, camera_uniform)`: GPUバッファ更新
-- [ ] `Scene::render(ctx) -> Result<()>`: RenderPass実行
+- [x] `Scene` 構造体: `meshes`, `skin`, `morph`, `depth`, `pipeline`, `camera_bind_group`
+- [x] `Scene::new(device, config, vertices_list, max_joints, max_morph_targets)`: GPUリソース群を初期化
+- [x] `Scene::prepare(queue, joint_matrices, morph_weights, camera_uniform)`: GPUバッファ更新
+- [x] `Scene::render(ctx) -> Result<()>`: RenderPass実行
 
 ```rust
 impl Scene {
