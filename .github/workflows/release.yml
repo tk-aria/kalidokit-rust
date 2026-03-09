@@ -32,11 +32,12 @@ jobs:
 
       - name: Install Rust
         run: |
+          export HOME=/root
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
             sh -s -- -y --default-toolchain stable
           . "$HOME/.cargo/env"
           rustup target add x86_64-unknown-linux-musl
-          echo "$HOME/.cargo/bin" >> $GITHUB_ENV
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Cache ONNX Runtime build
         id: ort-cache
@@ -47,6 +48,8 @@ jobs:
 
       - name: Build ONNX Runtime from source (static, musl)
         if: steps.ort-cache.outputs.cache-hit != 'true'
+        env:
+          HOME: /root
         run: |
           git clone --depth 1 --branch v1.20.1 \
             https://github.com/microsoft/onnxruntime /tmp/ort-src
@@ -67,6 +70,7 @@ jobs:
         env:
           ORT_LIB_PATH: /tmp/ort-build
           ORT_LIB_PROFILE: Release
+          HOME: /root
         run: |
           . "$HOME/.cargo/env"
           cargo build --release --target x86_64-unknown-linux-musl
