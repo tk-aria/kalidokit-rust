@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use renderer::context::RenderContext;
-use renderer::scene::Scene;
+use renderer::scene::{MeshMaterialInput, Scene};
 use renderer::vertex::Vertex;
 use tracker::holistic::HolisticTracker;
 use winit::window::Window;
@@ -81,10 +81,27 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         .count()
         .max(1);
 
+    // Build per-mesh material inputs from VRM materials
+    let mesh_materials: Vec<MeshMaterialInput> = vrm_model
+        .meshes
+        .iter()
+        .map(|mesh| {
+            match mesh.material_index.and_then(|i| vrm_model.materials.get(i)) {
+                Some(mat) => MeshMaterialInput {
+                    base_color: mat.base_color,
+                    base_color_texture: mat.base_color_texture.clone(),
+                },
+                None => MeshMaterialInput::default(),
+            }
+        })
+        .collect();
+
     let scene = Scene::new(
         &render_ctx.device,
+        &render_ctx.queue,
         &render_ctx.config,
         &vertices_list,
+        &mesh_materials,
         max_joints,
         num_morph_targets,
     );

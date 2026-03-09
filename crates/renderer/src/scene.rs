@@ -5,25 +5,59 @@ use crate::mesh::GpuMesh;
 use crate::morph::MorphData;
 use crate::pipeline::create_render_pipeline;
 use crate::skin::SkinData;
+use crate::texture::GpuTexture;
 use crate::vertex::Vertex;
 use glam::Mat4;
 use wgpu::util::DeviceExt;
 
+/// Per-mesh material data on the GPU.
+struct GpuMaterial {
+    bind_group: wgpu::BindGroup,
+}
+
+/// Material uniform data matching the shader's MaterialUniform struct.
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct MaterialUniform {
+    base_color: [f32; 4],
+}
+
 pub struct Scene {
     meshes: Vec<GpuMesh>,
+    materials: Vec<GpuMaterial>,
     skin: SkinData,
     morph: MorphData,
     depth: DepthTexture,
     pipeline: wgpu::RenderPipeline,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    // Kept alive for potential future dynamic material creation.
+    #[allow(dead_code)]
+    material_bind_group_layout: wgpu::BindGroupLayout,
+}
+
+/// Input data for one mesh's material (base color + optional texture image).
+pub struct MeshMaterialInput {
+    pub base_color: [f32; 4],
+    pub base_color_texture: Option<image::DynamicImage>,
+}
+
+impl Default for MeshMaterialInput {
+    fn default() -> Self {
+        Self {
+            base_color: [1.0, 1.0, 1.0, 1.0],
+            base_color_texture: None,
+        }
+    }
 }
 
 impl Scene {
     pub fn new(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         config: &wgpu::SurfaceConfiguration,
         vertices_list: &[(&[Vertex], &[u32])],
+        mesh_materials: &[MeshMaterialInput],
         max_joints: usize,
         max_morph_targets: usize,
     ) -> Self {
@@ -67,6 +101,95 @@ impl Scene {
             }],
         });
 
+        // Material bind group layout (shared by all meshes)
+        let material_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("material_bind_group_layout"),
+                entries: &[
+                    // MaterialUniform
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // Base color texture
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // Sampler
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        // Create default white texture as fallback
+        let default_texture = GpuTexture::default_white(device, queue);
+
+        // Create per-mesh material bind groups
+        let materials: Vec<GpuMaterial> = (0..meshes.len())
+            .map(|i| {
+                let mat_input = mesh_materials.get(i);
+                let base_color = mat_input
+                    .map(|m| m.base_color)
+                    .unwrap_or([1.0, 1.0, 1.0, 1.0]);
+
+                let material_uniform = MaterialUniform { base_color };
+                let material_buffer =
+                    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some(&format!("material_buffer_{}", i)),
+                        contents: bytemuck::bytes_of(&material_uniform),
+                        usage: wgpu::BufferUsages::UNIFORM,
+                    });
+
+                // Use the mesh's texture if available, otherwise fall back to default white
+                let gpu_texture = mat_input
+                    .and_then(|m| m.base_color_texture.as_ref())
+                    .map(|img| GpuTexture::from_image(device, queue, img));
+
+                let (tex_view, tex_sampler) = match &gpu_texture {
+                    Some(t) => (&t.view, &t.sampler),
+                    None => (&default_texture.view, &default_texture.sampler),
+                };
+
+                let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some(&format!("material_bind_group_{}", i)),
+                    layout: &material_bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: material_buffer.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(tex_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Sampler(tex_sampler),
+                        },
+                    ],
+                });
+
+                GpuMaterial { bind_group }
+            })
+            .collect();
+
         let shader_src = include_str!("../../../assets/shaders/skinning.wgsl");
         let pipeline = create_render_pipeline(
             device,
@@ -76,18 +199,21 @@ impl Scene {
                 &camera_bind_group_layout,
                 skin.bind_group_layout(),
                 morph.bind_group_layout(),
+                &material_bind_group_layout,
             ],
             Some(crate::depth::DEPTH_FORMAT),
         );
 
         Self {
             meshes,
+            materials,
             skin,
             morph,
             depth,
             pipeline,
             camera_buffer,
             camera_bind_group,
+            material_bind_group_layout,
         }
     }
 
@@ -140,7 +266,11 @@ impl Scene {
             pass.set_bind_group(0, &self.camera_bind_group, &[]);
             pass.set_bind_group(1, self.skin.bind_group(), &[]);
             pass.set_bind_group(2, self.morph.bind_group(), &[]);
-            for mesh in &self.meshes {
+            for (i, mesh) in self.meshes.iter().enumerate() {
+                // Bind per-mesh material (texture + base color)
+                if let Some(mat) = self.materials.get(i) {
+                    pass.set_bind_group(3, &mat.bind_group, &[]);
+                }
                 mesh.draw(&mut pass);
             }
         }

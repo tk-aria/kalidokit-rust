@@ -11,6 +11,16 @@ struct CameraUniform {
 // Morph weights (group 2, binding 0) - max 64 targets
 @group(2) @binding(0) var<storage, read> morph_weights: array<f32>;
 
+// Material uniform (group 3, binding 0)
+struct MaterialUniform {
+    base_color: vec4<f32>,
+};
+@group(3) @binding(0) var<uniform> material: MaterialUniform;
+
+// Texture and sampler (group 3, binding 1 and 2)
+@group(3) @binding(1) var t_base_color: texture_2d<f32>;
+@group(3) @binding(2) var s_base_color: sampler;
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
@@ -43,10 +53,18 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // Sample base color texture
+    let tex_color = textureSample(t_base_color, s_base_color, in.uv);
+
+    // Multiply by material base color
+    let base = tex_color * material.base_color;
+
+    // Directional lighting
     let light_dir = normalize(vec3<f32>(0.5, 1.0, 0.3));
     let ndl = max(dot(in.world_normal, light_dir), 0.0);
     let ambient = 0.15;
     let diffuse = ndl * 0.85;
-    let color = vec3<f32>(1.0, 1.0, 1.0) * (ambient + diffuse);
-    return vec4<f32>(color, 1.0);
+    let lit_color = base.rgb * (ambient + diffuse);
+
+    return vec4<f32>(lit_color, base.a);
 }

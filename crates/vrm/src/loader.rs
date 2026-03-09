@@ -4,7 +4,8 @@ use renderer::vertex::Vertex;
 use crate::blendshape::BlendShapeGroup;
 use crate::bone::HumanoidBones;
 use crate::error::VrmError;
-use crate::model::{MeshData, MorphTargetData, NodeTransform, SkinJoint, VrmModel};
+use crate::model::{Material, MeshData, MorphTargetData, NodeTransform, SkinJoint, VrmModel};
+use crate::spring_bone::SpringBoneGroup;
 
 /// glTFアクセサからバイト列を読む低レベルヘルパー
 fn read_accessor_data(blob: &[u8], accessor: &gltf::Accessor) -> Vec<u8> {
@@ -54,6 +55,51 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
                 rotation: Quat::from_array(r),
                 scale: Vec3::from(s),
                 children: node.children().map(|c| c.index()).collect(),
+            }
+        })
+        .collect();
+
+    // Load glTF images from the binary blob
+    let loaded_images: Vec<Option<image::DynamicImage>> = gltf
+        .document
+        .images()
+        .map(|img| {
+            match img.source() {
+                gltf::image::Source::View { view, mime_type: _ } => {
+                    let offset = view.offset();
+                    let length = view.length();
+                    let data = &blob[offset..offset + length];
+                    image::load_from_memory(data)
+                        .map_err(|e| {
+                            log::warn!("Failed to decode image {}: {}", img.index(), e);
+                            e
+                        })
+                        .ok()
+                }
+                gltf::image::Source::Uri { .. } => {
+                    log::warn!("URI-based images not supported in GLB");
+                    None
+                }
+            }
+        })
+        .collect();
+
+    // Parse materials
+    let materials: Vec<Material> = gltf
+        .document
+        .materials()
+        .map(|mat| {
+            let pbr = mat.pbr_metallic_roughness();
+            let base_color = pbr.base_color_factor();
+            let base_color_texture = pbr
+                .base_color_texture()
+                .and_then(|info| {
+                    let tex_index = info.texture().source().index();
+                    loaded_images.get(tex_index).and_then(|opt| opt.clone())
+                });
+            Material {
+                base_color,
+                base_color_texture,
             }
         })
         .collect();
@@ -127,10 +173,13 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
                 })
                 .collect();
 
+            let material_index = primitive.material().index();
+
             meshes.push(MeshData {
                 vertices,
                 indices,
                 morph_targets,
+                material_index,
             });
         }
     }
@@ -185,13 +234,16 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
 
     let humanoid_bones = HumanoidBones::from_vrm_json(&vrm_json, &node_transforms)?;
     let blend_shapes = BlendShapeGroup::from_vrm_json(&vrm_json)?;
+    let spring_bone_groups = SpringBoneGroup::from_vrm_json(&vrm_json)?;
 
     Ok(VrmModel {
         meshes,
+        materials,
         skins,
         humanoid_bones,
         blend_shapes,
         node_transforms,
+        spring_bone_groups,
     })
 }
 

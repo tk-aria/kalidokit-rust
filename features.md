@@ -705,7 +705,7 @@ impl DepthTexture {
 - [x] `GpuTexture::from_image(device, queue, image)`: `image::DynamicImage` → GPU Texture
 - [x] `GpuTexture::from_bytes(device, queue, bytes, width, height)`: raw bytes → GPU Texture
 - [x] `GpuTexture::default_white(device, queue) -> Self`: デフォルトの白テクスチャ (1x1) 生成メソッド
-- [ ] **Scene/パイプラインへの統合**: GpuTexture は実装済みだが、Scene で使用されておらず、VRM からテクスチャ/マテリアルのロードも未実装 (デッドコード)
+- [x] **Scene/パイプラインへの統合**: GpuTexture を Scene に統合、VRM マテリアル/テクスチャロード実装、skinning.wgsl にテクスチャサンプリング追加 <!-- 2026-03-10 00:31 JST -->
 
 ```rust
 pub struct GpuTexture {
@@ -1157,7 +1157,7 @@ pub struct RigConfig {
 - [x] `SpringBoneGroup` 構造体: `bones: Vec<SpringBone>`, `colliders: Vec<Collider>`
 - [x] `SpringBoneGroup::from_vrm_json(json)`: VRM拡張JSONからパース
 - [x] `SpringBoneGroup::update(delta_time)`: Verlet積分で髪揺れ等の物理シミュレーション
-- [ ] **VrmModel への統合**: VrmModel に spring_bones フィールドがなく、loader でパースされず、update ループで呼ばれていない (デッドコード)
+- [x] **VrmModel への統合**: VrmModel に spring_bone_groups フィールド追加、loader でパース、update ループで毎フレーム update() 呼び出し <!-- 2026-03-10 00:31 JST -->
 
 ```rust
 // VRM JSON構造:

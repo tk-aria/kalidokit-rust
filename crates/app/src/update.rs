@@ -69,6 +69,12 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         state.rig_dirty = false;
     }
 
+    // 3.5. Update spring bone physics
+    let delta_time = elapsed.as_secs_f32();
+    for group in &mut state.vrm_model.spring_bone_groups {
+        group.update(delta_time, glam::Vec3::ZERO);
+    }
+
     // 4. Update GPU buffers
     let joint_matrices = state
         .vrm_model
