@@ -828,11 +828,11 @@ impl Scene {
 
 **ファイル**: `crates/solver/src/utils.rs` (既存、~30行)
 
-- [ ] `clamp(val, min, max) -> f32` を実装 (既存)
-- [ ] `remap(val, in_min, in_max, out_min, out_max) -> f32` を実装 (既存)
-- [ ] `lerp(a, b, t) -> f32` を実装 (既存)
-- [ ] `angle_between(v1: Vec3, v2: Vec3) -> f32` を追加: 2ベクトル間の角度
-- [ ] `find_rotation(a: Vec3, b: Vec3) -> Quat` を追加: aからbへの回転
+- [x] `clamp(val, min, max) -> f32` を実装 (既存)
+- [x] `remap(val, in_min, in_max, out_min, out_max) -> f32` を実装 (既存)
+- [x] `lerp(a, b, t) -> f32` を実装 (既存)
+- [x] `angle_between(v1: Vec3, v2: Vec3) -> f32` を追加: 2ベクトル間の角度
+- [x] `find_rotation(a: Vec3, b: Vec3) -> Quat` を追加: aからbへの回転
 
 ```rust
 pub fn angle_between(v1: glam::Vec3, v2: glam::Vec3) -> f32 {

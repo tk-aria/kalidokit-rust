@@ -18,3 +18,52 @@ pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
 pub fn lerp_vec3(a: glam::Vec3, b: glam::Vec3, t: f32) -> glam::Vec3 {
     a + (b - a) * t
 }
+
+/// Angle between two vectors in radians.
+pub fn angle_between(v1: glam::Vec3, v2: glam::Vec3) -> f32 {
+    let dot = v1.normalize().dot(v2.normalize()).clamp(-1.0, 1.0);
+    dot.acos()
+}
+
+/// Quaternion rotation from one direction to another.
+pub fn find_rotation(from: glam::Vec3, to: glam::Vec3) -> glam::Quat {
+    glam::Quat::from_rotation_arc(from.normalize(), to.normalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clamp() {
+        assert_eq!(clamp(1.5, 0.0, 1.0), 1.0);
+        assert_eq!(clamp(-0.5, 0.0, 1.0), 0.0);
+        assert_eq!(clamp(0.5, 0.0, 1.0), 0.5);
+    }
+
+    #[test]
+    fn test_remap() {
+        let v = remap(0.5, 0.0, 1.0, 0.0, 10.0);
+        assert!((v - 5.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_lerp() {
+        assert!((lerp(0.0, 10.0, 0.5) - 5.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_angle_between() {
+        let a = glam::Vec3::X;
+        let b = glam::Vec3::Y;
+        let angle = angle_between(a, b);
+        assert!((angle - std::f32::consts::FRAC_PI_2).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_find_rotation() {
+        let q = find_rotation(glam::Vec3::X, glam::Vec3::Y);
+        let rotated = q * glam::Vec3::X;
+        assert!((rotated - glam::Vec3::Y).length() < 1e-5);
+    }
+}
