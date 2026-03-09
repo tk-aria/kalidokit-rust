@@ -441,3 +441,31 @@ rustup component add rustfmt
 
 ### 結果
 - Phase 6 完了: 全クレート統合、51テスト全パス、clippy/fmt clean
+
+---
+
+## Phase 7: 仕上げ & 最適化 (2026/03/09)
+
+### Step 7.1: vrm::spring_bone — SpringBone物理
+- `crates/vrm/src/spring_bone.rs` 新規作成 (~250行)
+- `Collider` 構造体: offset, radius, node_index (球体コライダー)
+- `SpringBone` 構造体: Verlet積分ベースの物理シミュレーション
+  - `update()`: velocity + stiffness_force + gravity → collider check → bone length維持
+  - `check_colliders()`: 球体コライダーとの衝突判定・押し出し
+- `SpringBoneGroup` 構造体: 共有パラメータの骨グループ
+  - `from_vrm_json()`: VRM拡張JSON ("secondaryAnimation") からパース
+  - VRM spec の "stiffiness" typo 対応 ("stiffness" も fallback)
+  - colliderGroups 参照による間接的なコライダー収集
+  - `update()`: グループ内全骨を更新
+- テスト9件: update_moves_position, zero_stiffness_falls, full_drag_minimal, zero_delta_time, negative_delta_time, bone_length_maintained, collider_pushes_out, from_vrm_json_parses, no_secondary_animation
+
+### 実行コマンド
+```bash
+./.cargo-env.sh cargo test -p vrm  # → 27 passed
+./.cargo-env.sh cargo check --workspace  # → success
+./.cargo-env.sh cargo clippy --workspace -- -D warnings  # → 0 warnings
+./.cargo-env.sh cargo fmt
+```
+
+### 結果
+- Step 7.1 完了: vrm::spring_bone 実装、27 vrm テスト全パス

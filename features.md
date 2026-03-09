@@ -1151,10 +1151,10 @@ pub struct RigConfig {
 
 **ファイル**: `crates/vrm/src/spring_bone.rs` (~200行)
 
-- [ ] `SpringBone` 構造体: `stiffness`, `gravity_power`, `gravity_dir`, `drag_force`, `hit_radius`
-- [ ] `SpringBoneGroup` 構造体: `bones: Vec<SpringBone>`, `colliders: Vec<Collider>`
-- [ ] `SpringBoneGroup::from_vrm_json(json)`: VRM拡張JSONからパース
-- [ ] `SpringBoneGroup::update(delta_time)`: Verlet積分で髪揺れ等の物理シミュレーション
+- [x] `SpringBone` 構造体: `stiffness`, `gravity_power`, `gravity_dir`, `drag_force`, `hit_radius`
+- [x] `SpringBoneGroup` 構造体: `bones: Vec<SpringBone>`, `colliders: Vec<Collider>`
+- [x] `SpringBoneGroup::from_vrm_json(json)`: VRM拡張JSONからパース
+- [x] `SpringBoneGroup::update(delta_time)`: Verlet積分で髪揺れ等の物理シミュレーション
 
 ```rust
 // VRM JSON構造:
