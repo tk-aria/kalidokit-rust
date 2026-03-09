@@ -1,6 +1,9 @@
 use glam::{Mat4, Quat, Vec3};
 use renderer::vertex::Vertex;
 
+use crate::blendshape::BlendShapeGroup;
+use crate::bone::HumanoidBones;
+
 /// glTFスキンのジョイント情報
 pub struct SkinJoint {
     /// glTFノードインデックス
@@ -34,5 +37,7 @@ pub struct NodeTransform {
 pub struct VrmModel {
     pub meshes: Vec<MeshData>,
     pub skins: Vec<SkinJoint>,
+    pub humanoid_bones: HumanoidBones,
+    pub blend_shapes: BlendShapeGroup,
     pub node_transforms: Vec<NodeTransform>,
 }

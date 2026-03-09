@@ -1,0 +1,194 @@
+use glam::{Mat4, Quat, Vec3};
+use renderer::vertex::Vertex;
+
+use crate::blendshape::BlendShapeGroup;
+use crate::bone::HumanoidBones;
+use crate::error::VrmError;
+use crate::model::{MeshData, MorphTargetData, NodeTransform, SkinJoint, VrmModel};
+
+/// glTFアクセサからバイト列を読む低レベルヘルパー
+fn read_accessor_data(blob: &[u8], accessor: &gltf::Accessor) -> Vec<u8> {
+    let view = accessor.view().expect("accessor must have buffer view");
+    let offset = view.offset() + accessor.offset();
+    let stride = view.stride().unwrap_or(accessor.size());
+    let count = accessor.count();
+
+    if stride == accessor.size() {
+        // Tightly packed - direct copy
+        let length = count * accessor.size();
+        blob[offset..offset + length].to_vec()
+    } else {
+        // Interleaved - copy element by element
+        let elem_size = accessor.size();
+        let mut result = Vec::with_capacity(count * elem_size);
+        for i in 0..count {
+            let start = offset + i * stride;
+            result.extend_from_slice(&blob[start..start + elem_size]);
+        }
+        result
+    }
+}
+
+/// Pod型にキャストする型付きヘルパー
+fn read_accessor_as<T: bytemuck::Pod>(blob: &[u8], accessor: &gltf::Accessor) -> Vec<T> {
+    let bytes = read_accessor_data(blob, accessor);
+    bytemuck::cast_slice::<u8, T>(&bytes).to_vec()
+}
+
+/// VRMファイルをロードしてVrmModelを返す
+pub fn load(path: &str) -> Result<VrmModel, VrmError> {
+    let gltf = gltf::Gltf::open(path)?;
+    let blob = gltf
+        .blob
+        .as_ref()
+        .ok_or_else(|| VrmError::MissingData("glTF binary blob not found".into()))?;
+
+    // Parse node transforms
+    let node_transforms: Vec<NodeTransform> = gltf
+        .document
+        .nodes()
+        .map(|node| {
+            let (t, r, s) = node.transform().decomposed();
+            NodeTransform {
+                translation: Vec3::from(t),
+                rotation: Quat::from_array(r),
+                scale: Vec3::from(s),
+                children: node.children().map(|c| c.index()).collect(),
+            }
+        })
+        .collect();
+
+    // Parse meshes
+    let mut meshes = Vec::new();
+    for mesh in gltf.document.meshes() {
+        for primitive in mesh.primitives() {
+            let mut vertices = Vec::new();
+
+            // Read positions
+            let positions: Vec<[f32; 3]> = primitive
+                .get(&gltf::Semantic::Positions)
+                .map(|acc| read_accessor_as(blob, &acc))
+                .unwrap_or_default();
+
+            // Read normals
+            let normals: Vec<[f32; 3]> = primitive
+                .get(&gltf::Semantic::Normals)
+                .map(|acc| read_accessor_as(blob, &acc))
+                .unwrap_or_default();
+
+            // Read UVs
+            let uvs: Vec<[f32; 2]> = primitive
+                .get(&gltf::Semantic::TexCoords(0))
+                .map(|acc| read_accessor_as(blob, &acc))
+                .unwrap_or_default();
+
+            for i in 0..positions.len() {
+                vertices.push(Vertex {
+                    position: positions[i],
+                    normal: normals.get(i).copied().unwrap_or([0.0, 1.0, 0.0]),
+                    uv: uvs.get(i).copied().unwrap_or([0.0, 0.0]),
+                });
+            }
+
+            // Read indices
+            let indices: Vec<u32> = primitive
+                .indices()
+                .map(|acc| {
+                    let bytes = read_accessor_data(blob, &acc);
+                    match acc.data_type() {
+                        gltf::accessor::DataType::U16 => bytemuck::cast_slice::<u8, u16>(&bytes)
+                            .iter()
+                            .map(|&i| i as u32)
+                            .collect(),
+                        gltf::accessor::DataType::U32 => {
+                            bytemuck::cast_slice::<u8, u32>(&bytes).to_vec()
+                        }
+                        _ => vec![],
+                    }
+                })
+                .unwrap_or_default();
+
+            // Parse morph targets
+            let morph_targets: Vec<MorphTargetData> = primitive
+                .morph_targets()
+                .map(|target| {
+                    let position_deltas: Vec<[f32; 3]> = target
+                        .positions()
+                        .map(|acc| read_accessor_as(blob, &acc))
+                        .unwrap_or_default();
+                    let normal_deltas: Vec<[f32; 3]> = target
+                        .normals()
+                        .map(|acc| read_accessor_as(blob, &acc))
+                        .unwrap_or_default();
+                    MorphTargetData {
+                        position_deltas,
+                        normal_deltas,
+                    }
+                })
+                .collect();
+
+            meshes.push(MeshData {
+                vertices,
+                indices,
+                morph_targets,
+            });
+        }
+    }
+
+    // Parse skins
+    let mut skins = Vec::new();
+    for skin in gltf.document.skins() {
+        let ibms: Vec<Mat4> = skin
+            .inverse_bind_matrices()
+            .map(|acc| {
+                let data: Vec<[[f32; 4]; 4]> = read_accessor_as(blob, &acc);
+                data.into_iter()
+                    .map(|m| Mat4::from_cols_array_2d(&m))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        for (i, joint) in skin.joints().enumerate() {
+            skins.push(SkinJoint {
+                node_index: joint.index(),
+                inverse_bind_matrix: ibms.get(i).copied().unwrap_or(Mat4::IDENTITY),
+            });
+        }
+    }
+
+    // Parse VRM extension from raw JSON
+    // gltf crate's Document doesn't expose extensions directly,
+    // so we read the file as raw JSON to extract the VRM extension.
+    let raw_bytes = std::fs::read(path)
+        .map_err(|e| VrmError::MissingData(format!("Failed to read file: {}", e)))?;
+
+    // For GLB files, the JSON chunk starts after a 12-byte header + 8-byte chunk header
+    let vrm_json = if raw_bytes.starts_with(b"glTF") {
+        // GLB format: parse JSON chunk
+        let json_length = u32::from_le_bytes([raw_bytes[12], raw_bytes[13], raw_bytes[14], raw_bytes[15]]) as usize;
+        let json_bytes = &raw_bytes[20..20 + json_length];
+        let root: serde_json::Value = serde_json::from_slice(json_bytes)?;
+        root.get("extensions")
+            .and_then(|e| e.get("VRM"))
+            .cloned()
+            .ok_or_else(|| VrmError::MissingExtension("VRM".into()))?
+    } else {
+        // Plain glTF JSON
+        let root: serde_json::Value = serde_json::from_slice(&raw_bytes)?;
+        root.get("extensions")
+            .and_then(|e| e.get("VRM"))
+            .cloned()
+            .ok_or_else(|| VrmError::MissingExtension("VRM".into()))?
+    };
+
+    let humanoid_bones = HumanoidBones::from_vrm_json(&vrm_json, &node_transforms)?;
+    let blend_shapes = BlendShapeGroup::from_vrm_json(&vrm_json)?;
+
+    Ok(VrmModel {
+        meshes,
+        skins,
+        humanoid_bones,
+        blend_shapes,
+        node_transforms,
+    })
+}

@@ -550,7 +550,7 @@ impl HumanoidBones {
 
 > **300行超え注意**: ロード処理が300行を超える場合、メッシュパースを `loader/mesh_parser.rs` に分離
 
-- [ ] `load(path: &str) -> Result<VrmModel>` 関数を実装
+- [x] `load(path: &str) -> Result<VrmModel>` 関数を実装
   1. `gltf::Gltf::open(path)` でglTFをパース
   2. `gltf.blob` からバイナリバッファを取得
   3. メッシュ群をパース: 各Primitive の position/normal/uv/indices を読み取り `MeshData` に格納
@@ -560,8 +560,8 @@ impl HumanoidBones {
   7. `HumanoidBones::from_vrm_json()` でボーンマッピング構築
   8. `BlendShapeGroup::from_vrm_json()` でBlendShape構築
   9. `VrmModel` を組み立てて返す
-- [ ] `read_accessor_data(blob, accessor) -> Vec<u8>`: glTFアクセサからバイト列を読み取るヘルパー
-- [ ] `read_accessor_as<T: Pod>(blob, accessor) -> Vec<T>`: バイト列をPod型にキャストする型付きヘルパー
+- [x] `read_accessor_data(blob, accessor) -> Vec<u8>`: glTFアクセサからバイト列を読み取るヘルパー
+- [x] `read_accessor_as<T: Pod>(blob, accessor) -> Vec<T>`: バイト列をPod型にキャストする型付きヘルパー
 
 ```rust
 // glTFアクセサからバイト列を読む低レベルヘルパー
