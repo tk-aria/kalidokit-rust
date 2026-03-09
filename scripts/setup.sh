@@ -214,14 +214,30 @@ cmd_install() {
     return 1
   fi
 
-  # 配置
-  if ! cp "$binary_path" "$install_path/$binary"; then
+  # 配置 (権限がない場合は ~/.local/bin にフォールバック)
+  _installed=0
+  if cp "$binary_path" "$install_path/$binary" 2>/dev/null; then
+    chmod 755 "$install_path/$binary"
+    _installed=1
+  else
+    # フォールバック: ~/.local/bin
+    fallback_path="$HOME/.local/bin"
+    if [ "$install_path" != "$fallback_path" ]; then
+      echo "Permission denied for $install_path — falling back to $fallback_path"
+      mkdir -p "$fallback_path"
+      if cp "$binary_path" "$fallback_path/$binary" 2>/dev/null; then
+        chmod 755 "$fallback_path/$binary"
+        install_path="$fallback_path"
+        _installed=1
+      fi
+    fi
+  fi
+
+  if [ "$_installed" -eq 0 ]; then
     echo "Failed to copy binary to $install_path" 1>&2
-    echo "Try: KALIDOKIT_INSTALL_PATH=~/.local/bin sh setup.sh install" 1>&2
-    echo "  or: sudo sh setup.sh install" 1>&2
+    echo "Try: sudo sh setup.sh install" 1>&2
     return 1
   fi
-  chmod 755 "$install_path/$binary"
 
   # assets
   if [ -d "$tmp_dir/${archive_dir}/assets" ]; then
@@ -235,6 +251,20 @@ cmd_install() {
   echo ""
   echo "${BINARY_NAME} ${KALIDOKIT_VERSION} installed successfully!"
   echo "  Binary: $install_path/$binary"
+
+  # PATH に含まれていない場合のヒント
+  case ":$PATH:" in
+    *":$install_path:"*) ;;
+    *)
+      echo ""
+      echo "NOTE: $install_path is not in your PATH."
+      echo "Add it with:"
+      echo "  export PATH=\"$install_path:\$PATH\""
+      echo ""
+      echo "To make it permanent, add the line above to your ~/.zshrc or ~/.bashrc"
+      ;;
+  esac
+
   echo ""
   echo "Run '${BINARY_NAME} --help' to get started."
 }
