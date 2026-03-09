@@ -444,16 +444,16 @@ pub enum VrmError {
 
 **ファイル**: `crates/vrm/src/model.rs` (~60行)
 
-- [ ] `VrmModel` 構造体を定義
+- [x] `VrmModel` 構造体を定義
   - `meshes: Vec<MeshData>`: 各プリミティブの頂点/インデックス/MorphTarget
   - `skins: Vec<SkinJoint>`: スキンジョイント・InverseBindMatrix
-  - `humanoid_bones: HumanoidBones`: VRMボーンマッピング
-  - `blend_shapes: BlendShapeGroup`: BlendShapeプリセット
+  - `humanoid_bones: HumanoidBones`: VRMボーンマッピング (Step 2.3で追加)
+  - `blend_shapes: BlendShapeGroup`: BlendShapeプリセット (Step 2.4で追加)
   - `node_transforms: Vec<NodeTransform>`: glTFノード変換
-- [ ] `SkinJoint` 構造体: `node_index: usize`, `inverse_bind_matrix: Mat4`
-- [ ] `MeshData` 構造体: `vertices: Vec<Vertex>`, `indices: Vec<u32>`, `morph_targets: Vec<MorphTargetData>`
-- [ ] `MorphTargetData` 構造体: `position_deltas: Vec<[f32; 3]>`, `normal_deltas: Vec<[f32; 3]>`
-- [ ] `NodeTransform` 構造体: `translation: Vec3`, `rotation: Quat`, `scale: Vec3`, `children: Vec<usize>`
+- [x] `SkinJoint` 構造体: `node_index: usize`, `inverse_bind_matrix: Mat4`
+- [x] `MeshData` 構造体: `vertices: Vec<Vertex>`, `indices: Vec<u32>`, `morph_targets: Vec<MorphTargetData>`
+- [x] `MorphTargetData` 構造体: `position_deltas: Vec<[f32; 3]>`, `normal_deltas: Vec<[f32; 3]>`
+- [x] `NodeTransform` 構造体: `translation: Vec3`, `rotation: Quat`, `scale: Vec3`, `children: Vec<usize>`
 
 ```rust
 /// glTFスキンのジョイント情報
