@@ -1193,7 +1193,7 @@ impl SpringBone {
   - 2段階トゥーンシェーディング (影しきい値ベース)
   - リムライト
   - アウトライン (別パス)
-- [ ] **レンダーパイプラインへの統合**: scene.rs が skinning.wgsl をハードコードしており、mtoon.wgsl は使用されていない
+- [x] **レンダーパイプラインへの統合**: MToon トゥーンシェーディング (2段階陰影 + リムライト) を skinning.wgsl に統合、VRM MToon 拡張パース実装 <!-- 2026-03-10 00:35 JST -->
 
 ```wgsl
 // MToon Fragment Shader の核心ロジック

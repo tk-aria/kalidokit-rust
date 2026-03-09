@@ -13,12 +13,24 @@ pub struct SkinJoint {
     pub inverse_bind_matrix: Mat4,
 }
 
-/// マテリアル情報
+/// マテリアル情報 (MToon toon shading パラメータ含む)
 pub struct Material {
     /// ベースカラー (RGBA)
     pub base_color: [f32; 4],
     /// ベースカラーテクスチャ (RGBA画像)
     pub base_color_texture: Option<image::DynamicImage>,
+    /// MToon シェードカラー (RGBA)
+    pub shade_color: [f32; 4],
+    /// MToon リムカラー (RGBA)
+    pub rim_color: [f32; 4],
+    /// MToon シェード境界シフト [-1, 1]
+    pub shade_shift: f32,
+    /// MToon トゥーンシェーディング硬さ [0, 1]
+    pub shade_toony: f32,
+    /// MToon リムライト減衰指数
+    pub rim_power: f32,
+    /// MToon リムライトリフト
+    pub rim_lift: f32,
 }
 
 impl Default for Material {
@@ -26,6 +38,12 @@ impl Default for Material {
         Self {
             base_color: [1.0, 1.0, 1.0, 1.0],
             base_color_texture: None,
+            shade_color: [0.5, 0.5, 0.5, 1.0],
+            rim_color: [0.0, 0.0, 0.0, 1.0],
+            shade_shift: -0.1,
+            shade_toony: 0.5,
+            rim_power: 1.0,
+            rim_lift: 0.0,
         }
     }
 }

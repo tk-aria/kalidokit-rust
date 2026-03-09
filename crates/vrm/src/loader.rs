@@ -36,6 +36,60 @@ fn read_accessor_as<T: bytemuck::Pod>(blob: &[u8], accessor: &gltf::Accessor) ->
     bytemuck::cast_slice::<u8, T>(&bytes).to_vec()
 }
 
+/// Apply MToon parameters from VRM extension materialProperties to parsed materials.
+fn apply_vrm_mtoon_properties(vrm_json: &serde_json::Value, materials: &mut [Material]) {
+    if let Some(mat_props) = vrm_json
+        .get("materialProperties")
+        .and_then(|v| v.as_array())
+    {
+        for (i, prop) in mat_props.iter().enumerate() {
+            if i >= materials.len() {
+                break;
+            }
+            // VRM 0.x materialProperties contain vectorProperties and floatProperties
+            if let Some(floats) = prop.get("floatProperties").and_then(|v| v.as_object()) {
+                if let Some(v) = floats.get("_ShadeShift").and_then(|v| v.as_f64()) {
+                    materials[i].shade_shift = v as f32;
+                }
+                if let Some(v) = floats.get("_ShadeToony").and_then(|v| v.as_f64()) {
+                    materials[i].shade_toony = v as f32;
+                }
+                if let Some(v) = floats.get("_RimLightingMix").and_then(|v| v.as_f64()) {
+                    materials[i].rim_power = v as f32;
+                }
+                if let Some(v) = floats.get("_RimFresnelPower").and_then(|v| v.as_f64()) {
+                    materials[i].rim_power = v as f32;
+                }
+                if let Some(v) = floats.get("_RimLift").and_then(|v| v.as_f64()) {
+                    materials[i].rim_lift = v as f32;
+                }
+            }
+            if let Some(vecs) = prop.get("vectorProperties").and_then(|v| v.as_object()) {
+                if let Some(shade) = vecs.get("_ShadeColor").and_then(|v| v.as_array()) {
+                    if shade.len() >= 3 {
+                        materials[i].shade_color = [
+                            shade[0].as_f64().unwrap_or(0.5) as f32,
+                            shade[1].as_f64().unwrap_or(0.5) as f32,
+                            shade[2].as_f64().unwrap_or(0.5) as f32,
+                            shade.get(3).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                        ];
+                    }
+                }
+                if let Some(rim) = vecs.get("_RimColor").and_then(|v| v.as_array()) {
+                    if rim.len() >= 3 {
+                        materials[i].rim_color = [
+                            rim[0].as_f64().unwrap_or(0.0) as f32,
+                            rim[1].as_f64().unwrap_or(0.0) as f32,
+                            rim[2].as_f64().unwrap_or(0.0) as f32,
+                            rim.get(3).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                        ];
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// VRMファイルをロードしてVrmModelを返す
 pub fn load(path: &str) -> Result<VrmModel, VrmError> {
     let gltf = gltf::Gltf::open(path)?;
@@ -84,7 +138,7 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
         })
         .collect();
 
-    // Parse materials
+    // Parse materials (with MToon extension if present)
     let materials: Vec<Material> = gltf
         .document
         .materials()
@@ -100,6 +154,7 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
             Material {
                 base_color,
                 base_color_texture,
+                ..Material::default()
             }
         })
         .collect();
@@ -231,6 +286,10 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
             .cloned()
             .ok_or_else(|| VrmError::MissingExtension("VRM".into()))?
     };
+
+    // Apply MToon material properties from VRM extension
+    let mut materials = materials;
+    apply_vrm_mtoon_properties(&vrm_json, &mut materials);
 
     let humanoid_bones = HumanoidBones::from_vrm_json(&vrm_json, &node_transforms)?;
     let blend_shapes = BlendShapeGroup::from_vrm_json(&vrm_json)?;

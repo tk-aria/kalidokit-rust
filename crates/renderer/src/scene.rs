@@ -16,10 +16,15 @@ struct GpuMaterial {
 }
 
 /// Material uniform data matching the shader's MaterialUniform struct.
+/// Includes MToon toon shading parameters.
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct MaterialUniform {
     base_color: [f32; 4],
+    shade_color: [f32; 4],
+    rim_color: [f32; 4],
+    /// Packed: [shade_shift, shade_toony, rim_power, rim_lift]
+    mtoon_params: [f32; 4],
 }
 
 pub struct Scene {
@@ -36,9 +41,15 @@ pub struct Scene {
     material_bind_group_layout: wgpu::BindGroupLayout,
 }
 
-/// Input data for one mesh's material (base color + optional texture image).
+/// Input data for one mesh's material (base color + MToon params + optional texture image).
 pub struct MeshMaterialInput {
     pub base_color: [f32; 4],
+    pub shade_color: [f32; 4],
+    pub rim_color: [f32; 4],
+    pub shade_shift: f32,
+    pub shade_toony: f32,
+    pub rim_power: f32,
+    pub rim_lift: f32,
     pub base_color_texture: Option<image::DynamicImage>,
 }
 
@@ -46,6 +57,12 @@ impl Default for MeshMaterialInput {
     fn default() -> Self {
         Self {
             base_color: [1.0, 1.0, 1.0, 1.0],
+            shade_color: [0.5, 0.5, 0.5, 1.0],
+            rim_color: [0.0, 0.0, 0.0, 1.0],
+            shade_shift: -0.1,
+            shade_toony: 0.5,
+            rim_power: 1.0,
+            rim_lift: 0.0,
             base_color_texture: None,
         }
     }
@@ -145,11 +162,21 @@ impl Scene {
         let materials: Vec<GpuMaterial> = (0..meshes.len())
             .map(|i| {
                 let mat_input = mesh_materials.get(i);
-                let base_color = mat_input
-                    .map(|m| m.base_color)
-                    .unwrap_or([1.0, 1.0, 1.0, 1.0]);
+                let defaults = MeshMaterialInput::default();
+                let base_color = mat_input.map(|m| m.base_color).unwrap_or(defaults.base_color);
+                let shade_color = mat_input.map(|m| m.shade_color).unwrap_or(defaults.shade_color);
+                let rim_color = mat_input.map(|m| m.rim_color).unwrap_or(defaults.rim_color);
+                let shade_shift = mat_input.map(|m| m.shade_shift).unwrap_or(defaults.shade_shift);
+                let shade_toony = mat_input.map(|m| m.shade_toony).unwrap_or(defaults.shade_toony);
+                let rim_power = mat_input.map(|m| m.rim_power).unwrap_or(defaults.rim_power);
+                let rim_lift = mat_input.map(|m| m.rim_lift).unwrap_or(defaults.rim_lift);
 
-                let material_uniform = MaterialUniform { base_color };
+                let material_uniform = MaterialUniform {
+                    base_color,
+                    shade_color,
+                    rim_color,
+                    mtoon_params: [shade_shift, shade_toony, rim_power, rim_lift],
+                };
                 let material_buffer =
                     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some(&format!("material_buffer_{}", i)),

@@ -89,6 +89,12 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
             match mesh.material_index.and_then(|i| vrm_model.materials.get(i)) {
                 Some(mat) => MeshMaterialInput {
                     base_color: mat.base_color,
+                    shade_color: mat.shade_color,
+                    rim_color: mat.rim_color,
+                    shade_shift: mat.shade_shift,
+                    shade_toony: mat.shade_toony,
+                    rim_power: mat.rim_power,
+                    rim_lift: mat.rim_lift,
                     base_color_texture: mat.base_color_texture.clone(),
                 },
                 None => MeshMaterialInput::default(),
