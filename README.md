@@ -45,7 +45,26 @@ kalidokit-rust/
 └── .github/workflows/         # CI/CD & Release
 ```
 
-## Download
+## Install
+
+### ワンライナーインストール (Linux / macOS)
+
+```bash
+# 最新バージョンをインストール
+curl -sSLf https://raw.githubusercontent.com/tk-aria/kalidokit-rust/main/scripts/install.sh | sh
+
+# バージョン指定
+curl -sSLf https://raw.githubusercontent.com/tk-aria/kalidokit-rust/main/scripts/install.sh | KALIDOKIT_VERSION=v0.1.0 sh
+
+# カスタムインストール先
+curl -sSLf https://raw.githubusercontent.com/tk-aria/kalidokit-rust/main/scripts/install.sh | KALIDOKIT_INSTALL_PATH=~/.local/bin sh
+```
+
+> **注意**: デフォルトのインストール先は `/usr/local/bin` です。権限がない場合は `sudo` を使うか `KALIDOKIT_INSTALL_PATH` を指定してください。
+
+---
+
+### 手動ダウンロード
 
 各プラットフォーム向けのビルド済みバイナリは [GitHub Releases](https://github.com/tk-aria/kalidokit-rust/releases) からダウンロードできます。
 
