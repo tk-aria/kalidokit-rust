@@ -469,3 +469,13 @@ rustup component add rustfmt
 
 ### 結果
 - Step 7.1 完了: vrm::spring_bone 実装、27 vrm テスト全パス
+
+### Step 7.2: assets/shaders/mtoon.wgsl — MToonシェーダー
+- `assets/shaders/mtoon.wgsl` 新規作成 (~105行)
+- 2段階トゥーンシェーディング: smoothstep(shade_shift, shade_threshold, ndotl) で影境界制御
+- リムライト: fresnel ベース (1.0 - ndotv)^rim_power
+- アウトライン: 法線方向に頂点を押し出す別パス (vs_outline/fs_outline)
+- MToonMaterial 構造体定義 (color, shade_color, shade_shift, shade_toony, rim_power 等)
+
+### 結果
+- Step 7.2 完了: MToonシェーダー実装
