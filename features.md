@@ -1047,19 +1047,19 @@ impl FaceMeshDetector {
 
 **ファイル**: `crates/app/src/state.rs` (~80行)
 
-- [ ] `AppState` 構造体: レンダラー・トラッカー・ソルバー・VRMモデルの全リソースを保持
+- [x] `AppState` 構造体: レンダラー・トラッカー・ソルバー・VRMモデルの全リソースを保持
   - `render_ctx: RenderContext` (ライフタイム引数なし: `Arc<Window>` によって `'static`)
   - `scene: Scene`
   - `vrm_model: VrmModel`
   - `tracker: HolisticTracker`
   - `rig: RigState` (face/pose/hand のソルバー結果)
-- [ ] `RigState` 構造体: `face: Option<RiggedFace>`, `pose: Option<RiggedPose>`, `left_hand/right_hand`
+- [x] `RigState` 構造体: `face: Option<RiggedFace>`, `pose: Option<RiggedPose>`, `left_hand/right_hand`
 
 ### Step 6.2: app::init — 初期化ロジック
 
 **ファイル**: `crates/app/src/init.rs` (~120行)
 
-- [ ] `init_all(window) -> Result<AppState>` 関数:
+- [x] `init_all(window) -> Result<AppState>` 関数:
   1. `RenderContext::new(window)` で wgpu 初期化
   2. `vrm::loader::load("assets/models/default_avatar.vrm")` で VRM ロード
   3. `Scene::new(device, config, vrm_model)` で GPU リソース作成
@@ -1070,7 +1070,7 @@ impl FaceMeshDetector {
 
 **ファイル**: `crates/app/src/update.rs` (~150行)
 
-- [ ] `update_frame(state: &mut AppState) -> Result<()>` 関数:
+- [x] `update_frame(state: &mut AppState) -> Result<()>` 関数:
   1. Webカメラからフレーム取得
   2. `tracker.detect(frame)` で全ランドマーク取得
   3. `solver::face::solve()` / `solver::pose::solve()` / `solver::hand::solve()` でリグ計算
@@ -1089,8 +1089,8 @@ impl FaceMeshDetector {
 
 **ファイル**: `crates/app/src/main.rs` (~40行), `crates/app/src/app.rs` (~100行)
 
-- [ ] `main.rs`: EventLoop作成 + `run_app` 呼び出し
-- [ ] `app.rs`: `App` 構造体に `ApplicationHandler` 実装
+- [x] `main.rs`: EventLoop作成 + `run_app` 呼び出し
+- [x] `app.rs`: `App` 構造体に `ApplicationHandler` 実装
   - `resumed()`: `init::init_all()` で全リソース初期化
   - `window_event(RedrawRequested)`: `update::update_frame()` + `window.request_redraw()`
   - `window_event(Resized)`: `ctx.resize()` + `depth.resize()`
@@ -1100,8 +1100,8 @@ impl FaceMeshDetector {
 
 **ファイル**: `crates/app/src/rig_config.rs` (~60行)
 
-- [ ] `RigConfig` 構造体: 各ボーンのdampener/lerp_amountをまとめた設定
-- [ ] デフォルト値を元実装と完全一致させる:
+- [x] `RigConfig` 構造体: 各ボーンのdampener/lerp_amountをまとめた設定
+- [x] デフォルト値を元実装と完全一致させる:
 
 ```rust
 pub struct BoneConfig {

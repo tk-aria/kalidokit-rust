@@ -1,4 +1,8 @@
 mod app;
+mod init;
+mod rig_config;
+mod state;
+mod update;
 
 fn main() {
     env_logger::init();

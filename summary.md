@@ -387,3 +387,47 @@ rustup component add rustfmt
 
 ### 結果
 - Phase 5 完了: tracker クレート全5モジュール (preprocess, face_mesh, pose, hand, holistic) 実装、clippy/fmt clean
+
+---
+
+## Phase 6: 統合 & メインループ (2026/03/09)
+
+### Step 6.1: app::state
+- `crates/app/src/state.rs` 新規作成: AppState, RigState
+- AppState: render_ctx, scene, vrm_model, tracker, rig を保持
+- RigState: face/pose/left_hand/right_hand (全て Option, Default で None)
+
+### Step 6.2: app::init
+- `crates/app/src/init.rs` 新規作成: init_all() 関数
+- wgpu初期化 → VRMロード → Scene作成 → HolisticTracker初期化
+- VrmModel.meshes から vertices_list を構築し Scene::new() に渡す
+- skins.len() を max_joints, morph_targets count を num_morph_targets に使用
+
+### Step 6.3: app::update
+- `crates/app/src/update.rs` 新規作成: update_frame() + apply_rig_to_model()
+- フレーム更新: tracker.detect() → solver::face/pose/hand::solve() → apply_rig_to_model()
+- GPU更新: compute_joint_matrices(), get_all_weights(), scene.prepare(), scene.render()
+- 座標変換: Hip X/Z反転+Y+1.0, 目の開閉度反転(1.0-value), 全ボーン回転適用
+
+### Step 6.4: app::main — ApplicationHandler統合
+- `crates/app/src/app.rs` 書き換え: init/update モジュール使用
+- resumed(): pollster::block_on(init::init_all(window))
+- RedrawRequested: update::update_frame(state) + request_redraw()
+- Resized: render_ctx.resize() + scene.resize(device, width, height)
+- `crates/app/src/main.rs` 更新: mod init, state, update, rig_config 追加
+
+### Step 6.5: app — 補間パラメータ設定
+- `crates/app/src/rig_config.rs` 新規作成: BoneConfig, RigConfig
+- KalidoKit元実装と完全一致するデフォルト値
+- テスト1件: default_values_match_kalidokit
+
+### 実行コマンド
+```bash
+./.cargo-env.sh cargo check -p kalidokit-rust  # → Finished dev profile
+./.cargo-env.sh cargo clippy --workspace -- -D warnings  # → 0 warnings
+./.cargo-env.sh cargo fmt
+./.cargo-env.sh cargo fmt --check  # → no diff
+```
+
+### 結果
+- Phase 6 Steps 6.1-6.5 完了: app クレートに state/init/update/rig_config モジュール追加、clippy/fmt clean
