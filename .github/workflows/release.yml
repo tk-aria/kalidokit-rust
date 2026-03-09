@@ -51,6 +51,18 @@ jobs:
         env:
           HOME: /root
         run: |
+          # musl doesn't have execinfo.h (glibc extension for backtrace)
+          # Provide a no-op stub - ORT only uses it for debug diagnostics
+          mkdir -p /usr/local/include
+          cat > /usr/local/include/execinfo.h << 'STUB'
+          #ifndef _EXECINFO_H
+          #define _EXECINFO_H
+          static inline int backtrace(void **b, int s) { (void)b; (void)s; return 0; }
+          static inline char **backtrace_symbols(void *const *b, int s) { (void)b; (void)s; return 0; }
+          static inline void backtrace_symbols_fd(void *const *b, int s, int f) { (void)b; (void)s; (void)f; }
+          #endif
+          STUB
+
           git clone --depth 1 --branch v1.20.1 \
             https://github.com/microsoft/onnxruntime /tmp/ort-src
           cd /tmp/ort-src
