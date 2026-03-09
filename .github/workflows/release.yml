@@ -13,6 +13,80 @@ env:
   BINARY_NAME: kalidokit-rust
 
 jobs:
+  # ---------- Linux (musl static binary) ----------
+  build-linux:
+    name: Build (x86_64-unknown-linux-musl)
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:3.21
+    steps:
+      - name: Install system dependencies
+        run: |
+          apk add --no-cache \
+            build-base cmake python3 py3-numpy git curl bash \
+            linux-headers pkgconfig perl \
+            libx11-dev libxkbcommon-dev wayland-dev mesa-dev \
+            openssl-dev zlib-dev
+
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+            sh -s -- -y --default-toolchain stable
+          . "$HOME/.cargo/env"
+          rustup target add x86_64-unknown-linux-musl
+          echo "$HOME/.cargo/bin" >> $GITHUB_ENV
+
+      - name: Cache ONNX Runtime build
+        id: ort-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/ort-build
+          key: ort-musl-static-v1.20.1-alpine321
+
+      - name: Build ONNX Runtime from source (static, musl)
+        if: steps.ort-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch v1.20.1 \
+            https://github.com/microsoft/onnxruntime /tmp/ort-src
+          cd /tmp/ort-src
+
+          # Build static libraries only (no shared lib, no tests)
+          ./build.sh --config Release \
+            --update --build --parallel $(nproc) \
+            --skip_tests --skip_submodule_sync \
+            --cmake_extra_defines CMAKE_POSITION_INDEPENDENT_CODE=ON \
+            --cmake_extra_defines onnxruntime_BUILD_SHARED_LIB=OFF
+
+          # Copy build output for caching
+          mkdir -p /tmp/ort-build
+          cp -a build/Linux/* /tmp/ort-build/
+
+      - name: Build release binary
+        env:
+          ORT_LIB_PATH: /tmp/ort-build
+          ORT_LIB_PROFILE: Release
+        run: |
+          . "$HOME/.cargo/env"
+          cargo build --release --target x86_64-unknown-linux-musl
+
+      - name: Package
+        run: |
+          ARCHIVE_NAME="${BINARY_NAME}-${{ github.ref_name }}-x86_64-unknown-linux-musl"
+          mkdir -p "${ARCHIVE_NAME}"
+          cp "target/x86_64-unknown-linux-musl/release/${BINARY_NAME}" "${ARCHIVE_NAME}/"
+          cp -r assets "${ARCHIVE_NAME}/" 2>/dev/null || true
+          tar czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
+          echo "ASSET=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_NAME }}-x86_64-unknown-linux-musl
+          path: ${{ env.ASSET }}
+
+  # ---------- macOS / Windows ----------
   build:
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
@@ -20,9 +94,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            archive: tar.gz
           - target: aarch64-apple-darwin
             os: macos-latest
             archive: tar.gz
@@ -37,12 +108,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake pkg-config libx11-dev libxkbcommon-dev libwayland-dev
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -83,9 +148,10 @@ jobs:
           name: ${{ env.BINARY_NAME }}-${{ matrix.target }}
           path: ${{ env.ASSET }}
 
+  # ---------- GitHub Release ----------
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [build-linux, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

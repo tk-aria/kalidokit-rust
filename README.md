@@ -94,13 +94,13 @@ KALIDOKIT_MODELS_PATH=./my-models sh scripts/setup.sh download-models
 
 ```bash
 # 最新リリースをダウンロード
-curl -LO https://github.com/tk-aria/kalidokit-rust/releases/latest/download/kalidokit-rust-<VERSION>-x86_64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/tk-aria/kalidokit-rust/releases/latest/download/kalidokit-rust-<VERSION>-x86_64-unknown-linux-musl.tar.gz
 
 # 展開
-tar xzf kalidokit-rust-<VERSION>-x86_64-unknown-linux-gnu.tar.gz
+tar xzf kalidokit-rust-<VERSION>-x86_64-unknown-linux-musl.tar.gz
 
 # 実行
-cd kalidokit-rust-<VERSION>-x86_64-unknown-linux-gnu
+cd kalidokit-rust-<VERSION>-x86_64-unknown-linux-musl
 ./kalidokit-rust
 ```
 
