@@ -885,9 +885,9 @@ fn calc_limb_rotation(a: Vec3, b: Vec3, c: Vec3) -> EulerAngles {
 
 **ファイル**: `crates/solver/src/hand.rs` (~150行)
 
-- [ ] `solve(landmarks: &[Vec3], side: Side) -> RiggedHand` を実装
-- [ ] `calc_wrist_rotation`: ランドマーク 0(手首), 5(人差し根本), 17(小指根本) から手首回転を計算
-- [ ] `calc_finger_rotations(lm, indices) -> [EulerAngles; 3]`: 各指のProximal/Intermediate/Distal回転
+- [x] `solve(landmarks: &[Vec3], side: Side) -> RiggedHand` を実装
+- [x] `calc_wrist_rotation`: ランドマーク 0(手首), 5(人差し根本), 17(小指根本) から手首回転を計算
+- [x] `calc_finger_rotations(lm, indices) -> [EulerAngles; 3]`: 各指のProximal/Intermediate/Distal回転
   - 4つのランドマークから3つの関節角を算出 (隣接ベクトル間の角度)
 
 ```rust

@@ -293,3 +293,43 @@ rustup component add rustfmt
 
 ### 結果
 - Phase 3 完了: renderer クレート11モジュール (camera, context, depth, mesh, morph, pipeline, scene, skin, skinned_vertex, texture, vertex)、28テスト全パス
+
+---
+
+## Phase 4: ソルバー (2026/03/09)
+
+### Step 4.1: solver::utils
+- `utils.rs` に `angle_between`, `find_rotation` 関数を追加
+- テスト5件追加 (clamp, remap, lerp, angle_between, find_rotation)
+- `cargo check -p solver` → 成功
+
+### Step 4.2: solver::face
+- `face.rs` の `todo!()` を実装に置き換え
+- `calc_head_rotation`: nose/chin/ear ランドマークから頭部回転
+- `calc_eye_openness`: まぶたランドマークの距離比
+- `calc_mouth_shape`: A/I/U/E/O母音マッピング
+- `calc_pupil_position`: 虹彩ランドマーク468/473
+- `calc_brow_raise`: 眉-目距離比
+- テスト3件追加、8テスト合計パス
+
+### Step 4.3: solver::pose
+- `pose.rs` の `todo!()` を実装に置き換え
+- `calc_hip_transform`: 腰中点 + 肩/腰回転
+- `calc_spine_rotation`: 肩-腰方向
+- `calc_limb_rotation`: AB/BCベクトルatan2オイラー角
+- 33ランドマーク未満でデフォルト値返却
+- テスト3件追加、11テスト合計パス
+
+### Step 4.4: solver::hand
+- `hand.rs` の `todo!()` を実装に置き換え
+- `calc_wrist_rotation`: ランドマーク0(手首), 5(人差し根本), 17(小指根本) からpalm forward/lateral/normalで手首回転計算
+- `calc_finger_rotations`: 4関節位置から隣接ベクトル間角度で3関節回転算出
+- 21ランドマーク未満でデフォルト値返却 (bounds check)
+- テスト4件追加 (solve_returns_valid_hand, solve_insufficient_landmarks, straight_finger, bent_finger)
+- 15テスト合計パス
+
+### 実行コマンド
+```bash
+./.cargo-env.sh cargo check -p solver  # 各Step後に実行
+./.cargo-env.sh cargo test -p solver  # → 15 passed
+```
