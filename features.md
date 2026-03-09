@@ -469,7 +469,7 @@ pub struct SkinJoint {
 
 **ファイル**: `crates/vrm/src/bone.rs` (~180行)
 
-- [ ] `HumanoidBoneName` enum: 全55ボーン名を定義
+- [x] `HumanoidBoneName` enum: 全55ボーン名を定義
 
 ```rust
 /// VRM 0.x Humanoid Bone Names (55種)
@@ -502,9 +502,9 @@ pub enum HumanoidBoneName {
 }
 ```
 
-- [ ] `HumanoidBoneName::from_str(s: &str) -> Option<Self>`: VRM JSON文字列→enum変換 (camelCase: "hips", "leftUpperArm" 等)
-- [ ] `Bone` 構造体: `node_index`, `local_rotation`, `local_position`, `inverse_bind_matrix`, `children`
-- [ ] `HumanoidBones` 構造体:
+- [x] `HumanoidBoneName::from_str(s: &str) -> Option<Self>`: VRM JSON文字列→enum変換 (camelCase: "hips", "leftUpperArm" 等)
+- [x] `Bone` 構造体: `node_index`, `local_rotation`, `local_position`, `inverse_bind_matrix`, `children`
+- [x] `HumanoidBones` 構造体:
   - `from_vrm_json(json: &serde_json::Value) -> Result<Self>`: VRM拡張JSONからパース
   - `get(name: HumanoidBoneName) -> Option<&Bone>`
   - `set_rotation(name: HumanoidBoneName, rotation: Quat)`: ボーンのローカル回転を設定
