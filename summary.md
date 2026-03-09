@@ -135,3 +135,14 @@ conda install -y gcc_linux-64 binutils_linux-64 openssl pkg-config libclang kern
 
 ### 結果
 - `cargo check` 成功 (警告0)
+
+---
+
+## Step 1.8: Dockerfile作成 (2026/03/09)
+
+### 実行内容
+1. **`Dockerfile` 新規作成** - rust:1.85-bookworm multi-stage build
+2. **`.dockerignore` 新規作成** - target/, .git/, VRM/ONNXモデル除外
+
+### 結果
+- ファイル作成完了 (Dockerビルドはdocker未インストールのため実行不可)

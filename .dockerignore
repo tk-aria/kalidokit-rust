@@ -1,0 +1,5 @@
+target/
+.git/
+assets/models/*.vrm
+assets/ml/*.onnx
+.cargo-env.sh

@@ -370,10 +370,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 **ファイル**: `Dockerfile` (~30行)
 
-- [ ] `rust:1.85-bookworm` ベースの multi-stage build
+- [x] `rust:1.85-bookworm` ベースの multi-stage build
   - Stage 1 (builder): `cargo build --release`
   - Stage 2 (runtime): `debian:bookworm-slim` + `libvulkan1` + バイナリコピー
-- [ ] `.dockerignore` に `target/`, `.git/`, `assets/models/*.vrm`, `assets/ml/*.onnx` を追加
+- [x] `.dockerignore` に `target/`, `.git/`, `assets/models/*.vrm`, `assets/ml/*.onnx` を追加
 
 ```dockerfile
 FROM rust:1.85-bookworm AS builder
