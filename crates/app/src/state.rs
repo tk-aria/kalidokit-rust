@@ -3,19 +3,23 @@ use std::time::Instant;
 use renderer::context::RenderContext;
 use renderer::scene::Scene;
 use solver::types::{RiggedFace, RiggedHand, RiggedPose};
-use tracker::holistic::HolisticTracker;
+use tracker::HolisticResult;
 use vrm::model::VrmModel;
+
+use crate::tracker_thread::TrackerThread;
 
 /// All application resources: renderer, tracker, solver results, VRM model.
 pub struct AppState {
     pub render_ctx: RenderContext,
     pub scene: Scene,
     pub vrm_model: VrmModel,
-    pub tracker: HolisticTracker,
+    pub tracker_thread: TrackerThread,
     pub camera: Option<nokhwa::Camera>,
     pub rig: RigState,
     pub last_frame_time: Instant,
     pub rig_dirty: bool,
+    /// Cached latest tracking result from the background tracker thread.
+    pub last_tracking_result: Option<HolisticResult>,
 }
 
 /// Current rig solver results (face/pose/hand).

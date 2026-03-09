@@ -7,6 +7,8 @@ use renderer::context::RenderContext;
 use renderer::scene::{MeshMaterialInput, Scene};
 use renderer::vertex::Vertex;
 use tracker::holistic::HolisticTracker;
+
+use crate::tracker_thread::TrackerThread;
 use winit::window::Window;
 
 use nokhwa::pixel_format::RgbFormat;
@@ -115,9 +117,10 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         num_morph_targets,
     );
 
-    // 4. Initialize ML tracker
+    // 4. Initialize ML tracker on a background thread
     let tracker = HolisticTracker::new(FACE_MODEL_PATH, POSE_MODEL_PATH, HAND_MODEL_PATH)
         .context("Failed to initialize ML tracker. Run: sh scripts/setup.sh download-models")?;
+    let tracker_thread = TrackerThread::new(tracker);
 
     // 5. Initialize webcam via nokhwa
     let camera = match init_camera() {
@@ -132,11 +135,12 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         render_ctx,
         scene,
         vrm_model,
-        tracker,
+        tracker_thread,
         camera,
         rig: RigState::default(),
         last_frame_time: Instant::now(),
         rig_dirty: true,
+        last_tracking_result: None,
     })
 }
 

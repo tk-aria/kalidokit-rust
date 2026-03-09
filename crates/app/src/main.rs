@@ -2,6 +2,7 @@ mod app;
 mod init;
 mod rig_config;
 mod state;
+mod tracker_thread;
 mod update;
 
 fn main() {

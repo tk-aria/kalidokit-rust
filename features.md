@@ -1219,7 +1219,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ### Step 7.3: パフォーマンス最適化
 
-- [ ] ML推論を別スレッドに移動 (`std::thread::spawn` + `mpsc::channel`) — 将来実装 (現状はシングルスレッド)
+- [x] ML推論を別スレッドに移動 (`std::thread::spawn` + `mpsc::channel`) <!-- TrackerThread + sync_channel(1) 実装 — 2026-03-10 00:43 JST -->
 - [x] フレームレート制御: `std::time::Instant` で16ms (60fps) 間隔を維持
 - [x] GPU バッファ更新の最小化: 変更がない場合は `write_buffer` をスキップ (rig_dirty フラグ)
 

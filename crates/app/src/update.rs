@@ -23,43 +23,50 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     // Capture frame from webcam, falling back to dummy black image
     let (frame, video) = capture_frame(&mut state.camera);
 
-    // 1. Run tracker on frame
-    let result = state.tracker.detect(&frame)?;
+    // 1. Send frame to tracker thread (non-blocking; drops frame if tracker is busy)
+    state.tracker_thread.send_frame(frame, video.clone());
 
-    // 2. Run solvers on detected landmarks
+    // 2. Try to receive a new tracking result (non-blocking)
+    if let Some(result) = state.tracker_thread.try_recv_result() {
+        state.last_tracking_result = Some(result);
+    }
+
+    // 3. Run solvers on the latest available tracking result
     let mut rig_changed = false;
 
-    if let Some(face_lm) = &result.face_landmarks {
-        let face = solver::face::solve(face_lm, &video);
-        state.rig.face = Some(face);
-        rig_changed = true;
+    if let Some(result) = &state.last_tracking_result {
+        if let Some(face_lm) = &result.face_landmarks {
+            let face = solver::face::solve(face_lm, &video);
+            state.rig.face = Some(face);
+            rig_changed = true;
+        }
+
+        if let Some(pose_3d) = &result.pose_landmarks_3d {
+            let pose_2d = result.pose_landmarks_2d.as_deref().unwrap_or(&[]);
+            let pose_2d_vec: Vec<glam::Vec2> = if pose_2d.is_empty() {
+                vec![glam::Vec2::ZERO; 33]
+            } else {
+                pose_2d.to_vec()
+            };
+            let pose = solver::pose::solve(pose_3d, &pose_2d_vec, &video);
+            state.rig.pose = Some(pose);
+            rig_changed = true;
+        }
+
+        if let Some(left_lm) = &result.left_hand_landmarks {
+            let hand = solver::hand::solve(left_lm, Side::Left);
+            state.rig.left_hand = Some(hand);
+            rig_changed = true;
+        }
+
+        if let Some(right_lm) = &result.right_hand_landmarks {
+            let hand = solver::hand::solve(right_lm, Side::Right);
+            state.rig.right_hand = Some(hand);
+            rig_changed = true;
+        }
     }
 
-    if let Some(pose_3d) = &result.pose_landmarks_3d {
-        let pose_2d = result.pose_landmarks_2d.as_deref().unwrap_or(&[]);
-        let pose_2d_vec: Vec<glam::Vec2> = if pose_2d.is_empty() {
-            vec![glam::Vec2::ZERO; 33]
-        } else {
-            pose_2d.to_vec()
-        };
-        let pose = solver::pose::solve(pose_3d, &pose_2d_vec, &video);
-        state.rig.pose = Some(pose);
-        rig_changed = true;
-    }
-
-    if let Some(left_lm) = &result.left_hand_landmarks {
-        let hand = solver::hand::solve(left_lm, Side::Left);
-        state.rig.left_hand = Some(hand);
-        rig_changed = true;
-    }
-
-    if let Some(right_lm) = &result.right_hand_landmarks {
-        let hand = solver::hand::solve(right_lm, Side::Right);
-        state.rig.right_hand = Some(hand);
-        rig_changed = true;
-    }
-
-    // 3. Apply rig to VRM model (only if rig changed or first frame)
+    // 4. Apply rig to VRM model (only if rig changed or first frame)
     if rig_changed || state.rig_dirty {
         apply_rig_to_model(state);
         state.rig_dirty = false;
