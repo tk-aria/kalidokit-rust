@@ -851,16 +851,13 @@ pub fn find_rotation(from: glam::Vec3, to: glam::Vec3) -> glam::Quat {
 
 > **300行超え注意**: 顔ソルバーが300行を超える場合、`face/eye.rs`, `face/mouth.rs`, `face/head.rs` に分割
 
-- [ ] `solve(landmarks: &[Vec3], video: &VideoInfo) -> RiggedFace` を実装
-- [ ] `calc_head_rotation`: ランドマーク 1(鼻先), 152(顎), 234(左耳), 454(右耳) から頭部回転を推定
-  - KalidoKit の `calcHead()` アルゴリズムを参考に移植
-- [ ] `calc_eye_openness`: ランドマーク 159/145(左上下瞼), 386/374(右上下瞼) の距離比から開閉度計算
-- [ ] `calc_mouth_shape`: 口ランドマークの開口度・幅からA/I/U/E/O母音形状を推定
-  - 口開き量: ランドマーク 13(上唇)と14(下唇)の距離
-  - 口幅: ランドマーク 78(左端)と308(右端)の距離
-- [ ] `calc_pupil_position`: 虹彩ランドマーク(468-472, 473-477)から瞳孔方向を計算
-- [ ] `calc_brow_raise`: 眉ランドマーク高さから眉上げ度を計算
-- [ ] `stabilize_blink(eye, head_y) -> EyeValues`: 頭部傾き補正 (既存)
+- [x] `solve(landmarks: &[Vec3], video: &VideoInfo) -> RiggedFace` を実装
+- [x] `calc_head_rotation`: ランドマーク 1(鼻先), 152(顎), 234(左耳), 454(右耳) から頭部回転を推定
+- [x] `calc_eye_openness`: ランドマーク 159/145(左上下瞼), 386/374(右上下瞼) の距離比から開閉度計算
+- [x] `calc_mouth_shape`: 口ランドマークの開口度・幅からA/I/U/E/O母音形状を推定
+- [x] `calc_pupil_position`: 虹彩ランドマーク(468-472, 473-477)から瞳孔方向を計算
+- [x] `calc_brow_raise`: 眉ランドマーク高さから眉上げ度を計算
+- [x] `stabilize_blink(eye, head_y) -> EyeValues`: 頭部傾き補正 (既存)
 
 ### Step 4.3: solver::pose — ポーズソルバー
 
