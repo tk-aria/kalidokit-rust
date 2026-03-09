@@ -82,9 +82,9 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
                 .map(|acc| read_accessor_as(blob, &acc))
                 .unwrap_or_default();
 
-            for i in 0..positions.len() {
+            for (i, &pos) in positions.iter().enumerate() {
                 vertices.push(Vertex {
-                    position: positions[i],
+                    position: pos,
                     normal: normals.get(i).copied().unwrap_or([0.0, 1.0, 0.0]),
                     uv: uvs.get(i).copied().unwrap_or([0.0, 0.0]),
                 });
@@ -165,7 +165,9 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
     // For GLB files, the JSON chunk starts after a 12-byte header + 8-byte chunk header
     let vrm_json = if raw_bytes.starts_with(b"glTF") {
         // GLB format: parse JSON chunk
-        let json_length = u32::from_le_bytes([raw_bytes[12], raw_bytes[13], raw_bytes[14], raw_bytes[15]]) as usize;
+        let json_length =
+            u32::from_le_bytes([raw_bytes[12], raw_bytes[13], raw_bytes[14], raw_bytes[15]])
+                as usize;
         let json_bytes = &raw_bytes[20..20 + json_length];
         let root: serde_json::Value = serde_json::from_slice(json_bytes)?;
         root.get("extensions")
@@ -191,4 +193,15 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
         blend_shapes,
         node_transforms,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_nonexistent_file_returns_error() {
+        let result = load("/nonexistent/path/model.vrm");
+        assert!(result.is_err());
+    }
 }

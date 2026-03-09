@@ -180,3 +180,61 @@ rustup component add rustfmt
 
 ### 結果
 - テスト8件全パス、clippy警告0、fmt適用済み
+
+---
+
+## Phase 2: VRMローダー (2026/03/09)
+
+### Step 2.1: vrm::error
+- `crates/vrm/src/error.rs` 新規作成: `VrmError` enum (GltfError, MissingExtension, InvalidBone, MissingData, JsonError)
+- `cargo check -p vrm` → 成功
+
+### Step 2.2: vrm::model
+- `crates/vrm/src/model.rs` 新規作成: VrmModel, SkinJoint, MeshData, MorphTargetData, NodeTransform
+- `crates/vrm/Cargo.toml` に renderer, bytemuck 依存追加
+- `cargo check -p vrm` → 成功
+
+### Step 2.3: vrm::bone
+- `crates/vrm/src/bone.rs` 新規作成: HumanoidBoneName (55ボーン), Bone, HumanoidBones
+- `from_vrm_json()`, `get()`, `set_rotation()`, `compute_joint_matrices()` 実装
+- テスト6件: from_str系4件 + from_vrm_json + missing_key
+- `cargo test -p vrm` → 6 passed
+
+### Step 2.4: vrm::blendshape
+- `crates/vrm/src/blendshape.rs` 新規作成: BlendShapePreset (13種), BlendShapeBinding, BlendShapeGroup
+- `from_vrm_json()`, `set()`, `get_all_weights()` 実装
+- テスト4件: preset_from_str, set_and_get_weights, multiple_presets_add_weights, missing_blend_shape_master
+- `cargo test -p vrm` → 10 passed
+
+### Step 2.5: vrm::loader
+- `crates/vrm/src/loader.rs` 新規作成: VRMファイルローダー
+- `read_accessor_data()`, `read_accessor_as<T>()`, `load()` 実装
+- GLB/glTF両フォーマット対応 (VRM拡張JSON抽出)
+- gltf Document APIからは拡張にアクセスできないため、raw JSONパース方式に統一
+- `cargo check -p vrm` → 成功
+
+### Step 2.6: vrm::look_at
+- `crates/vrm/src/look_at.rs` 新規作成: LookAtApplyer, EulerAngles, CurveRange
+- `from_vrm_json()`, `apply()` 実装
+- テスト3件: apply_zero_returns_identity, apply_extreme_values_no_nan, from_vrm_json_parses
+- `cargo test -p vrm` → 13 passed
+
+### Step 2.7: Phase 2 検証
+- clippy修正: `from_str` → `parse` リネーム (should_implement_trait警告回避)
+- clippy修正: `needless_range_loop` 修正 (loader.rs)
+- `cargo fmt` 適用
+- error.rs にテスト4件追加、loader.rs にテスト1件追加
+- 全テスト: renderer(8) + vrm(18) = 26テスト全パス
+
+### 実行コマンド
+```bash
+./.cargo-env.sh cargo check -p vrm  # 各Step後に実行
+./.cargo-env.sh cargo test -p vrm  # → 18 passed
+./.cargo-env.sh cargo test -p vrm -p renderer -p solver  # → 26 passed
+./.cargo-env.sh cargo clippy --workspace -- -D warnings  # → 0 warnings
+./.cargo-env.sh cargo fmt
+./.cargo-env.sh cargo fmt --check  # → no diff
+```
+
+### 結果
+- Phase 2 完了: vrm クレート全6モジュール実装、26テスト全パス、clippy/fmt clean

@@ -21,7 +21,7 @@ pub enum BlendShapePreset {
 }
 
 impl BlendShapePreset {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "blink" => Some(Self::Blink),
             "blink_l" => Some(Self::BlinkL),
@@ -73,7 +73,7 @@ impl BlendShapeGroup {
                 .and_then(|p| p.as_str())
                 .unwrap_or("");
 
-            if let Some(preset) = BlendShapePreset::from_str(preset_name) {
+            if let Some(preset) = BlendShapePreset::parse(preset_name) {
                 let binds = group
                     .get("binds")
                     .and_then(|b| b.as_array())
@@ -82,8 +82,7 @@ impl BlendShapeGroup {
                             .filter_map(|bind| {
                                 let mesh = bind.get("mesh")?.as_u64()? as usize;
                                 let index = bind.get("index")?.as_u64()? as usize;
-                                let weight =
-                                    bind.get("weight")?.as_f64()? as f32 / 100.0;
+                                let weight = bind.get("weight")?.as_f64()? as f32 / 100.0;
                                 Some(BlendShapeBinding {
                                     mesh_index: mesh,
                                     morph_target_index: index,
@@ -135,9 +134,12 @@ mod tests {
 
     #[test]
     fn preset_from_str() {
-        assert_eq!(BlendShapePreset::from_str("blink"), Some(BlendShapePreset::Blink));
-        assert_eq!(BlendShapePreset::from_str("a"), Some(BlendShapePreset::A));
-        assert_eq!(BlendShapePreset::from_str("unknown"), None);
+        assert_eq!(
+            BlendShapePreset::parse("blink"),
+            Some(BlendShapePreset::Blink)
+        );
+        assert_eq!(BlendShapePreset::parse("a"), Some(BlendShapePreset::A));
+        assert_eq!(BlendShapePreset::parse("unknown"), None);
     }
 
     #[test]

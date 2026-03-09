@@ -73,7 +73,7 @@ pub enum HumanoidBoneName {
 }
 
 impl HumanoidBoneName {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "hips" => Some(Self::Hips),
             "spine" => Some(Self::Spine),
@@ -173,7 +173,7 @@ impl HumanoidBones {
                 .ok_or_else(|| VrmError::MissingData("bone node index".into()))?
                 as usize;
 
-            if let Some(name) = HumanoidBoneName::from_str(bone_name) {
+            if let Some(name) = HumanoidBoneName::parse(bone_name) {
                 let (local_position, local_rotation, children) =
                     if let Some(nt) = node_transforms.get(node_idx) {
                         (nt.translation, nt.rotation, nt.children.clone())
@@ -207,7 +207,10 @@ impl HumanoidBones {
     }
 
     /// Forward Kinematicsで全ボーンのワールド行列を計算
-    pub fn compute_joint_matrices(&self, node_transforms: &[crate::model::NodeTransform]) -> Vec<Mat4> {
+    pub fn compute_joint_matrices(
+        &self,
+        node_transforms: &[crate::model::NodeTransform],
+    ) -> Vec<Mat4> {
         let mut world_matrices = vec![Mat4::IDENTITY; node_transforms.len()];
 
         // Build bone node index lookup
@@ -220,8 +223,7 @@ impl HumanoidBones {
         // Process nodes in order (parent before children)
         for (i, nt) in node_transforms.iter().enumerate() {
             let rotation = bone_rotations.get(&i).copied().unwrap_or(nt.rotation);
-            let local =
-                Mat4::from_scale_rotation_translation(nt.scale, rotation, nt.translation);
+            let local = Mat4::from_scale_rotation_translation(nt.scale, rotation, nt.translation);
             // Find parent by checking which node has this index as a child
             let parent_matrix = node_transforms
                 .iter()
@@ -242,45 +244,87 @@ mod tests {
 
     #[test]
     fn from_str_hips() {
-        assert_eq!(HumanoidBoneName::from_str("hips"), Some(HumanoidBoneName::Hips));
+        assert_eq!(
+            HumanoidBoneName::parse("hips"),
+            Some(HumanoidBoneName::Hips)
+        );
     }
 
     #[test]
     fn from_str_left_upper_arm() {
         assert_eq!(
-            HumanoidBoneName::from_str("leftUpperArm"),
+            HumanoidBoneName::parse("leftUpperArm"),
             Some(HumanoidBoneName::LeftUpperArm)
         );
     }
 
     #[test]
     fn from_str_invalid() {
-        assert_eq!(HumanoidBoneName::from_str("invalid_bone"), None);
+        assert_eq!(HumanoidBoneName::parse("invalid_bone"), None);
     }
 
     #[test]
     fn from_str_all_55_bones() {
         let names = [
-            "hips", "spine", "chest", "upperChest", "neck", "head",
-            "leftShoulder", "leftUpperArm", "leftLowerArm", "leftHand",
-            "rightShoulder", "rightUpperArm", "rightLowerArm", "rightHand",
-            "leftUpperLeg", "leftLowerLeg", "leftFoot", "leftToes",
-            "rightUpperLeg", "rightLowerLeg", "rightFoot", "rightToes",
-            "leftThumbProximal", "leftThumbIntermediate", "leftThumbDistal",
-            "leftIndexProximal", "leftIndexIntermediate", "leftIndexDistal",
-            "leftMiddleProximal", "leftMiddleIntermediate", "leftMiddleDistal",
-            "leftRingProximal", "leftRingIntermediate", "leftRingDistal",
-            "leftLittleProximal", "leftLittleIntermediate", "leftLittleDistal",
-            "rightThumbProximal", "rightThumbIntermediate", "rightThumbDistal",
-            "rightIndexProximal", "rightIndexIntermediate", "rightIndexDistal",
-            "rightMiddleProximal", "rightMiddleIntermediate", "rightMiddleDistal",
-            "rightRingProximal", "rightRingIntermediate", "rightRingDistal",
-            "rightLittleProximal", "rightLittleIntermediate", "rightLittleDistal",
-            "leftEye", "rightEye", "jaw",
+            "hips",
+            "spine",
+            "chest",
+            "upperChest",
+            "neck",
+            "head",
+            "leftShoulder",
+            "leftUpperArm",
+            "leftLowerArm",
+            "leftHand",
+            "rightShoulder",
+            "rightUpperArm",
+            "rightLowerArm",
+            "rightHand",
+            "leftUpperLeg",
+            "leftLowerLeg",
+            "leftFoot",
+            "leftToes",
+            "rightUpperLeg",
+            "rightLowerLeg",
+            "rightFoot",
+            "rightToes",
+            "leftThumbProximal",
+            "leftThumbIntermediate",
+            "leftThumbDistal",
+            "leftIndexProximal",
+            "leftIndexIntermediate",
+            "leftIndexDistal",
+            "leftMiddleProximal",
+            "leftMiddleIntermediate",
+            "leftMiddleDistal",
+            "leftRingProximal",
+            "leftRingIntermediate",
+            "leftRingDistal",
+            "leftLittleProximal",
+            "leftLittleIntermediate",
+            "leftLittleDistal",
+            "rightThumbProximal",
+            "rightThumbIntermediate",
+            "rightThumbDistal",
+            "rightIndexProximal",
+            "rightIndexIntermediate",
+            "rightIndexDistal",
+            "rightMiddleProximal",
+            "rightMiddleIntermediate",
+            "rightMiddleDistal",
+            "rightRingProximal",
+            "rightRingIntermediate",
+            "rightRingDistal",
+            "rightLittleProximal",
+            "rightLittleIntermediate",
+            "rightLittleDistal",
+            "leftEye",
+            "rightEye",
+            "jaw",
         ];
         for name in &names {
             assert!(
-                HumanoidBoneName::from_str(name).is_some(),
+                HumanoidBoneName::parse(name).is_some(),
                 "Failed for bone: {}",
                 name
             );

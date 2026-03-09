@@ -62,14 +62,9 @@ impl LookAtApplyer {
         fn parse_curve(json: &serde_json::Value, key: &str) -> CurveRange {
             json.get(key)
                 .map(|v| CurveRange {
-                    input_max_value: v
-                        .get("xRange")
-                        .and_then(|x| x.as_f64())
-                        .unwrap_or(90.0) as f32,
-                    output_scale: v
-                        .get("yRange")
-                        .and_then(|y| y.as_f64())
-                        .unwrap_or(10.0) as f32,
+                    input_max_value: v.get("xRange").and_then(|x| x.as_f64()).unwrap_or(90.0)
+                        as f32,
+                    output_scale: v.get("yRange").and_then(|y| y.as_f64()).unwrap_or(10.0) as f32,
                 })
                 .unwrap_or_default()
         }
