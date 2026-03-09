@@ -65,6 +65,25 @@ curl -sSLf https://raw.githubusercontent.com/tk-aria/kalidokit-rust/main/scripts
 
 > **注意**: デフォルトのインストール先は `/usr/local/bin` です。権限がない場合は `sudo` を使うか `KALIDOKIT_INSTALL_PATH` を指定してください。
 
+### モデルファイルのダウンロード
+
+実行にはMLモデル（ONNX）とVRMアバターが必要です。以下のコマンドで自動ダウンロードできます:
+
+```bash
+# プロジェクトルートで実行（assets/models/ にダウンロード）
+sh scripts/setup.sh download-models
+
+# カスタムパスを指定
+KALIDOKIT_MODELS_PATH=./my-models sh scripts/setup.sh download-models
+```
+
+| ファイル | 説明 | サイズ |
+|---------|------|--------|
+| `face_landmark.onnx` | 顔ランドマーク検出 (468点) | ~2.4 MB |
+| `pose_landmark.onnx` | 体ポーズ推定 (33点) | ~5.3 MB |
+| `hand_landmark.onnx` | 手ランドマーク検出 (21点×2) | ~4.0 MB |
+| `default_avatar.vrm` | デフォルトVRMアバター | ~7.6 MB |
+
 ---
 
 ### 手動ダウンロード

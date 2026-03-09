@@ -75,6 +75,85 @@ _resolve_install_path() {
   echo "${KALIDOKIT_INSTALL_PATH:-$DEFAULT_INSTALL_PATH}"
 }
 
+# ---------- download-models サブコマンド ----------
+
+# モデルダウンロードURL
+FACE_MODEL_URL="https://github.com/minh1311/mediapipe_onnx/raw/main/mediapipe/modules/face_landmark/face_landmark.onnx"
+POSE_MODEL_URL="https://huggingface.co/opencv/pose_estimation_mediapipe/resolve/main/pose_estimation_mediapipe_2023mar.onnx"
+HAND_MODEL_URL="https://huggingface.co/opencv/handpose_estimation_mediapipe/resolve/main/handpose_estimation_mediapipe_2023feb.onnx"
+VRM_MODEL_URL="https://github.com/vrm-c/UniVRM/raw/master/Tests/Models/Alicia_vrm-0.51/AliciaSolid_vrm-0.51.vrm"
+
+cmd_download_models() {
+  models_dir="${KALIDOKIT_MODELS_PATH:-assets/models}"
+
+  echo "Downloading model files to ${models_dir}..."
+
+  if [ ! -d "$models_dir" ]; then
+    echo "Creating models directory: $models_dir"
+    mkdir -p "$models_dir"
+  fi
+
+  tmp_dir=$(mktemp -d)
+  trap 'rm -rf "$tmp_dir"' EXIT
+
+  # 1. Face landmark model
+  if [ -f "$models_dir/face_landmark.onnx" ]; then
+    echo "[skip] face_landmark.onnx already exists"
+  else
+    echo "[1/4] Downloading face landmark model..."
+    if curl -sSLf -L "$FACE_MODEL_URL" -o "$models_dir/face_landmark.onnx"; then
+      echo "  -> face_landmark.onnx ($(du -h "$models_dir/face_landmark.onnx" | cut -f1))"
+    else
+      echo "  [error] Failed to download face model" 1>&2
+      rm -f "$models_dir/face_landmark.onnx"
+    fi
+  fi
+
+  # 2. Pose landmark model
+  if [ -f "$models_dir/pose_landmark.onnx" ]; then
+    echo "[skip] pose_landmark.onnx already exists"
+  else
+    echo "[2/4] Downloading pose landmark model..."
+    if curl -sSLf -L "$POSE_MODEL_URL" -o "$models_dir/pose_landmark.onnx"; then
+      echo "  -> pose_landmark.onnx ($(du -h "$models_dir/pose_landmark.onnx" | cut -f1))"
+    else
+      echo "  [error] Failed to download pose model" 1>&2
+      rm -f "$models_dir/pose_landmark.onnx"
+    fi
+  fi
+
+  # 3. Hand landmark model
+  if [ -f "$models_dir/hand_landmark.onnx" ]; then
+    echo "[skip] hand_landmark.onnx already exists"
+  else
+    echo "[3/4] Downloading hand landmark model..."
+    if curl -sSLf -L "$HAND_MODEL_URL" -o "$models_dir/hand_landmark.onnx"; then
+      echo "  -> hand_landmark.onnx ($(du -h "$models_dir/hand_landmark.onnx" | cut -f1))"
+    else
+      echo "  [error] Failed to download hand model" 1>&2
+      rm -f "$models_dir/hand_landmark.onnx"
+    fi
+  fi
+
+  # 4. Default VRM avatar
+  if [ -f "$models_dir/default_avatar.vrm" ]; then
+    echo "[skip] default_avatar.vrm already exists"
+  else
+    echo "[4/4] Downloading default VRM avatar..."
+    if curl -sSLf -L "$VRM_MODEL_URL" -o "$models_dir/default_avatar.vrm"; then
+      echo "  -> default_avatar.vrm ($(du -h "$models_dir/default_avatar.vrm" | cut -f1))"
+    else
+      echo "  [error] Failed to download VRM avatar" 1>&2
+      rm -f "$models_dir/default_avatar.vrm"
+    fi
+  fi
+
+  echo ""
+  echo "Model download complete!"
+  echo "Files in ${models_dir}:"
+  ls -lh "$models_dir/" 2>/dev/null || true
+}
+
 # ---------- install サブコマンド ----------
 
 cmd_install() {
@@ -198,12 +277,14 @@ usage() {
 Usage: setup.sh <command> [options]
 
 Commands:
-  install     Download and install ${BINARY_NAME}
-  uninstall   Remove ${BINARY_NAME}
+  install           Download and install ${BINARY_NAME}
+  uninstall         Remove ${BINARY_NAME}
+  download-models   Download required ML models and VRM avatar
 
 Environment variables:
   KALIDOKIT_VERSION       Version to install (default: latest)
   KALIDOKIT_INSTALL_PATH  Install directory (default: /usr/local/bin)
+  KALIDOKIT_MODELS_PATH   Models directory (default: assets/models)
   DEBUG                   Enable verbose output
 
 Examples:
@@ -216,6 +297,12 @@ Examples:
   # Install to custom path
   curl -sSLf https://raw.githubusercontent.com/tk-aria/kalidokit-rust/main/scripts/setup.sh | KALIDOKIT_INSTALL_PATH=~/.local/bin sh -s install
 
+  # Download ML models
+  sh setup.sh download-models
+
+  # Download models to custom path
+  KALIDOKIT_MODELS_PATH=./my-models sh setup.sh download-models
+
   # Uninstall
   curl -sSLf https://raw.githubusercontent.com/tk-aria/kalidokit-rust/main/scripts/setup.sh | sh -s uninstall
 EOF
@@ -227,9 +314,10 @@ main() {
   command="${1:-}"
 
   case "$command" in
-    install)   cmd_install ;;
-    uninstall) cmd_uninstall ;;
-    -h|--help|help) usage ;;
+    install)          cmd_install ;;
+    uninstall)        cmd_uninstall ;;
+    download-models)  cmd_download_models ;;
+    -h|--help|help)   usage ;;
     "")
       # サブコマンドなし → デフォルトで install (後方互換)
       cmd_install

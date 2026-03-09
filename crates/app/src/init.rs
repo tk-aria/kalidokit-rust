@@ -1,7 +1,8 @@
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use renderer::context::RenderContext;
 use renderer::scene::Scene;
 use renderer::vertex::Vertex;
@@ -16,6 +17,38 @@ const FACE_MODEL_PATH: &str = "assets/models/face_landmark.onnx";
 const POSE_MODEL_PATH: &str = "assets/models/pose_landmark.onnx";
 const HAND_MODEL_PATH: &str = "assets/models/hand_landmark.onnx";
 
+/// Check that all required model files exist and return a helpful error if not.
+fn check_model_files() -> Result<()> {
+    let required = [
+        (DEFAULT_VRM_PATH, "VRM avatar"),
+        (FACE_MODEL_PATH, "Face landmark ONNX model"),
+        (POSE_MODEL_PATH, "Pose landmark ONNX model"),
+        (HAND_MODEL_PATH, "Hand landmark ONNX model"),
+    ];
+
+    let missing: Vec<_> = required
+        .iter()
+        .filter(|(path, _)| !Path::new(path).exists())
+        .collect();
+
+    if !missing.is_empty() {
+        let list = missing
+            .iter()
+            .map(|(path, desc)| format!("  - {} ({})", path, desc))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        anyhow::bail!(
+            "Required model files not found:\n{}\n\n\
+             To download them, run:\n  \
+             sh scripts/setup.sh download-models\n\n\
+             Or download manually — see README.md for details.",
+            list
+        );
+    }
+    Ok(())
+}
+
 /// Initialize all application resources.
 ///
 /// 1. wgpu rendering context
@@ -23,11 +56,15 @@ const HAND_MODEL_PATH: &str = "assets/models/hand_landmark.onnx";
 /// 3. GPU scene creation
 /// 4. ML tracker initialization
 pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
+    // 0. Verify model files exist
+    check_model_files()?;
+
     // 1. wgpu initialization
     let render_ctx = RenderContext::new(window).await?;
 
     // 2. Load VRM model
-    let vrm_model = vrm::loader::load(DEFAULT_VRM_PATH)?;
+    let vrm_model = vrm::loader::load(DEFAULT_VRM_PATH)
+        .context("Failed to load VRM avatar. Run: sh scripts/setup.sh download-models")?;
 
     // 3. Create GPU scene from VRM model meshes
     let vertices_list: Vec<(&[Vertex], &[u32])> = vrm_model
@@ -53,7 +90,8 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
     );
 
     // 4. Initialize ML tracker
-    let tracker = HolisticTracker::new(FACE_MODEL_PATH, POSE_MODEL_PATH, HAND_MODEL_PATH)?;
+    let tracker = HolisticTracker::new(FACE_MODEL_PATH, POSE_MODEL_PATH, HAND_MODEL_PATH)
+        .context("Failed to initialize ML tracker. Run: sh scripts/setup.sh download-models")?;
 
     Ok(AppState {
         render_ctx,
