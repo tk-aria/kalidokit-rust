@@ -12,19 +12,21 @@ Camera (nokhwa)
     → Face 468pts / Pose 33pts / Hand 21pts×2
       → Solver (KalidoKit algorithm port)
         → Bone Rotations + BlendShapes
-          → VRM Avatar (Bevy + bevy_vrm)
+          → VRM Avatar (wgpu direct rendering)
 ```
 
 ## Tech Stack
 
 | Component | JS (Original) | Rust (This Project) |
 |-----------|--------------|---------------------|
-| 3D Engine | Three.js | Bevy Engine (wgpu) |
-| VRM Loader | @pixiv/three-vrm | bevy_vrm |
+| 3D Engine | Three.js | wgpu (Vulkan/Metal/DX12/WebGPU) |
+| VRM Loader | @pixiv/three-vrm | vrm crate (custom gltf parser) |
+| Shader | THREE.MeshToonMaterial | MToon WGSL shader |
 | Motion Capture | MediaPipe Holistic | ort + ONNX models |
 | Rig Solver | KalidoKit | solver crate (port) |
 | Camera | Camera Utils | nokhwa |
-| Math | THREE.Quaternion | glam (Quat/Vec) |
+| Math | THREE.Quaternion | glam (Quat/Vec3/Mat4) |
+| Physics | - | SpringBone (Verlet integration) |
 
 ## Project Structure
 
@@ -32,21 +34,99 @@ Camera (nokhwa)
 kalidokit-rust/
 ├── Cargo.toml                 # Workspace root
 ├── assets/
-│   ├── models/                # VRM avatar files
-│   └── ml/                    # ONNX inference models
+│   ├── models/                # VRM avatar + ONNX models
+│   └── shaders/               # WGSL shaders (skinning, mtoon)
 ├── crates/
-│   ├── app/                   # Bevy application (bin)
-│   ├── solver/                # Rig solver library (lib)
-│   └── tracker/               # ML tracking library (lib)
-├── docs/
-│   └── design.md              # Full design document
-└── examples/
-    └── simple_tracking.rs
+│   ├── app/                   # Application entry point (bin)
+│   ├── renderer/              # wgpu rendering engine (lib)
+│   ├── vrm/                   # VRM loader & bone/blendshape (lib)
+│   ├── solver/                # Rig solver - face/pose/hand (lib)
+│   └── tracker/               # ML tracking - ONNX inference (lib)
+└── .github/workflows/         # CI/CD & Release
 ```
 
-## Documentation
+## Download
 
-- [Design Document](docs/design.md) - E-R diagram, sequence diagram, directory layout, module I/O, sample code
+各プラットフォーム向けのビルド済みバイナリは [GitHub Releases](https://github.com/tk-aria/kalidokit-rust/releases) からダウンロードできます。
+
+### Linux (x86_64)
+
+```bash
+# 最新リリースをダウンロード
+curl -LO https://github.com/tk-aria/kalidokit-rust/releases/latest/download/kalidokit-rust-<VERSION>-x86_64-unknown-linux-gnu.tar.gz
+
+# 展開
+tar xzf kalidokit-rust-<VERSION>-x86_64-unknown-linux-gnu.tar.gz
+
+# 実行
+cd kalidokit-rust-<VERSION>-x86_64-unknown-linux-gnu
+./kalidokit-rust
+```
+
+> **必要なシステムライブラリ**: `libvulkan1`, `libx11-6`, `libxkbcommon0`, `libwayland-client0`
+>
+> ```bash
+> # Ubuntu/Debian
+> sudo apt-get install -y libvulkan1 libx11-6 libxkbcommon0 libwayland-client0
+> ```
+
+### macOS (Intel / Apple Silicon)
+
+```bash
+# Intel Mac
+curl -LO https://github.com/tk-aria/kalidokit-rust/releases/latest/download/kalidokit-rust-<VERSION>-x86_64-apple-darwin.tar.gz
+tar xzf kalidokit-rust-<VERSION>-x86_64-apple-darwin.tar.gz
+
+# Apple Silicon (M1/M2/M3/M4)
+curl -LO https://github.com/tk-aria/kalidokit-rust/releases/latest/download/kalidokit-rust-<VERSION>-aarch64-apple-darwin.tar.gz
+tar xzf kalidokit-rust-<VERSION>-aarch64-apple-darwin.tar.gz
+
+# 実行
+cd kalidokit-rust-<VERSION>-*-apple-darwin
+./kalidokit-rust
+```
+
+> **注意**: 初回実行時に「開発元を検証できない」と表示された場合:
+> ```bash
+> xattr -cr kalidokit-rust
+> ```
+
+### Windows (x86_64)
+
+1. [Releases ページ](https://github.com/tk-aria/kalidokit-rust/releases) から `kalidokit-rust-<VERSION>-x86_64-pc-windows-msvc.zip` をダウンロード
+2. ZIP を展開
+3. `kalidokit-rust.exe` をダブルクリックで実行
+
+> **必要**: 最新の [Vulkan Runtime](https://vulkan.lunarg.com/sdk/home) がインストールされていること (多くの環境ではGPUドライバに含まれています)
+
+## Build from Source
+
+```bash
+# Clone
+git clone https://github.com/tk-aria/kalidokit-rust.git
+cd kalidokit-rust
+
+# Build
+cargo build --release
+
+# Run
+cargo run --release
+```
+
+### 必要なシステム依存
+
+- **Linux**: `cmake`, `pkg-config`, `libx11-dev`, `libxkbcommon-dev`, `libwayland-dev`
+- **macOS**: Xcode Command Line Tools
+- **Windows**: Visual Studio Build Tools (MSVC)
+
+## Release (メンテナー向け)
+
+タグをプッシュすると GitHub Actions が自動で全プラットフォームのバイナリをビルドし、GitHub Release を作成します。
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
 
 ## License
 
