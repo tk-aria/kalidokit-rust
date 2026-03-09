@@ -23,7 +23,7 @@ jobs:
       - name: Install system dependencies
         run: |
           apk add --no-cache \
-            build-base cmake python3 py3-numpy git curl bash \
+            build-base cmake python3 py3-numpy py3-pip py3-flatbuffers git curl bash \
             linux-headers pkgconfig perl \
             libx11-dev libxkbcommon-dev wayland-dev mesa-dev \
             openssl-dev zlib-dev
@@ -59,6 +59,7 @@ jobs:
           ./build.sh --config Release \
             --update --build --parallel $(nproc) \
             --skip_tests --skip_submodule_sync \
+            --allow_running_as_root \
             --cmake_extra_defines CMAKE_POSITION_INDEPENDENT_CODE=ON \
             --cmake_extra_defines onnxruntime_BUILD_SHARED_LIB=OFF
 
