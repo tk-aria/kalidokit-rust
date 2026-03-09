@@ -47,17 +47,20 @@ kalidokit-rust/
 
 ## Install
 
-### ワンライナーインストール (Linux / macOS)
+### ワンライナー (Linux / macOS)
 
 ```bash
 # 最新バージョンをインストール
-curl -sSLf https://raw.githubusercontent.com/tk-aria/kalidokit-rust/main/scripts/install.sh | sh
+curl -sSLf https://raw.githubusercontent.com/tk-aria/kalidokit-rust/main/scripts/setup.sh | sh -s install
 
 # バージョン指定
-curl -sSLf https://raw.githubusercontent.com/tk-aria/kalidokit-rust/main/scripts/install.sh | KALIDOKIT_VERSION=v0.1.0 sh
+curl -sSLf https://raw.githubusercontent.com/tk-aria/kalidokit-rust/main/scripts/setup.sh | KALIDOKIT_VERSION=v0.1.0 sh -s install
 
 # カスタムインストール先
-curl -sSLf https://raw.githubusercontent.com/tk-aria/kalidokit-rust/main/scripts/install.sh | KALIDOKIT_INSTALL_PATH=~/.local/bin sh
+curl -sSLf https://raw.githubusercontent.com/tk-aria/kalidokit-rust/main/scripts/setup.sh | KALIDOKIT_INSTALL_PATH=~/.local/bin sh -s install
+
+# アンインストール
+curl -sSLf https://raw.githubusercontent.com/tk-aria/kalidokit-rust/main/scripts/setup.sh | sh -s uninstall
 ```
 
 > **注意**: デフォルトのインストール先は `/usr/local/bin` です。権限がない場合は `sudo` を使うか `KALIDOKIT_INSTALL_PATH` を指定してください。
