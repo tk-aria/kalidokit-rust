@@ -48,11 +48,7 @@ impl SkinData {
     }
 
     pub fn update(&self, queue: &wgpu::Queue, joint_matrices: &[Mat4]) {
-        queue.write_buffer(
-            &self.joint_buffer,
-            0,
-            bytemuck::cast_slice(joint_matrices),
-        );
+        queue.write_buffer(&self.joint_buffer, 0, bytemuck::cast_slice(joint_matrices));
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {

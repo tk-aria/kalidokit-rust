@@ -98,11 +98,7 @@ impl Scene {
         morph_weights: &[f32],
         camera_uniform: &CameraUniform,
     ) {
-        queue.write_buffer(
-            &self.camera_buffer,
-            0,
-            bytemuck::bytes_of(camera_uniform),
-        );
+        queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(camera_uniform));
         if !joint_matrices.is_empty() {
             self.skin.update(queue, joint_matrices);
         }

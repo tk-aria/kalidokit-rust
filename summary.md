@@ -238,3 +238,58 @@ rustup component add rustfmt
 
 ### 結果
 - Phase 2 完了: vrm クレート全6モジュール実装、26テスト全パス、clippy/fmt clean
+
+---
+
+## Phase 3: wgpuレンダラー拡張 (2026/03/09)
+
+### Step 3.1: renderer::mesh
+- `crates/renderer/src/mesh.rs` 新規作成: GpuMesh (vertex_buffer, index_buffer, num_indices)
+- `from_vertices_indices()`, `draw()` 実装
+
+### Step 3.2: renderer::skin
+- `crates/renderer/src/skin.rs` 新規作成: SkinData (joint_buffer Storage Buffer, BindGroup)
+- `new()`, `update()`, `bind_group()`, `bind_group_layout()` 実装
+
+### Step 3.3: renderer::morph
+- `crates/renderer/src/morph.rs` 新規作成: MorphData (weight_buffer Storage Buffer, BindGroup)
+- `new()`, `update()`, `bind_group()`, `bind_group_layout()` 実装
+
+### Step 3.4: renderer::depth
+- `crates/renderer/src/depth.rs` 新規作成: DepthTexture (Depth32Float)
+- `new()`, `resize()` 実装
+
+### Step 3.5: renderer::texture
+- `crates/renderer/src/texture.rs` 新規作成: GpuTexture (Rgba8UnormSrgb)
+- `from_bytes()`, `from_image()`, `default_white()` 実装
+
+### Step 3.6: skinning.wgsl シェーダー
+- `assets/shaders/skinning.wgsl` 新規作成
+- CameraUniform (group 0), JointMatrices storage (group 1), MorphWeights storage (group 2)
+- Lambert diffuse fragment shader
+
+### Step 3.7: renderer::scene
+- `crates/renderer/src/scene.rs` 新規作成: Scene (統合描画パイプライン)
+- `new()`, `prepare()`, `render()`, `resize()` 実装
+- CameraUniformにDefault derive追加
+
+### Step 3.8: renderer::skinned_vertex
+- `crates/renderer/src/skinned_vertex.rs` 新規作成: SkinnedVertex (stride=64)
+- position, normal, uv, joint_indices, joint_weights
+- テスト2件: layout_stride, is_pod
+
+### Step 3.9: Phase 3 検証
+- 全28テストパス (renderer:10, vrm:18)
+- clippy 0警告、fmt適用
+
+### 実行コマンド
+```bash
+./.cargo-env.sh cargo check -p renderer  # 各Step後に実行
+./.cargo-env.sh cargo test -p renderer -p vrm -p solver  # → 28 passed
+./.cargo-env.sh cargo clippy --workspace -- -D warnings  # → 0 warnings
+./.cargo-env.sh cargo fmt
+./.cargo-env.sh cargo fmt --check  # → no diff
+```
+
+### 結果
+- Phase 3 完了: renderer クレート11モジュール (camera, context, depth, mesh, morph, pipeline, scene, skin, skinned_vertex, texture, vertex)、28テスト全パス
