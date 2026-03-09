@@ -75,3 +75,37 @@ conda install -y gcc_linux-64 binutils_linux-64 openssl pkg-config libclang kern
 
 ### 結果
 - `cargo check -p renderer` 成功
+
+---
+
+## Steps 1.3-1.6: vertex, pipeline, camera, shader (2026/03/09)
+
+### 実行内容
+
+1. **Step 1.3: `crates/renderer/src/vertex.rs`** (~53行)
+   - `Vertex` 構造体: `position`, `normal`, `uv` (Pod/Zeroable)
+   - `Vertex::layout()`: VertexBufferLayout (stride=32)
+   - テスト: `vertex_layout_stride`, `vertex_is_pod`
+
+2. **Step 1.4: `crates/renderer/src/pipeline.rs`** (~52行)
+   - `create_render_pipeline()`: ShaderModule→PipelineLayout→RenderPipeline
+   - depth_format対応 (Option)
+
+3. **Step 1.5: `crates/renderer/src/camera.rs`** (~81行)
+   - `Camera` 構造体 + `CameraUniform` (Pod)
+   - `build_view_proj()`, `to_uniform()`, `Default` 実装
+   - テスト: `build_view_proj_not_identity`, `aspect_change_affects_matrix`, `uniform_is_pod`
+
+4. **Step 1.6: `assets/shaders/basic.wgsl`** (~35行)
+   - Vertex: CameraUniform適用
+   - Fragment: Lambert diffuse ライティング
+
+5. **`lib.rs`** に `pub mod camera; pub mod pipeline;` 追加
+
+### 実行コマンド
+```bash
+./.cargo-env.sh cargo check -p renderer  # → Finished dev profile
+```
+
+### 結果
+- `cargo check -p renderer` 成功

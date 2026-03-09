@@ -197,7 +197,7 @@ impl RenderContext {
 
 **ファイル**: `crates/renderer/src/vertex.rs` (~50行)
 
-- [ ] `Vertex` 構造体を定義 (`#[repr(C)]`, `bytemuck::Pod/Zeroable`)
+- [x] `Vertex` 構造体を定義 (`#[repr(C)]`, `bytemuck::Pod/Zeroable`)
   - フィールド: `position: [f32; 3]`, `normal: [f32; 3]`, `uv: [f32; 2]`
   - `desc()` で `wgpu::VertexBufferLayout` を返す static メソッド
 
@@ -229,7 +229,7 @@ impl Vertex {
 
 **ファイル**: `crates/renderer/src/pipeline.rs` (~100行)
 
-- [ ] `create_render_pipeline(device, config, shader_src) -> RenderPipeline` 関数を実装
+- [x] `create_render_pipeline(device, config, shader_src) -> RenderPipeline` 関数を実装
   - `device.create_shader_module()` で WGSLシェーダーをコンパイル
   - `device.create_pipeline_layout()` で BindGroupLayout を設定
   - `device.create_render_pipeline()` で Pipeline を構築
@@ -285,11 +285,11 @@ pub fn create_render_pipeline(
 
 **ファイル**: `crates/renderer/src/camera.rs` (~80行)
 
-- [ ] `Camera` 構造体: `position: Vec3`, `target: Vec3`, `fov: f32`, `aspect: f32`, `near: f32`, `far: f32`
-- [ ] `CameraUniform` 構造体 (`#[repr(C)]`, Pod): `view_proj: [[f32; 4]; 4]`, `model: [[f32; 4]; 4]`
-- [ ] `Camera::build_view_projection_matrix() -> Mat4` を実装
-- [ ] `Camera::to_uniform() -> CameraUniform` を実装
-- [ ] GPU Uniform Buffer 作成・更新メソッド
+- [x] `Camera` 構造体: `position: Vec3`, `target: Vec3`, `fov: f32`, `aspect: f32`, `near: f32`, `far: f32`
+- [x] `CameraUniform` 構造体 (`#[repr(C)]`, Pod): `view_proj: [[f32; 4]; 4]`, `model: [[f32; 4]; 4]`
+- [x] `Camera::build_view_projection_matrix() -> Mat4` を実装
+- [x] `Camera::to_uniform() -> CameraUniform` を実装
+- [ ] GPU Uniform Buffer 作成・更新メソッド (Phase 3のScene統合時に実装)
 
 ```rust
 pub struct Camera {
@@ -314,8 +314,8 @@ impl Camera {
 
 **ファイル**: `assets/shaders/basic.wgsl` (~40行)
 
-- [ ] Vertex Shader: CameraUniform (view_proj, model) を使って頂点を変換
-- [ ] Fragment Shader: Lambert diffuse ライティング
+- [x] Vertex Shader: CameraUniform (view_proj, model) を使って頂点を変換
+- [x] Fragment Shader: Lambert diffuse ライティング
 
 ```wgsl
 struct CameraUniform {
