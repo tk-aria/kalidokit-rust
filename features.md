@@ -957,9 +957,9 @@ fn calc_finger_rotations(lm: &[Vec3], indices: &[usize]) -> [EulerAngles; 3] {
 
 **ファイル**: `crates/tracker/src/face_mesh.rs` (~100行)
 
-- [ ] `FaceMeshDetector` 構造体: ONNX Session をラップ
-- [ ] `FaceMeshDetector::new(model_path) -> Result<Self>`: Session初期化
-- [ ] `FaceMeshDetector::detect(frame: &DynamicImage) -> Result<Option<Vec<Vec3>>>`:
+- [x] `FaceMeshDetector` 構造体: ONNX Session をラップ
+- [x] `FaceMeshDetector::new(model_path) -> Result<Self>`: Session初期化
+- [x] `FaceMeshDetector::detect(frame: &DynamicImage) -> Result<Option<Vec<Vec3>>>`:
   1. 画像を192×192にリサイズ・正規化
   2. ONNX推論実行
   3. 出力テンソルから468 (or 478) 個のランドマークをパース
@@ -988,9 +988,9 @@ impl FaceMeshDetector {
 
 **ファイル**: `crates/tracker/src/pose.rs` (~100行)
 
-- [ ] `PoseDetector` 構造体: ONNX Session をラップ
-- [ ] `PoseDetector::new(model_path) -> Result<Self>`
-- [ ] `PoseDetector::detect(frame) -> Result<(Option<Vec<Vec3>>, Option<Vec<Vec2>>)>`:
+- [x] `PoseDetector` 構造体: ONNX Session をラップ
+- [x] `PoseDetector::new(model_path) -> Result<Self>`
+- [x] `PoseDetector::detect(frame) -> Result<(Option<Vec<Vec3>>, Option<Vec<Vec2>>)>`:
   1. 画像を256×256にリサイズ・正規化
   2. ONNX推論
   3. 33個の3Dランドマーク + 33個の2Dランドマークをパース
@@ -999,9 +999,9 @@ impl FaceMeshDetector {
 
 **ファイル**: `crates/tracker/src/hand.rs` (~100行)
 
-- [ ] `HandDetector` 構造体: ONNX Session をラップ
-- [ ] `HandDetector::new(model_path) -> Result<Self>`
-- [ ] `HandDetector::detect(frame, is_left: bool) -> Result<Option<Vec<Vec3>>>`:
+- [x] `HandDetector` 構造体: ONNX Session をラップ
+- [x] `HandDetector::new(model_path) -> Result<Self>`
+- [x] `HandDetector::detect(frame, is_left: bool) -> Result<Option<Vec<Vec3>>>`:
   1. 画像を224×224にリサイズ・正規化
   2. ONNX推論
   3. 21個のランドマークをパース
@@ -1011,9 +1011,9 @@ impl FaceMeshDetector {
 
 **ファイル**: `crates/tracker/src/holistic.rs` (~80行)
 
-- [ ] `HolisticTracker` 構造体: `FaceMeshDetector` + `PoseDetector` + `HandDetector`
-- [ ] `HolisticTracker::new(face_path, pose_path, hand_path) -> Result<Self>`
-- [ ] `HolisticTracker::detect(frame) -> Result<HolisticResult>`: 全検出器を順番に実行
+- [x] `HolisticTracker` 構造体: `FaceMeshDetector` + `PoseDetector` + `HandDetector`
+- [x] `HolisticTracker::new(face_path, pose_path, hand_path) -> Result<Self>`
+- [x] `HolisticTracker::detect(frame) -> Result<HolisticResult>`: 全検出器を順番に実行
 
 ### Step 5.6: Phase 5 検証
 

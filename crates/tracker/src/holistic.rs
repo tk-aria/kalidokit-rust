@@ -1,12 +1,12 @@
-use crate::{face_mesh, hand, pose, HolisticResult};
+use crate::{face_mesh::FaceMeshDetector, hand::HandDetector, pose::PoseDetector, HolisticResult};
 use image::DynamicImage;
-use ort::session::Session;
 
 /// Combined inference pipeline for face, pose, and hand tracking.
 pub struct HolisticTracker {
-    face_session: Session,
-    pose_session: Session,
-    hand_session: Session,
+    face_detector: FaceMeshDetector,
+    pose_detector: PoseDetector,
+    left_hand_detector: HandDetector,
+    right_hand_detector: HandDetector,
 }
 
 impl HolisticTracker {
@@ -16,24 +16,36 @@ impl HolisticTracker {
         pose_model_path: &str,
         hand_model_path: &str,
     ) -> anyhow::Result<Self> {
-        let face_session = Session::builder()?.commit_from_file(face_model_path)?;
-        let pose_session = Session::builder()?.commit_from_file(pose_model_path)?;
-        let hand_session = Session::builder()?.commit_from_file(hand_model_path)?;
+        let face_detector = FaceMeshDetector::new(face_model_path)?;
+        let pose_detector = PoseDetector::new(pose_model_path)?;
+        let left_hand_detector = HandDetector::new(hand_model_path)?;
+        let right_hand_detector = HandDetector::new(hand_model_path)?;
 
         Ok(Self {
-            face_session,
-            pose_session,
-            hand_session,
+            face_detector,
+            pose_detector,
+            left_hand_detector,
+            right_hand_detector,
         })
     }
 
     /// Detect all landmarks from a camera frame.
-    pub fn detect(&self, frame: &DynamicImage) -> anyhow::Result<HolisticResult> {
-        let face_landmarks = face_mesh::detect(&self.face_session, frame)?;
-        let (pose_3d, pose_2d) = pose::detect(&self.pose_session, frame)?;
-        // Note: hand landmarks are swapped due to camera mirror
-        let left_hand = hand::detect(&self.hand_session, frame, true)?;
-        let right_hand = hand::detect(&self.hand_session, frame, false)?;
+    ///
+    /// Each detector runs independently; if one fails, others still produce results.
+    pub fn detect(&mut self, frame: &DynamicImage) -> anyhow::Result<HolisticResult> {
+        let face_landmarks = self.face_detector.detect(frame).unwrap_or(None);
+        let (pose_3d, pose_2d) = self
+            .pose_detector
+            .detect(frame)
+            .unwrap_or((None, None));
+        let left_hand = self
+            .left_hand_detector
+            .detect(frame, true)
+            .unwrap_or(None);
+        let right_hand = self
+            .right_hand_detector
+            .detect(frame, false)
+            .unwrap_or(None);
 
         Ok(HolisticResult {
             face_landmarks,
