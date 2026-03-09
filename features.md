@@ -705,6 +705,7 @@ impl DepthTexture {
 - [x] `GpuTexture::from_image(device, queue, image)`: `image::DynamicImage` → GPU Texture
 - [x] `GpuTexture::from_bytes(device, queue, bytes, width, height)`: raw bytes → GPU Texture
 - [x] `GpuTexture::default_white(device, queue) -> Self`: デフォルトの白テクスチャ (1x1) 生成メソッド
+- [ ] **Scene/パイプラインへの統合**: GpuTexture は実装済みだが、Scene で使用されておらず、VRM からテクスチャ/マテリアルのロードも未実装 (デッドコード)
 
 ```rust
 pub struct GpuTexture {
@@ -1064,14 +1065,14 @@ impl FaceMeshDetector {
   2. `vrm::loader::load("assets/models/default_avatar.vrm")` で VRM ロード
   3. `Scene::new(device, config, vrm_model)` で GPU リソース作成
   4. `HolisticTracker::new(face_path, pose_path, hand_path)` で ML モデル初期化
-  5. Webカメラ初期化 (nokhwa)
+  5. Webカメラ初期化 (nokhwa) — **未実装**
 
 ### Step 6.3: app::update — フレーム更新ロジック
 
 **ファイル**: `crates/app/src/update.rs` (~150行)
 
-- [x] `update_frame(state: &mut AppState) -> Result<()>` 関数:
-  1. Webカメラからフレーム取得
+- [ ] `update_frame(state: &mut AppState) -> Result<()>` 関数:
+  1. Webカメラからフレーム取得 — **未実装** (ダミー黒画像を使用)
   2. `tracker.detect(frame)` で全ランドマーク取得
   3. `solver::face::solve()` / `solver::pose::solve()` / `solver::hand::solve()` でリグ計算
   4. **座標変換の罠を全て適用**:
@@ -1091,7 +1092,8 @@ impl FaceMeshDetector {
 
 - [x] `main.rs`: EventLoop作成 + `run_app` 呼び出し
 - [x] `app.rs`: `App` 構造体に `ApplicationHandler` 実装
-  - `resumed()`: `init::init_all()` で全リソース初期化
+  - `resumed()`: `init::init_all()` で全リソース初期化 + 初回 `request_redraw()`
+  - `about_to_wait()`: 毎アイドル時に `request_redraw()` でレンダーループ駆動
   - `window_event(RedrawRequested)`: `update::update_frame()` + `window.request_redraw()`
   - `window_event(Resized)`: `ctx.resize()` + `depth.resize()`
   - `window_event(CloseRequested)`: `event_loop.exit()`
@@ -1155,6 +1157,7 @@ pub struct RigConfig {
 - [x] `SpringBoneGroup` 構造体: `bones: Vec<SpringBone>`, `colliders: Vec<Collider>`
 - [x] `SpringBoneGroup::from_vrm_json(json)`: VRM拡張JSONからパース
 - [x] `SpringBoneGroup::update(delta_time)`: Verlet積分で髪揺れ等の物理シミュレーション
+- [ ] **VrmModel への統合**: VrmModel に spring_bones フィールドがなく、loader でパースされず、update ループで呼ばれていない (デッドコード)
 
 ```rust
 // VRM JSON構造:
@@ -1186,10 +1189,11 @@ impl SpringBone {
 
 **ファイル**: `assets/shaders/mtoon.wgsl` (~120行)
 
-- [x] VRM標準のトゥーンシェーダー (MToon) を実装
+- [x] VRM標準のトゥーンシェーダー (MToon) を実装 — **シェーダーファイルは存在するが未統合**
   - 2段階トゥーンシェーディング (影しきい値ベース)
   - リムライト
   - アウトライン (別パス)
+- [ ] **レンダーパイプラインへの統合**: scene.rs が skinning.wgsl をハードコードしており、mtoon.wgsl は使用されていない
 
 ```wgsl
 // MToon Fragment Shader の核心ロジック
