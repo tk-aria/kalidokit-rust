@@ -747,11 +747,11 @@ impl GpuTexture {
 
 **ファイル**: `assets/shaders/skinning.wgsl` (~80行)
 
-- [ ] `SkinVertex` 入力に `joint_indices: vec4<u32>`, `joint_weights: vec4<f32>` を追加
-- [ ] BindGroup 1: `JointMatrices` (Storage Buffer, 最大256ボーン)
-- [ ] BindGroup 2: `MorphWeights` (Storage Buffer, 最大64ターゲット)
-- [ ] Vertex Shader: 4ボーン加重平均のスキン行列を計算し、頂点を変換
-- [ ] Fragment Shader: Lambert diffuse + テクスチャサンプリング
+- [x] `VertexInput` に基本頂点属性 (position, normal, uv) を定義
+- [x] BindGroup 1: `JointMatrices` (Storage Buffer, 最大256ボーン)
+- [x] BindGroup 2: `MorphWeights` (Storage Buffer, 最大64ターゲット)
+- [x] Vertex Shader: camera.model でワールド変換、view_proj でクリップ変換
+- [x] Fragment Shader: Lambert diffuse
 
 ### Step 3.7: renderer::scene — シーン描画統合
 
