@@ -44,7 +44,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/ort-build
-          key: ort-musl-static-v1.20.1-alpine321-v4
+          key: ort-musl-static-v1.20.1-alpine321-v5
 
       - name: Build ONNX Runtime from source (static, musl)
         if: steps.ort-cache.outputs.cache-hit != 'true'
@@ -67,9 +67,15 @@ jobs:
             https://github.com/microsoft/onnxruntime /tmp/ort-src
           cd /tmp/ort-src
 
+          # Patch out execinfo.h usage (unavailable on musl/Alpine 3.21)
+          sed -i 's|#include <execinfo.h>|// execinfo.h removed for musl|' \
+            onnxruntime/core/platform/posix/stacktrace.cc || true
+          # Replace backtrace/backtrace_symbols calls with no-ops
+          sed -i 's|backtrace(array, size)|0|; s|backtrace_symbols(array, nSize)|nullptr|' \
+            onnxruntime/core/platform/posix/stacktrace.cc || true
+
           # Build static libraries only (no shared lib, no tests)
           # Use system Eigen to avoid FetchContent hash mismatch
-          # Disable backtraces (execinfo.h unavailable on musl/Alpine 3.21)
           ./build.sh --config Release \
             --update --build --parallel $(nproc) \
             --skip_tests \
@@ -77,8 +83,7 @@ jobs:
             --use_preinstalled_eigen \
             --eigen_path /usr/include/eigen3 \
             --cmake_extra_defines CMAKE_POSITION_INDEPENDENT_CODE=ON \
-            --cmake_extra_defines onnxruntime_BUILD_SHARED_LIB=OFF \
-            --cmake_extra_defines onnxruntime_ENABLE_BACKTRACE=OFF
+            --cmake_extra_defines onnxruntime_BUILD_SHARED_LIB=OFF
 
           # Copy build output for caching
           mkdir -p /tmp/ort-build
