@@ -417,7 +417,7 @@ CMD ["kalidokit-rust"]
 
 **ファイル**: `crates/vrm/src/error.rs` (~40行)
 
-- [ ] `VrmError` enum を `thiserror` で定義
+- [x] `VrmError` enum を `thiserror` で定義
   - `GltfError(#[from] gltf::Error)`: glTFパースエラー
   - `MissingExtension(String)`: VRM拡張が見つからない
   - `InvalidBone(String)`: 不正なボーン名
