@@ -490,3 +490,13 @@ rustup component add rustfmt
 
 ### 結果
 - Step 7.3 完了: フレームレート制御 + GPU更新最小化
+
+### Step 7.4: CI/CD (GitHub Actions)
+- `.github/workflows/ci.yml` 新規作成 (~50行)
+- `check` ジョブ: fmt → clippy → test (renderer/vrm/solver) → check --workspace
+- `docker` ジョブ: docker build (check ジョブに依存)
+- Ubuntu-latest, dtolnay/rust-toolchain@stable, actions/cache@v4
+- system依存: cmake, pkg-config, libx11-dev, libxkbcommon-dev, libwayland-dev
+
+### 結果
+- Step 7.4 完了: CI/CD ワークフロー作成

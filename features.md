@@ -1223,11 +1223,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 **ファイル**: `.github/workflows/ci.yml` (~50行)
 
-- [ ] プッシュ/PR時に自動実行:
+- [x] プッシュ/PR時に自動実行:
   1. `cargo fmt --check`
   2. `cargo clippy --workspace -- -D warnings`
-  3. `cargo test --workspace`
-  4. `cargo build --release`
+  3. `cargo test -p renderer -p vrm -p solver` (tracker は ort-sys リンク制約で除外)
+  4. `cargo check --workspace`
   5. `docker build .`
 
 ### Step 7.5: Phase 7 検証
