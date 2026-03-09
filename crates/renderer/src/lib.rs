@@ -6,5 +6,6 @@ pub mod morph;
 pub mod pipeline;
 pub mod scene;
 pub mod skin;
+pub mod skinned_vertex;
 pub mod texture;
 pub mod vertex;

@@ -801,8 +801,8 @@ impl Scene {
 
 **ファイル**: `crates/renderer/src/skinned_vertex.rs` (~60行)
 
-- [ ] `SkinnedVertex` 構造体: `position`, `normal`, `uv`, `joint_indices: [u32; 4]`, `joint_weights: [f32; 4]`
-- [ ] `SkinnedVertex::layout() -> VertexBufferLayout`: 全アトリビュートのレイアウト定義
+- [x] `SkinnedVertex` 構造体: `position`, `normal`, `uv`, `joint_indices: [u32; 4]`, `joint_weights: [f32; 4]`
+- [x] `SkinnedVertex::layout() -> VertexBufferLayout`: 全アトリビュートのレイアウト定義 (stride=64)
 
 ### Step 3.9: Phase 3 検証
 
