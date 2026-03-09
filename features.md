@@ -1065,14 +1065,14 @@ impl FaceMeshDetector {
   2. `vrm::loader::load("assets/models/default_avatar.vrm")` で VRM ロード
   3. `Scene::new(device, config, vrm_model)` で GPU リソース作成
   4. `HolisticTracker::new(face_path, pose_path, hand_path)` で ML モデル初期化
-  5. Webカメラ初期化 (nokhwa) — **未実装**
+  5. Webカメラ初期化 (nokhwa) — init_camera() で初期化、失敗時は None フォールバック <!-- 2026-03-10 00:40 JST -->
 
 ### Step 6.3: app::update — フレーム更新ロジック
 
 **ファイル**: `crates/app/src/update.rs` (~150行)
 
-- [ ] `update_frame(state: &mut AppState) -> Result<()>` 関数:
-  1. Webカメラからフレーム取得 — **未実装** (ダミー黒画像を使用)
+- [x] `update_frame(state: &mut AppState) -> Result<()>` 関数: <!-- 2026-03-10 00:40 JST -->
+  1. Webカメラからフレーム取得 (nokhwa、フォールバック付き)
   2. `tracker.detect(frame)` で全ランドマーク取得
   3. `solver::face::solve()` / `solver::pose::solve()` / `solver::hand::solve()` でリグ計算
   4. **座標変換の罠を全て適用**:

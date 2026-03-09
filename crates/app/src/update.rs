@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use nokhwa::pixel_format::RgbFormat;
 use solver::types::{Side, VideoInfo};
 
 use crate::state::AppState;
@@ -19,13 +20,8 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     }
     state.last_frame_time = now;
 
-    // TODO: Capture frame from webcam (nokhwa)
-    // For now, use a dummy black image
-    let frame = image::DynamicImage::new_rgb8(640, 480);
-    let video = VideoInfo {
-        width: 640,
-        height: 480,
-    };
+    // Capture frame from webcam, falling back to dummy black image
+    let (frame, video) = capture_frame(&mut state.camera);
 
     // 1. Run tracker on frame
     let result = state.tracker.detect(&frame)?;
@@ -110,6 +106,43 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     state.scene.render(&state.render_ctx)?;
 
     Ok(())
+}
+
+/// Capture a frame from the webcam if available, otherwise return a dummy black image.
+fn capture_frame(camera: &mut Option<nokhwa::Camera>) -> (image::DynamicImage, VideoInfo) {
+    const FALLBACK_W: u32 = 640;
+    const FALLBACK_H: u32 = 480;
+
+    if let Some(cam) = camera.as_mut() {
+        match cam.frame() {
+            Ok(buffer) => {
+                let res = buffer.resolution();
+                let width = res.width_x;
+                let height = res.height_y;
+                match buffer.decode_image::<RgbFormat>() {
+                    Ok(rgb_image) => {
+                        let frame = image::DynamicImage::ImageRgb8(rgb_image);
+                        let video = VideoInfo { width, height };
+                        return (frame, video);
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to decode webcam frame: {e}");
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to capture webcam frame: {e}");
+            }
+        }
+    }
+
+    // Fallback: dummy black image
+    let frame = image::DynamicImage::new_rgb8(FALLBACK_W, FALLBACK_H);
+    let video = VideoInfo {
+        width: FALLBACK_W,
+        height: FALLBACK_H,
+    };
+    (frame, video)
 }
 
 /// Apply solver results to VRM model bones and blend shapes.

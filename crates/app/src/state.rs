@@ -12,6 +12,7 @@ pub struct AppState {
     pub scene: Scene,
     pub vrm_model: VrmModel,
     pub tracker: HolisticTracker,
+    pub camera: Option<nokhwa::Camera>,
     pub rig: RigState,
     pub last_frame_time: Instant,
     pub rig_dirty: bool,

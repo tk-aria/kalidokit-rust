@@ -9,6 +9,9 @@ use renderer::vertex::Vertex;
 use tracker::holistic::HolisticTracker;
 use winit::window::Window;
 
+use nokhwa::pixel_format::RgbFormat;
+use nokhwa::utils::{CameraFormat, CameraIndex, FrameFormat, RequestedFormat, RequestedFormatType};
+
 use crate::state::{AppState, RigState};
 
 /// Default paths for ONNX models and VRM avatar.
@@ -116,13 +119,40 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
     let tracker = HolisticTracker::new(FACE_MODEL_PATH, POSE_MODEL_PATH, HAND_MODEL_PATH)
         .context("Failed to initialize ML tracker. Run: sh scripts/setup.sh download-models")?;
 
+    // 5. Initialize webcam via nokhwa
+    let camera = match init_camera() {
+        Ok(cam) => Some(cam),
+        Err(e) => {
+            log::warn!("Failed to initialize webcam: {e}. Falling back to dummy frames.");
+            None
+        }
+    };
+
     Ok(AppState {
         render_ctx,
         scene,
         vrm_model,
         tracker,
+        camera,
         rig: RigState::default(),
         last_frame_time: Instant::now(),
         rig_dirty: true,
     })
+}
+
+/// Try to initialize the default webcam (index 0) at 640x480.
+fn init_camera() -> Result<nokhwa::Camera> {
+    let index = CameraIndex::Index(0);
+    let format = CameraFormat::new_from(640, 480, FrameFormat::MJPEG, 30);
+    let requested = RequestedFormat::new::<RgbFormat>(RequestedFormatType::Closest(format));
+    let mut camera = nokhwa::Camera::new(index, requested)
+        .context("Failed to create camera")?;
+    camera
+        .open_stream()
+        .context("Failed to open camera stream")?;
+    log::info!(
+        "Webcam initialized: {:?}",
+        camera.camera_format()
+    );
+    Ok(camera)
 }
