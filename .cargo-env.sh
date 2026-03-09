@@ -1,0 +1,12 @@
+#!/bin/bash
+export PATH="/tmp/conda/bin:/home/node/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin:/home/node/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export LIBRARY_PATH="/tmp/conda/lib:/tmp/conda/x86_64-conda-linux-gnu/sysroot/lib:/tmp/conda/x86_64-conda-linux-gnu/sysroot/usr/lib"
+export LD_LIBRARY_PATH="/tmp/conda/lib"
+export PKG_CONFIG_PATH="/tmp/conda/lib/pkgconfig"
+export OPENSSL_DIR="/tmp/conda"
+export CC="/tmp/conda/bin/x86_64-conda-linux-gnu-gcc"
+export AR="/tmp/conda/bin/x86_64-conda-linux-gnu-ar"
+export LIBCLANG_PATH="/tmp/conda/lib"
+export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=/tmp/conda/x86_64-conda-linux-gnu/sysroot -I/tmp/conda/x86_64-conda-linux-gnu/sysroot/usr/include"
+export C_INCLUDE_PATH="/tmp/conda/x86_64-conda-linux-gnu/sysroot/usr/include"
+exec "$@"

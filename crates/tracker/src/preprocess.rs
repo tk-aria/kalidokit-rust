@@ -10,7 +10,7 @@ pub fn preprocess_image(
     let resized = image.resize_exact(
         target_width,
         target_height,
-        image::imageops::FilterType::Bilinear,
+        image::imageops::FilterType::Triangle,
     );
     let rgb = resized.to_rgb8();
 

@@ -4,11 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { workspace = true }
-bevy_vrm = { workspace = true }
-nokhwa = { workspace = true }
-image = { workspace = true }
-glam = { workspace = true }
-anyhow = { workspace = true }
+renderer = { path = "../renderer" }
+vrm = { path = "../vrm" }
 solver = { path = "../solver" }
 tracker = { path = "../tracker" }
+winit = { workspace = true }
+nokhwa = { workspace = true }
+image = { workspace = true }
+pollster = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+anyhow = { workspace = true }

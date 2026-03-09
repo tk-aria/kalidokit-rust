@@ -17,11 +17,11 @@ impl HolisticTracker {
         hand_model_path: &str,
     ) -> anyhow::Result<Self> {
         let face_session = Session::builder()?
-            .with_model_from_file(face_model_path)?;
+            .commit_from_file(face_model_path)?;
         let pose_session = Session::builder()?
-            .with_model_from_file(pose_model_path)?;
+            .commit_from_file(pose_model_path)?;
         let hand_session = Session::builder()?
-            .with_model_from_file(hand_model_path)?;
+            .commit_from_file(hand_model_path)?;
 
         Ok(Self {
             face_session,

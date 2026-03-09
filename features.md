@@ -52,7 +52,7 @@ Phase 7 (仕上げ) ← Phase 6に依存
 
 ### Step 1.1: ワークスペース再構築
 
-- [ ] **Cargo.toml (ルート)**: ワークスペースメンバーを5クレート構成に変更
+- [x] **Cargo.toml (ルート)**: ワークスペースメンバーを5クレート構成に変更
   - members: `app`, `renderer`, `vrm`, `solver`, `tracker`
   - `[workspace.dependencies]` に上記バージョンを全て明記
   - 既存のBevy依存 (`bevy`, `bevy_vrm`) を削除
@@ -82,7 +82,7 @@ env_logger = "0.11"
 log = "0.4"
 ```
 
-- [ ] **crates/renderer/Cargo.toml** 新規作成
+- [x] **crates/renderer/Cargo.toml** 新規作成
 
 ```toml
 [package]
@@ -103,7 +103,7 @@ log = { workspace = true }
 pollster = { workspace = true }
 ```
 
-- [ ] **crates/vrm/Cargo.toml** 新規作成
+- [x] **crates/vrm/Cargo.toml** 新規作成
 
 ```toml
 [package]
@@ -121,7 +121,7 @@ thiserror = { workspace = true }
 log = { workspace = true }
 ```
 
-- [ ] **crates/app/Cargo.toml** を wgpu版に書き換え (Bevy依存削除)
+- [x] **crates/app/Cargo.toml** を wgpu版に書き換え (Bevy依存削除)
 
 ```toml
 [package]
@@ -143,10 +143,10 @@ log = { workspace = true }
 anyhow = { workspace = true }
 ```
 
-- [ ] **crates/solver/Cargo.toml**: `thiserror` 追加
-- [ ] **crates/tracker/Cargo.toml**: `thiserror` 追加
-- [ ] 既存の Bevy 依存コード (`crates/app/src/`) を全て削除し空の `main.rs` を配置
-- [ ] `cargo check` が全クレートで成功することを確認
+- [x] **crates/solver/Cargo.toml**: `thiserror` 追加
+- [x] **crates/tracker/Cargo.toml**: `thiserror` 追加
+- [x] 既存の Bevy 依存コード (`crates/app/src/`) を全て削除し空の `main.rs` を配置
+- [x] `cargo check` が全クレートで成功することを確認
 
 ### Step 1.2: renderer::context — wgpu初期化
 
