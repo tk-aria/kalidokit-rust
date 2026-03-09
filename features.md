@@ -669,9 +669,9 @@ impl GpuMesh {
 
 **ファイル**: `crates/renderer/src/depth.rs` (~50行)
 
-- [ ] `DepthTexture` 構造体: `texture`, `view`
-- [ ] `DepthTexture::new(device, width, height)`: `Depth32Float` テクスチャ作成
-- [ ] `DepthTexture::resize(device, width, height)`: ウィンドウリサイズ時に再作成
+- [x] `DepthTexture` 構造体: `texture`, `view`
+- [x] `DepthTexture::new(device, width, height)`: `Depth32Float` テクスチャ作成
+- [x] `DepthTexture::resize(device, width, height)`: ウィンドウリサイズ時に再作成
 
 ```rust
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
