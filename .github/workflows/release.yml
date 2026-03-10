@@ -103,18 +103,42 @@ jobs:
           mkdir -p /tmp/ort-build
           cp -a build/Linux/* /tmp/ort-build/
 
-      - name: Debug ORT build structure
+      - name: Collect ORT static libraries into flat directory
         run: |
-          echo "=== Top-level ==="
-          ls -la /tmp/ort-build/Release/ | head -30
-          echo "=== _deps directory ==="
-          ls /tmp/ort-build/Release/_deps/ 2>/dev/null | head -40
-          echo "=== re2-build ==="
-          find /tmp/ort-build/Release/_deps/re2-build -name "libre2*" 2>/dev/null
-          echo "=== onnx-build ==="
-          find /tmp/ort-build/Release/_deps/onnx-build -name "libonnx*" 2>/dev/null
-          echo "=== All .a files in _deps (first 50) ==="
-          find /tmp/ort-build/Release/_deps -name "*.a" 2>/dev/null | head -50
+          # ort-sys expects all dependency .a files to be discoverable via _deps/<name>-build/
+          # but some deps (e.g., re2) don't produce .a in _deps/re2-build/.
+          # Find all .a files from the entire ORT build and create symlinks in the expected locations.
+          ORT_DIR=/tmp/ort-build/Release
+          ORT_SRC_BUILD=/tmp/ort-src/build/Linux/Release
+
+          # Find libre2.a from the full ORT source build tree (may be outside cached _deps)
+          echo "=== Searching for libre2.a ==="
+          find /tmp/ort-src/build -name "libre2.a" 2>/dev/null || true
+          find /tmp/ort-build -name "libre2.a" 2>/dev/null || true
+
+          # If libre2.a exists in the source build but not in the cache, copy it
+          RE2_SRC=$(find /tmp/ort-src/build -name "libre2.a" 2>/dev/null | head -1)
+          if [ -n "$RE2_SRC" ]; then
+            echo "Found libre2.a at: $RE2_SRC"
+            mkdir -p "$ORT_DIR/_deps/re2-build"
+            cp "$RE2_SRC" "$ORT_DIR/_deps/re2-build/libre2.a"
+          else
+            echo "libre2.a not found in ORT source build - searching for alternative"
+            # re2 may be built as part of abseil or protobuf in newer ORT versions
+            # Try to find it anywhere
+            find /tmp -name "libre2*" 2>/dev/null || echo "No libre2 found anywhere"
+          fi
+
+          # Also check for nsync
+          NSYNC_SRC=$(find /tmp/ort-src/build -name "libnsync_cpp.a" 2>/dev/null | head -1)
+          if [ -n "$NSYNC_SRC" ] && [ ! -f "$ORT_DIR/_deps/google_nsync-build/libnsync_cpp.a" ]; then
+            echo "Copying libnsync_cpp.a"
+            mkdir -p "$ORT_DIR/_deps/google_nsync-build"
+            cp "$NSYNC_SRC" "$ORT_DIR/_deps/google_nsync-build/libnsync_cpp.a"
+          fi
+
+          echo "=== Final _deps .a files ==="
+          find "$ORT_DIR/_deps" -name "*.a" 2>/dev/null | sort
 
       - name: Build release binary
         env:
@@ -122,7 +146,6 @@ jobs:
           HOME: /root
         run: |
           . "$HOME/.cargo/env"
-          cargo build -vv --release --target x86_64-unknown-linux-musl 2>&1 | grep -E "cargo:rustc-link|ORT|ort-sys|search=native" | head -80 || true
           cargo build --release --target x86_64-unknown-linux-musl
 
       - name: Package
