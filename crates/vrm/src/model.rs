@@ -3,6 +3,7 @@ use renderer::vertex::Vertex;
 
 use crate::blendshape::BlendShapeGroup;
 use crate::bone::HumanoidBones;
+use crate::look_at::LookAtApplyer;
 use crate::spring_bone::SpringBoneGroup;
 
 /// glTFスキンのジョイント情報
@@ -79,4 +80,5 @@ pub struct VrmModel {
     pub blend_shapes: BlendShapeGroup,
     pub node_transforms: Vec<NodeTransform>,
     pub spring_bone_groups: Vec<SpringBoneGroup>,
+    pub look_at: Option<LookAtApplyer>,
 }

@@ -4,6 +4,7 @@ use renderer::vertex::Vertex;
 use crate::blendshape::BlendShapeGroup;
 use crate::bone::HumanoidBones;
 use crate::error::VrmError;
+use crate::look_at::LookAtApplyer;
 use crate::model::{Material, MeshData, MorphTargetData, NodeTransform, SkinJoint, VrmModel};
 use crate::spring_bone::SpringBoneGroup;
 
@@ -294,6 +295,7 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
     let humanoid_bones = HumanoidBones::from_vrm_json(&vrm_json, &node_transforms)?;
     let blend_shapes = BlendShapeGroup::from_vrm_json(&vrm_json)?;
     let spring_bone_groups = SpringBoneGroup::from_vrm_json(&vrm_json)?;
+    let look_at = LookAtApplyer::from_vrm_json(&vrm_json).ok();
 
     Ok(VrmModel {
         meshes,
@@ -303,6 +305,7 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
         blend_shapes,
         node_transforms,
         spring_bone_groups,
+        look_at,
     })
 }
 

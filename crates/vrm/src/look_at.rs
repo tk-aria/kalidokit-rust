@@ -154,6 +154,29 @@ mod tests {
     }
 
     #[test]
+    fn nonzero_pupil_produces_non_identity_rotation() {
+        let applyer = LookAtApplyer {
+            look_at_type: LookAtType::Bone,
+            horizontal_inner: CurveRange::default(),
+            horizontal_outer: CurveRange::default(),
+            vertical_up: CurveRange::default(),
+            vertical_down: CurveRange::default(),
+        };
+        // Simulate non-zero pupil values scaled to degrees (as done in apply_rig_to_model)
+        let euler = EulerAngles {
+            yaw: 0.5 * 30.0,   // 15 degrees
+            pitch: 0.3 * 30.0, // 9 degrees
+        };
+        let q = applyer.apply(&euler);
+        let angle = q.angle_between(Quat::IDENTITY);
+        assert!(
+            angle > 0.01,
+            "Non-zero pupil values should produce non-identity eye rotation, got angle: {}",
+            angle
+        );
+    }
+
+    #[test]
     fn from_vrm_json_parses() {
         let json: serde_json::Value = serde_json::from_str(
             r#"{

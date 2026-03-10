@@ -1344,10 +1344,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 >
 > リファレンス: [script.js oldLookTarget / lookTarget / lookAt.applyer](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js)
 
-- [ ] `solver::face::RiggedFace` に `pupil` フィールドが存在することを確認 (なければ追加)
-- [ ] `apply_rig_to_model()` で `LookAt::apply(pupil)` を呼び出し、LeftEye / RightEye ボーンに反映
-- [ ] 瞳孔の lerp 補間 (lerp=0.4) と前フレーム値の保持
-- [ ] テスト: pupil 値に対して LeftEye/RightEye の回転が変化すること
+- [x] `solver::face::RiggedFace` に `pupil` フィールドが存在することを確認 (なければ追加) <!-- 2026-03-10 13:02 JST -->
+- [x] `apply_rig_to_model()` で `LookAt::apply(pupil)` を呼び出し、LeftEye / RightEye ボーンに反映 <!-- 2026-03-10 13:02 JST -->
+- [x] 瞳孔の lerp 補間 (lerp=0.4) と前フレーム値の保持 <!-- 2026-03-10 13:02 JST -->
+- [x] テスト: pupil 値に対して LeftEye/RightEye の回転が変化すること <!-- 2026-03-10 13:02 JST -->
 
 ### Step 8.6: Face blink 補間 + stabilizeBlink
 
@@ -1357,11 +1357,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 >
 > リファレンス: [script.js rigFace() 内の eye 処理](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js)
 
-- [ ] 前フレームの BlinkL/BlinkR 値を保持する仕組みを追加
-- [ ] `apply_rig_to_model()` で `lerp(clamp(1.0 - eye.l, 0, 1), prev_blink, 0.5)` を適用
-- [ ] `solver::face::stabilize_blink()` を blink 値設定前に呼び出す
-- [ ] 左右同値でのまばたき (testbed は BlinkL = BlinkR = eye.l)
-- [ ] テスト: stabilizeBlink が頭部Y回転に基づいて blink 値を補正すること
+- [x] 前フレームの BlinkL/BlinkR 値を保持する仕組みを追加 <!-- 2026-03-10 13:02 JST -->
+- [x] `apply_rig_to_model()` で `lerp(clamp(1.0 - eye.l, 0, 1), prev_blink, 0.5)` を適用 <!-- 2026-03-10 13:02 JST -->
+- [x] `solver::face::stabilize_blink()` を blink 値設定前に呼び出す <!-- 2026-03-10 13:02 JST -->
+- [x] 左右同値でのまばたき (testbed は BlinkL = BlinkR = eye.l) <!-- 2026-03-10 13:02 JST -->
+- [x] テスト: stabilizeBlink が頭部Y回転に基づいて blink 値を補正すること <!-- 2026-03-10 13:02 JST -->
 
 ### Step 8.7: Head → Neck 適用先の修正
 
@@ -1371,9 +1371,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 >
 > リファレンス: [script.js rigFace() 内の Neck](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js)
 
-- [ ] `apply_rig_to_model()` で `HumanoidBoneName::Head` → `HumanoidBoneName::Neck` に変更
-- [ ] dampener=0.7 を適用
-- [ ] テスト: face solver の head rotation が Neck ボーンに反映されること
+- [x] `apply_rig_to_model()` で `HumanoidBoneName::Head` → `HumanoidBoneName::Neck` に変更 <!-- 2026-03-10 13:02 JST -->
+- [x] dampener=0.7 を適用 <!-- 2026-03-10 13:02 JST -->
+- [x] テスト: face solver の head rotation が Neck ボーンに反映されること <!-- 2026-03-10 13:02 JST -->
 
 ### Step 8.8: Face / Pose 並列推論
 

@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use nokhwa::pixel_format::RgbFormat;
-use solver::types::{EulerAngles, RiggedHand, Side, VideoInfo};
+use solver::types::{EulerAngles, EyeValues, RiggedHand, Side, VideoInfo};
 use vrm::bone::HumanoidBoneName;
 
 use crate::rig_config::BoneConfig;
@@ -160,26 +160,35 @@ fn apply_rig_to_model(state: &mut AppState) {
 
     // Apply face rig
     if let Some(face) = &state.rig.face {
-        // Head rotation (using neck config: dampener=0.7, lerp=0.3)
+        // Head rotation applied to Neck bone (matching testbed: rigRotation("Neck", ...))
         let head_quat = face.head.to_quat();
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            vrm::bone::HumanoidBoneName::Head,
+            vrm::bone::HumanoidBoneName::Neck,
             head_quat,
             cfg.neck.dampener,
             cfg.neck.lerp_amount,
         );
 
-        // Eye blink (inverted: 1.0 - value)
-        let eye_l = 1.0 - face.eye.l;
-        let eye_r = 1.0 - face.eye.r;
+        // Eye blink: invert, clamp, lerp with previous frame, then stabilize
+        let eye_l_raw = (1.0 - face.eye.l).clamp(0.0, 1.0);
+        let eye_r_raw = (1.0 - face.eye.r).clamp(0.0, 1.0);
+        let eye_l = state.rig.prev_blink_l + (eye_l_raw - state.rig.prev_blink_l) * cfg.eye_blink;
+        let eye_r = state.rig.prev_blink_r + (eye_r_raw - state.rig.prev_blink_r) * cfg.eye_blink;
+        let stabilized = solver::face::stabilize_blink(
+            &EyeValues { l: eye_l, r: eye_r },
+            face.head.y,
+        );
+        state.rig.prev_blink_l = stabilized.l;
+        state.rig.prev_blink_r = stabilized.r;
+        // Testbed uses same value (stabilized.l) for both BlinkL and BlinkR
         state
             .vrm_model
             .blend_shapes
-            .set(vrm::blendshape::BlendShapePreset::BlinkL, eye_l);
+            .set(vrm::blendshape::BlendShapePreset::BlinkL, stabilized.l);
         state
             .vrm_model
             .blend_shapes
-            .set(vrm::blendshape::BlendShapePreset::BlinkR, eye_r);
+            .set(vrm::blendshape::BlendShapePreset::BlinkR, stabilized.l);
 
         // Mouth shapes
         state
@@ -202,6 +211,37 @@ fn apply_rig_to_model(state: &mut AppState) {
             .vrm_model
             .blend_shapes
             .set(vrm::blendshape::BlendShapePreset::O, face.mouth.o);
+
+        // Pupil tracking with lerp interpolation
+        let pupil_lerp = cfg.pupil;
+        let prev = state.rig.prev_look_target;
+        let target = face.pupil;
+        let interpolated = glam::Vec2::new(
+            prev.x + (target.x - prev.x) * pupil_lerp,
+            prev.y + (target.y - prev.y) * pupil_lerp,
+        );
+        state.rig.prev_look_target = interpolated;
+
+        // Apply via LookAt if available
+        if let Some(look_at) = &state.vrm_model.look_at {
+            let euler = vrm::look_at::EulerAngles {
+                yaw: interpolated.x * 30.0,
+                pitch: interpolated.y * 30.0,
+            };
+            let eye_quat = look_at.apply(&euler);
+            state.vrm_model.humanoid_bones.set_rotation_interpolated(
+                vrm::bone::HumanoidBoneName::LeftEye,
+                eye_quat,
+                1.0,
+                0.3,
+            );
+            state.vrm_model.humanoid_bones.set_rotation_interpolated(
+                vrm::bone::HumanoidBoneName::RightEye,
+                eye_quat,
+                1.0,
+                0.3,
+            );
+        }
     }
 
     // Apply pose rig
@@ -560,5 +600,36 @@ mod tests {
         assert!((combined.x - 0.5).abs() < 1e-6);
         assert!((combined.y - 0.6).abs() < 1e-6);
         assert!((combined.z - 1.2).abs() < 1e-6);
+    }
+
+    /// Verify blink values are interpolated (lerped) rather than directly assigned.
+    #[test]
+    fn blink_values_are_interpolated() {
+        let eye_blink_factor = 0.5; // default RigConfig.eye_blink
+
+        // Simulate: previous blink was 0.0, new raw value is 1.0
+        let prev = 0.0_f32;
+        let raw = 1.0_f32;
+        let interpolated = prev + (raw - prev) * eye_blink_factor;
+
+        // With factor 0.5, result should be 0.5 (halfway), NOT 1.0 (direct)
+        assert!(
+            (interpolated - 0.5).abs() < 1e-6,
+            "blink should be interpolated to 0.5, got {}",
+            interpolated
+        );
+        assert!(
+            (interpolated - raw).abs() > 0.1,
+            "interpolated value should differ from raw value"
+        );
+
+        // Second frame: previous is now 0.5, new raw still 1.0
+        let prev2 = interpolated;
+        let interpolated2 = prev2 + (raw - prev2) * eye_blink_factor;
+        assert!(
+            (interpolated2 - 0.75).abs() < 1e-6,
+            "second frame should converge to 0.75, got {}",
+            interpolated2
+        );
     }
 }
