@@ -45,7 +45,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/ort-build
-          key: ort-musl-static-v1.20.1-alpine321-v10
+          key: ort-musl-static-v1.20.1-alpine321-v11
 
       - name: Build ONNX Runtime from source (static, musl)
         if: steps.ort-cache.outputs.cache-hit != 'true'
@@ -103,38 +103,46 @@ jobs:
           mkdir -p /tmp/ort-build
           cp -a build/Linux/* /tmp/ort-build/
 
-      - name: Collect ORT static libraries into flat directory
+      - name: Build missing re2 static library
+        if: steps.ort-cache.outputs.cache-hit != 'true'
         run: |
-          # ort-sys expects all dependency .a files to be discoverable via _deps/<name>-build/
-          # but some deps (e.g., re2) don't produce .a in _deps/re2-build/.
-          # Find all .a files from the entire ORT build and create symlinks in the expected locations.
+          # ORT v1.20.1 FetchContent fetches re2 source but doesn't produce libre2.a
+          # on Alpine musl. Build it manually from the fetched source.
           ORT_DIR=/tmp/ort-build/Release
-          ORT_SRC_BUILD=/tmp/ort-src/build/Linux/Release
+          RE2_SRC_DIR="$ORT_DIR/_deps/re2-src"
 
-          # Find libre2.a from the full ORT source build tree (may be outside cached _deps)
-          echo "=== Searching for libre2.a ==="
-          find /tmp/ort-src/build -name "libre2.a" 2>/dev/null || true
-          find /tmp/ort-build -name "libre2.a" 2>/dev/null || true
+          if [ ! -f "$ORT_DIR/_deps/re2-build/libre2.a" ] && [ -d "$RE2_SRC_DIR" ]; then
+            echo "Building re2 from ORT-fetched source at $RE2_SRC_DIR"
+            # re2 requires abseil — try installing from ORT's existing build first
+            ABSL_BUILD="$ORT_DIR/_deps/abseil_cpp-build"
+            ABSL_SRC="$ORT_DIR/_deps/abseil_cpp-src"
+            echo "Installing abseil to /tmp/absl-install"
+            if ! cmake --install "$ABSL_BUILD" --prefix /tmp/absl-install 2>/dev/null; then
+              echo "cmake --install failed, rebuilding abseil from source"
+              cmake -B /tmp/absl-build -S "$ABSL_SRC" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+                -DCMAKE_INSTALL_PREFIX=/tmp/absl-install \
+                -DABSL_BUILD_TESTING=OFF \
+                -DBUILD_SHARED_LIBS=OFF
+              cmake --build /tmp/absl-build -j $(nproc)
+              cmake --install /tmp/absl-build --prefix /tmp/absl-install
+            fi
 
-          # If libre2.a exists in the source build but not in the cache, copy it
-          RE2_SRC=$(find /tmp/ort-src/build -name "libre2.a" 2>/dev/null | head -1)
-          if [ -n "$RE2_SRC" ]; then
-            echo "Found libre2.a at: $RE2_SRC"
+            cmake -B /tmp/re2-standalone-build -S "$RE2_SRC_DIR" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+              -DRE2_BUILD_TESTING=OFF \
+              -DBUILD_SHARED_LIBS=OFF \
+              -DCMAKE_PREFIX_PATH=/tmp/absl-install
+            cmake --build /tmp/re2-standalone-build --config Release -j $(nproc)
             mkdir -p "$ORT_DIR/_deps/re2-build"
-            cp "$RE2_SRC" "$ORT_DIR/_deps/re2-build/libre2.a"
+            cp /tmp/re2-standalone-build/libre2.a "$ORT_DIR/_deps/re2-build/libre2.a"
+            echo "Successfully built and installed libre2.a"
+          elif [ -f "$ORT_DIR/_deps/re2-build/libre2.a" ]; then
+            echo "libre2.a already exists"
           else
-            echo "libre2.a not found in ORT source build - searching for alternative"
-            # re2 may be built as part of abseil or protobuf in newer ORT versions
-            # Try to find it anywhere
-            find /tmp -name "libre2*" 2>/dev/null || echo "No libre2 found anywhere"
-          fi
-
-          # Also check for nsync
-          NSYNC_SRC=$(find /tmp/ort-src/build -name "libnsync_cpp.a" 2>/dev/null | head -1)
-          if [ -n "$NSYNC_SRC" ] && [ ! -f "$ORT_DIR/_deps/google_nsync-build/libnsync_cpp.a" ]; then
-            echo "Copying libnsync_cpp.a"
-            mkdir -p "$ORT_DIR/_deps/google_nsync-build"
-            cp "$NSYNC_SRC" "$ORT_DIR/_deps/google_nsync-build/libnsync_cpp.a"
+            echo "WARNING: re2 source not found at $RE2_SRC_DIR"
           fi
 
           echo "=== Final _deps .a files ==="
