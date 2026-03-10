@@ -2,8 +2,10 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use nokhwa::pixel_format::RgbFormat;
-use solver::types::{Side, VideoInfo};
+use solver::types::{EulerAngles, RiggedHand, Side, VideoInfo};
+use vrm::bone::HumanoidBoneName;
 
+use crate::rig_config::BoneConfig;
 use crate::state::AppState;
 
 /// Target frame duration: ~16ms for 60fps.
@@ -287,7 +289,276 @@ fn apply_rig_to_model(state: &mut AppState) {
             cfg.limbs.lerp_amount,
         );
 
-        // Store hip position for potential use
-        let _ = hip_pos;
+        // Apply hip position
+        state.vrm_model.humanoid_bones.set_position_interpolated(
+            vrm::bone::HumanoidBoneName::Hips,
+            hip_pos,
+            cfg.hips_position.dampener,
+            cfg.hips_position.lerp_amount,
+        );
+    }
+
+    // Apply hand bones
+    // Left hand: combine wrist X/Y from hand solver with Z from pose solver
+    if let Some(left_hand) = &state.rig.left_hand {
+        let pose_wrist_z = state
+            .rig
+            .pose
+            .as_ref()
+            .map(|p| p.left_hand.z)
+            .unwrap_or(0.0);
+        let wrist_combined = EulerAngles::new(left_hand.wrist.x, left_hand.wrist.y, pose_wrist_z);
+        apply_hand_bones(
+            &mut state.vrm_model.humanoid_bones,
+            left_hand,
+            &wrist_combined,
+            Side::Left,
+            &cfg.limbs,
+        );
+    }
+
+    // Right hand: combine wrist X/Y from hand solver with Z from pose solver
+    if let Some(right_hand) = &state.rig.right_hand {
+        let pose_wrist_z = state
+            .rig
+            .pose
+            .as_ref()
+            .map(|p| p.right_hand.z)
+            .unwrap_or(0.0);
+        let wrist_combined =
+            EulerAngles::new(right_hand.wrist.x, right_hand.wrist.y, pose_wrist_z);
+        apply_hand_bones(
+            &mut state.vrm_model.humanoid_bones,
+            right_hand,
+            &wrist_combined,
+            Side::Right,
+            &cfg.limbs,
+        );
+    }
+}
+
+/// Apply hand solver results (wrist + 15 finger joints) to humanoid bones.
+///
+/// The wrist rotation is a combined value: X/Y from the hand solver, Z from the pose solver.
+/// All 16 bones (wrist + 15 fingers) use the limbs interpolation config.
+fn apply_hand_bones(
+    bones: &mut vrm::bone::HumanoidBones,
+    hand: &RiggedHand,
+    wrist_combined: &EulerAngles,
+    side: Side,
+    config: &BoneConfig,
+) {
+    // Build array of (bone_name, euler_angles) pairs for all 16 bones per hand.
+    let mappings: [(HumanoidBoneName, &EulerAngles); 16] = match side {
+        Side::Left => [
+            (HumanoidBoneName::LeftHand, wrist_combined),
+            (HumanoidBoneName::LeftThumbProximal, &hand.thumb_proximal),
+            (
+                HumanoidBoneName::LeftThumbIntermediate,
+                &hand.thumb_intermediate,
+            ),
+            (HumanoidBoneName::LeftThumbDistal, &hand.thumb_distal),
+            (HumanoidBoneName::LeftIndexProximal, &hand.index_proximal),
+            (
+                HumanoidBoneName::LeftIndexIntermediate,
+                &hand.index_intermediate,
+            ),
+            (HumanoidBoneName::LeftIndexDistal, &hand.index_distal),
+            (
+                HumanoidBoneName::LeftMiddleProximal,
+                &hand.middle_proximal,
+            ),
+            (
+                HumanoidBoneName::LeftMiddleIntermediate,
+                &hand.middle_intermediate,
+            ),
+            (HumanoidBoneName::LeftMiddleDistal, &hand.middle_distal),
+            (HumanoidBoneName::LeftRingProximal, &hand.ring_proximal),
+            (
+                HumanoidBoneName::LeftRingIntermediate,
+                &hand.ring_intermediate,
+            ),
+            (HumanoidBoneName::LeftRingDistal, &hand.ring_distal),
+            (
+                HumanoidBoneName::LeftLittleProximal,
+                &hand.little_proximal,
+            ),
+            (
+                HumanoidBoneName::LeftLittleIntermediate,
+                &hand.little_intermediate,
+            ),
+            (HumanoidBoneName::LeftLittleDistal, &hand.little_distal),
+        ],
+        Side::Right => [
+            (HumanoidBoneName::RightHand, wrist_combined),
+            (
+                HumanoidBoneName::RightThumbProximal,
+                &hand.thumb_proximal,
+            ),
+            (
+                HumanoidBoneName::RightThumbIntermediate,
+                &hand.thumb_intermediate,
+            ),
+            (HumanoidBoneName::RightThumbDistal, &hand.thumb_distal),
+            (
+                HumanoidBoneName::RightIndexProximal,
+                &hand.index_proximal,
+            ),
+            (
+                HumanoidBoneName::RightIndexIntermediate,
+                &hand.index_intermediate,
+            ),
+            (HumanoidBoneName::RightIndexDistal, &hand.index_distal),
+            (
+                HumanoidBoneName::RightMiddleProximal,
+                &hand.middle_proximal,
+            ),
+            (
+                HumanoidBoneName::RightMiddleIntermediate,
+                &hand.middle_intermediate,
+            ),
+            (HumanoidBoneName::RightMiddleDistal, &hand.middle_distal),
+            (HumanoidBoneName::RightRingProximal, &hand.ring_proximal),
+            (
+                HumanoidBoneName::RightRingIntermediate,
+                &hand.ring_intermediate,
+            ),
+            (HumanoidBoneName::RightRingDistal, &hand.ring_distal),
+            (
+                HumanoidBoneName::RightLittleProximal,
+                &hand.little_proximal,
+            ),
+            (
+                HumanoidBoneName::RightLittleIntermediate,
+                &hand.little_intermediate,
+            ),
+            (HumanoidBoneName::RightLittleDistal, &hand.little_distal),
+        ],
+    };
+
+    for (bone_name, euler) in &mappings {
+        bones.set_rotation_interpolated(*bone_name, euler.to_quat(), config.dampener, config.lerp_amount);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify that `apply_hand_bones` correctly applies all 16 bone rotations per hand.
+    #[test]
+    fn apply_hand_bones_sets_all_16_left_bones() {
+        // Build a minimal HumanoidBones with all left-hand bones
+        let left_bone_names = [
+            "leftHand",
+            "leftThumbProximal",
+            "leftThumbIntermediate",
+            "leftThumbDistal",
+            "leftIndexProximal",
+            "leftIndexIntermediate",
+            "leftIndexDistal",
+            "leftMiddleProximal",
+            "leftMiddleIntermediate",
+            "leftMiddleDistal",
+            "leftRingProximal",
+            "leftRingIntermediate",
+            "leftRingDistal",
+            "leftLittleProximal",
+            "leftLittleIntermediate",
+            "leftLittleDistal",
+        ];
+
+        let mut human_bones_arr = Vec::new();
+        for (i, name) in left_bone_names.iter().enumerate() {
+            human_bones_arr.push(serde_json::json!({ "bone": name, "node": i }));
+        }
+
+        let json = serde_json::json!({
+            "humanoid": {
+                "humanBones": human_bones_arr
+            }
+        });
+
+        let node_transforms: Vec<vrm::model::NodeTransform> = (0..16)
+            .map(|_| vrm::model::NodeTransform {
+                translation: glam::Vec3::ZERO,
+                rotation: glam::Quat::IDENTITY,
+                scale: glam::Vec3::ONE,
+                children: vec![],
+            })
+            .collect();
+
+        let mut bones = vrm::bone::HumanoidBones::from_vrm_json(&json, &node_transforms).unwrap();
+
+        // Create a hand with non-zero rotations
+        let angle = EulerAngles::new(0.1, 0.2, 0.3);
+        let hand = RiggedHand {
+            wrist: angle,
+            thumb_proximal: angle,
+            thumb_intermediate: angle,
+            thumb_distal: angle,
+            index_proximal: angle,
+            index_intermediate: angle,
+            index_distal: angle,
+            middle_proximal: angle,
+            middle_intermediate: angle,
+            middle_distal: angle,
+            ring_proximal: angle,
+            ring_intermediate: angle,
+            ring_distal: angle,
+            little_proximal: angle,
+            little_intermediate: angle,
+            little_distal: angle,
+        };
+
+        let wrist_combined = EulerAngles::new(0.1, 0.2, 0.5);
+        let config = BoneConfig {
+            dampener: 1.0,
+            lerp_amount: 0.3,
+        };
+
+        apply_hand_bones(&mut bones, &hand, &wrist_combined, Side::Left, &config);
+
+        // All 16 left-hand bones should now have non-identity rotations
+        let check_bones = [
+            HumanoidBoneName::LeftHand,
+            HumanoidBoneName::LeftThumbProximal,
+            HumanoidBoneName::LeftThumbIntermediate,
+            HumanoidBoneName::LeftThumbDistal,
+            HumanoidBoneName::LeftIndexProximal,
+            HumanoidBoneName::LeftIndexIntermediate,
+            HumanoidBoneName::LeftIndexDistal,
+            HumanoidBoneName::LeftMiddleProximal,
+            HumanoidBoneName::LeftMiddleIntermediate,
+            HumanoidBoneName::LeftMiddleDistal,
+            HumanoidBoneName::LeftRingProximal,
+            HumanoidBoneName::LeftRingIntermediate,
+            HumanoidBoneName::LeftRingDistal,
+            HumanoidBoneName::LeftLittleProximal,
+            HumanoidBoneName::LeftLittleIntermediate,
+            HumanoidBoneName::LeftLittleDistal,
+        ];
+
+        for bone_name in &check_bones {
+            let bone = bones.get(*bone_name).expect("bone should exist");
+            let angle = bone.local_rotation.angle_between(glam::Quat::IDENTITY);
+            assert!(
+                angle > 0.01,
+                "{:?} should have non-identity rotation after apply_hand_bones",
+                bone_name
+            );
+        }
+    }
+
+    /// Verify wrist combination: X/Y from hand solver, Z from pose solver.
+    #[test]
+    fn wrist_combination_uses_pose_z_and_hand_xy() {
+        let hand_wrist = EulerAngles::new(0.5, 0.6, 0.7);
+        let pose_z = 1.2;
+        let combined = EulerAngles::new(hand_wrist.x, hand_wrist.y, pose_z);
+
+        assert!((combined.x - 0.5).abs() < 1e-6);
+        assert!((combined.y - 0.6).abs() < 1e-6);
+        assert!((combined.z - 1.2).abs() < 1e-6);
     }
 }

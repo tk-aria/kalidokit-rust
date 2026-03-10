@@ -148,6 +148,7 @@ pub struct Bone {
 pub struct HumanoidBones {
     bones: HashMap<HumanoidBoneName, Bone>,
     prev_rotations: HashMap<HumanoidBoneName, Quat>,
+    prev_positions: HashMap<HumanoidBoneName, Vec3>,
 }
 
 impl HumanoidBones {
@@ -197,6 +198,7 @@ impl HumanoidBones {
         Ok(Self {
             bones,
             prev_rotations: HashMap::new(),
+            prev_positions: HashMap::new(),
         })
     }
 
@@ -207,6 +209,36 @@ impl HumanoidBones {
     pub fn set_rotation(&mut self, name: HumanoidBoneName, rotation: Quat) {
         if let Some(bone) = self.bones.get_mut(&name) {
             bone.local_rotation = rotation;
+        }
+    }
+
+    pub fn set_position(&mut self, name: HumanoidBoneName, position: Vec3) {
+        if let Some(bone) = self.bones.get_mut(&name) {
+            bone.local_position = position;
+        }
+    }
+
+    /// Set position with dampener and lerp interpolation (matching KalidoKit rigPosition).
+    ///
+    /// 1. Apply dampener: scale `target` by `dampener`
+    /// 2. Interpolate from previous position toward dampened target by `lerp_amount`
+    pub fn set_position_interpolated(
+        &mut self,
+        name: HumanoidBoneName,
+        target: Vec3,
+        dampener: f32,
+        lerp_amount: f32,
+    ) {
+        let dampened = target * dampener;
+        let prev = self
+            .prev_positions
+            .get(&name)
+            .copied()
+            .unwrap_or(Vec3::ZERO);
+        let interpolated = prev.lerp(dampened, lerp_amount);
+        self.prev_positions.insert(name, interpolated);
+        if let Some(bone) = self.bones.get_mut(&name) {
+            bone.local_position = interpolated;
         }
     }
 
@@ -241,17 +273,23 @@ impl HumanoidBones {
     ) -> Vec<Mat4> {
         let mut world_matrices = vec![Mat4::IDENTITY; node_transforms.len()];
 
-        // Build bone node index lookup
+        // Build bone node index lookups
         let bone_rotations: HashMap<usize, Quat> = self
             .bones
             .values()
             .map(|b| (b.node_index, b.local_rotation))
             .collect();
+        let bone_positions: HashMap<usize, Vec3> = self
+            .bones
+            .values()
+            .map(|b| (b.node_index, b.local_position))
+            .collect();
 
         // Process nodes in order (parent before children)
         for (i, nt) in node_transforms.iter().enumerate() {
             let rotation = bone_rotations.get(&i).copied().unwrap_or(nt.rotation);
-            let local = Mat4::from_scale_rotation_translation(nt.scale, rotation, nt.translation);
+            let translation = bone_positions.get(&i).copied().unwrap_or(nt.translation);
+            let local = Mat4::from_scale_rotation_translation(nt.scale, rotation, translation);
             // Find parent by checking which node has this index as a child
             let parent_matrix = node_transforms
                 .iter()
@@ -447,5 +485,44 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(r#"{ "humanoid": {} }"#).unwrap();
         let result = HumanoidBones::from_vrm_json(&json, &[]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn set_position_applied_in_joint_matrices() {
+        let json: serde_json::Value = serde_json::from_str(
+            r#"{
+                "humanoid": {
+                    "humanBones": [
+                        { "bone": "hips", "node": 0 }
+                    ]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let node_transforms = vec![crate::model::NodeTransform {
+            translation: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+            children: vec![],
+        }];
+
+        let mut bones = HumanoidBones::from_vrm_json(&json, &node_transforms).unwrap();
+
+        let target_pos = Vec3::new(1.0, 2.0, 3.0);
+        bones.set_position(HumanoidBoneName::Hips, target_pos);
+
+        let matrices = bones.compute_joint_matrices(&node_transforms);
+
+        // The Hips node (index 0) has no parent, so world matrix = local matrix.
+        // With IDENTITY rotation, ONE scale, the translation column should be target_pos.
+        let world = matrices[0];
+        let translation = world.col(3).truncate();
+        assert!(
+            (translation - target_pos).length() < 1e-5,
+            "Expected translation {:?}, got {:?}",
+            target_pos,
+            translation
+        );
     }
 }

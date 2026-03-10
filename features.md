@@ -1317,10 +1317,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 >
 > リファレンス: [script.js leftHandLandmarks / rightHandLandmarks ブロック](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js)
 
-- [ ] `apply_rig_to_model()` に左手ボーン適用を追加 (LeftHand, LeftThumbProximal/Intermediate/Distal, LeftIndexProximal/Intermediate/Distal, LeftMiddleProximal/Intermediate/Distal, LeftRingProximal/Intermediate/Distal, LeftLittleProximal/Intermediate/Distal)
-- [ ] `apply_rig_to_model()` に右手ボーン適用を追加 (同上、Right系)
-- [ ] Hand の回転合成: Wrist の Z 軸は `RiggedPose.left_hand.z` / `RiggedPose.right_hand.z` から、X/Y は `RiggedHand.wrist` から取得
-- [ ] テスト: RiggedHand の全フィールドが HumanoidBones に反映されること
+- [x] `apply_rig_to_model()` に左手ボーン適用を追加 (LeftHand, LeftThumbProximal/Intermediate/Distal, LeftIndexProximal/Intermediate/Distal, LeftMiddleProximal/Intermediate/Distal, LeftRingProximal/Intermediate/Distal, LeftLittleProximal/Intermediate/Distal) <!-- 2026-03-10 12:58 JST -->
+- [x] `apply_rig_to_model()` に右手ボーン適用を追加 (同上、Right系) <!-- 2026-03-10 12:58 JST -->
+- [x] Hand の回転合成: Wrist の Z 軸は `RiggedPose.left_hand.z` / `RiggedPose.right_hand.z` から、X/Y は `RiggedHand.wrist` から取得 <!-- 2026-03-10 12:58 JST -->
+- [x] テスト: RiggedHand の全フィールドが HumanoidBones に反映されること <!-- 2026-03-10 12:58 JST -->
 
 ### Step 8.4: Hip position 適用
 
@@ -1330,11 +1330,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 >
 > リファレンス: [script.js rigPosition("Hips", ...)](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js)
 
-- [ ] `HumanoidBones` に `set_position(name, Vec3)` メソッドを追加
-- [ ] `compute_joint_matrices()` で Hips ボーンの position を translation に反映
-- [ ] `apply_rig_to_model()` で `hip_pos` を `set_position(Hips, hip_pos)` に変更 (`let _ = hip_pos;` を削除)
-- [ ] Hip position にも lerp 補間を適用 (dampener=1.0, lerp=0.07)
-- [ ] テスト: set_position 後に compute_joint_matrices で Hips の translation が反映されること
+- [x] `HumanoidBones` に `set_position(name, Vec3)` メソッドを追加 <!-- 2026-03-10 12:58 JST -->
+- [x] `compute_joint_matrices()` で Hips ボーンの position を translation に反映 <!-- 2026-03-10 12:58 JST -->
+- [x] `apply_rig_to_model()` で `hip_pos` を `set_position(Hips, hip_pos)` に変更 (`let _ = hip_pos;` を削除) <!-- 2026-03-10 12:58 JST -->
+- [x] Hip position にも lerp 補間を適用 (dampener=1.0, lerp=0.07) <!-- 2026-03-10 12:58 JST -->
+- [x] テスト: set_position 後に compute_joint_matrices で Hips の translation が反映されること <!-- 2026-03-10 12:58 JST -->
 
 ### Step 8.5: Pupil (瞳孔) + LookAt 適用
 
