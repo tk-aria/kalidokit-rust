@@ -105,8 +105,7 @@ jobs:
 
       - name: Build release binary
         env:
-          ORT_LIB_PATH: /tmp/ort-build
-          ORT_LIB_PROFILE: Release
+          ORT_LIB_PATH: /tmp/ort-build/Release
           HOME: /root
         run: |
           . "$HOME/.cargo/env"
