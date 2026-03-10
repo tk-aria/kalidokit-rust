@@ -1,7 +1,6 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use nokhwa::pixel_format::RgbFormat;
 use solver::types::{EulerAngles, EyeValues, RiggedHand, Side, VideoInfo};
 use vrm::bone::HumanoidBoneName;
 
@@ -117,34 +116,13 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
 }
 
 /// Capture a frame from the webcam if available, otherwise return a dummy black image.
-fn capture_frame(camera: &mut Option<nokhwa::Camera>) -> (image::DynamicImage, VideoInfo) {
+///
+/// Currently always returns a dummy frame because nokhwa was removed for musl compatibility.
+fn capture_frame(_camera: &mut Option<()>) -> (image::DynamicImage, VideoInfo) {
     const FALLBACK_W: u32 = 640;
     const FALLBACK_H: u32 = 480;
 
-    if let Some(cam) = camera.as_mut() {
-        match cam.frame() {
-            Ok(buffer) => {
-                let res = buffer.resolution();
-                let width = res.width_x;
-                let height = res.height_y;
-                match buffer.decode_image::<RgbFormat>() {
-                    Ok(rgb_image) => {
-                        let frame = image::DynamicImage::ImageRgb8(rgb_image);
-                        let video = VideoInfo { width, height };
-                        return (frame, video);
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to decode webcam frame: {e}");
-                    }
-                }
-            }
-            Err(e) => {
-                log::warn!("Failed to capture webcam frame: {e}");
-            }
-        }
-    }
-
-    // Fallback: dummy black image
+    // Webcam capture disabled (nokhwa removed); always return dummy black image
     let frame = image::DynamicImage::new_rgb8(FALLBACK_W, FALLBACK_H);
     let video = VideoInfo {
         width: FALLBACK_W,
