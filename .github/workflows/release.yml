@@ -103,12 +103,26 @@ jobs:
           mkdir -p /tmp/ort-build
           cp -a build/Linux/* /tmp/ort-build/
 
+      - name: Debug ORT build structure
+        run: |
+          echo "=== Top-level ==="
+          ls -la /tmp/ort-build/Release/ | head -30
+          echo "=== _deps directory ==="
+          ls /tmp/ort-build/Release/_deps/ 2>/dev/null | head -40
+          echo "=== re2-build ==="
+          find /tmp/ort-build/Release/_deps/re2-build -name "libre2*" 2>/dev/null
+          echo "=== onnx-build ==="
+          find /tmp/ort-build/Release/_deps/onnx-build -name "libonnx*" 2>/dev/null
+          echo "=== All .a files in _deps (first 50) ==="
+          find /tmp/ort-build/Release/_deps -name "*.a" 2>/dev/null | head -50
+
       - name: Build release binary
         env:
           ORT_LIB_PATH: /tmp/ort-build/Release
           HOME: /root
         run: |
           . "$HOME/.cargo/env"
+          cargo build -vv --release --target x86_64-unknown-linux-musl 2>&1 | grep -E "cargo:rustc-link|ORT|ort-sys|search=native" | head -80 || true
           cargo build --release --target x86_64-unknown-linux-musl
 
       - name: Package
