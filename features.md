@@ -1266,3 +1266,143 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   - 注: `docker build` は docker 未インストールのため実行不可
   - 注: GitHub Actions CI はプッシュ後に自動実行
   - 注: E2E動作確認はヘッドレス環境のため手動確認不可
+
+---
+
+## Phase 8: トラッキングパイプライン改善 & リグ適用完成
+
+**目的**: MediaPipe Holistic のパイプライン最適化を再現し、kalidokit-testbed (JS版) と同等のリグ適用を実現する
+
+**リファレンス**:
+- [kalidokit-testbed vrm/script.js](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js) — ボーン適用・dampener・補間パラメータの正解値
+- [MediaPipe Holistic Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/holistic_landmarker) — ROI クロップ・パイプライン最適化のリファレンス
+- [google-ai-edge/mediapipe (GitHub)](https://github.com/google-ai-edge/mediapipe) — Holistic Graph の内部処理詳細
+- [KalidoKit (npm)](https://www.npmjs.com/package/kalidokit) — オリジナル JS ソルバーのリファレンス
+
+### Step 8.1: Pose → Hand ROI クロップ (精度向上)
+
+**ファイル**: `crates/tracker/src/holistic.rs`, `crates/tracker/src/hand.rs`
+
+> MediaPipe Holistic は Pose の手首ランドマーク (15:左手首, 16:右手首) から手の領域を切り出し、Hand モデルに渡す。現在は全フレームを Hand モデルに渡しているため精度が低い。
+
+- [x] Pose ランドマーク (index 15, 16) から手の ROI (Region of Interest) を算出する関数を追加 <!-- 2026-03-10 12:54 JST -->
+- [x] ROI に基づいてフレームをクロップし、`HandDetector::detect()` に渡すよう `HolisticTracker::detect()` を修正 <!-- 2026-03-10 12:54 JST -->
+- [x] ROI が取得できない場合 (Pose 未検出) は従来通り全フレームで推論するフォールバック <!-- 2026-03-10 12:54 JST -->
+- [x] テスト: ROI 算出ロジックの単体テスト (手首座標 → 正方形 ROI の中心・サイズ) <!-- 2026-03-10 12:54 JST -->
+
+### Step 8.2: slerp / dampener 補間の適用
+
+**ファイル**: `crates/app/src/update.rs`, `crates/app/src/rig_config.rs`
+
+> testbed の `rigRotation()` は全ボーンに dampener (回転量の減衰) と slerp 補間 (前フレームとの球面線形補間) を適用している。現在は `to_quat()` を直接 `set_rotation()` しており動きがガタつく。
+>
+> リファレンス: [script.js rigRotation()](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js) の dampener / lerpAmount パラメータ
+
+- [x] `HumanoidBones` に前フレームの回転を保持する仕組みを追加 (`prev_rotation: HashMap<HumanoidBoneName, Quat>`) <!-- 2026-03-10 12:54 JST -->
+- [x] `apply_rig_to_model()` で `RigConfig` の dampener / lerp_amount を使って slerp 補間を適用 <!-- 2026-03-10 12:54 JST -->
+- [x] dampener 値を testbed と完全一致させる: <!-- 2026-03-10 12:54 JST -->
+  - Neck: dampener=0.7, lerp=0.3
+  - Hips rotation: dampener=0.7, lerp=0.3
+  - Hips position: dampener=1.0, lerp=0.07
+  - Chest: dampener=0.25, lerp=0.3
+  - Spine: dampener=0.45, lerp=0.3
+  - UpperArm/LowerArm/UpperLeg/LowerLeg: dampener=1.0, lerp=0.3
+- [x] テスト: slerp 補間で前フレームと次フレームの中間値が生成されること <!-- 2026-03-10 12:54 JST -->
+
+### Step 8.3: ハンドボーン適用 (左右各16ボーン)
+
+**ファイル**: `crates/app/src/update.rs`
+
+> testbed は左右それぞれ 16 ボーン (Wrist + 5指 × 3関節) を適用。さらに Hand の Z軸は Pose solver、X/Y は Hand solver から合成している。現在は `solver::hand::solve()` を呼んでいるが `apply_rig_to_model()` に適用コードがない。
+>
+> リファレンス: [script.js leftHandLandmarks / rightHandLandmarks ブロック](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js)
+
+- [ ] `apply_rig_to_model()` に左手ボーン適用を追加 (LeftHand, LeftThumbProximal/Intermediate/Distal, LeftIndexProximal/Intermediate/Distal, LeftMiddleProximal/Intermediate/Distal, LeftRingProximal/Intermediate/Distal, LeftLittleProximal/Intermediate/Distal)
+- [ ] `apply_rig_to_model()` に右手ボーン適用を追加 (同上、Right系)
+- [ ] Hand の回転合成: Wrist の Z 軸は `RiggedPose.left_hand.z` / `RiggedPose.right_hand.z` から、X/Y は `RiggedHand.wrist` から取得
+- [ ] テスト: RiggedHand の全フィールドが HumanoidBones に反映されること
+
+### Step 8.4: Hip position 適用
+
+**ファイル**: `crates/app/src/update.rs`, `crates/vrm/src/bone.rs`
+
+> testbed は `rigPosition("Hips", ...)` で体の移動を反映している。現在は `hip_pos` を計算するが `let _ = hip_pos;` で捨てている (update.rs:258)。
+>
+> リファレンス: [script.js rigPosition("Hips", ...)](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js)
+
+- [ ] `HumanoidBones` に `set_position(name, Vec3)` メソッドを追加
+- [ ] `compute_joint_matrices()` で Hips ボーンの position を translation に反映
+- [ ] `apply_rig_to_model()` で `hip_pos` を `set_position(Hips, hip_pos)` に変更 (`let _ = hip_pos;` を削除)
+- [ ] Hip position にも lerp 補間を適用 (dampener=1.0, lerp=0.07)
+- [ ] テスト: set_position 後に compute_joint_matrices で Hips の translation が反映されること
+
+### Step 8.5: Pupil (瞳孔) + LookAt 適用
+
+**ファイル**: `crates/app/src/update.rs`, `crates/vrm/src/look_at.rs`
+
+> testbed は `riggedFace.pupil` → `currentVrm.lookAt.applyer.lookAt()` で視線を制御。Rust 側に `LookAt` モジュールは存在するが `apply_rig_to_model()` で使われていない。
+>
+> リファレンス: [script.js oldLookTarget / lookTarget / lookAt.applyer](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js)
+
+- [ ] `solver::face::RiggedFace` に `pupil` フィールドが存在することを確認 (なければ追加)
+- [ ] `apply_rig_to_model()` で `LookAt::apply(pupil)` を呼び出し、LeftEye / RightEye ボーンに反映
+- [ ] 瞳孔の lerp 補間 (lerp=0.4) と前フレーム値の保持
+- [ ] テスト: pupil 値に対して LeftEye/RightEye の回転が変化すること
+
+### Step 8.6: Face blink 補間 + stabilizeBlink
+
+**ファイル**: `crates/app/src/update.rs`
+
+> testbed は目の開閉値を前フレームの BlendShape 値と lerp(0.5) で補間し、`Kalidokit.Face.stabilizeBlink()` で頭部傾き補正を適用。現在は `1.0 - face.eye.l` を直接設定しているのみ。
+>
+> リファレンス: [script.js rigFace() 内の eye 処理](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js)
+
+- [ ] 前フレームの BlinkL/BlinkR 値を保持する仕組みを追加
+- [ ] `apply_rig_to_model()` で `lerp(clamp(1.0 - eye.l, 0, 1), prev_blink, 0.5)` を適用
+- [ ] `solver::face::stabilize_blink()` を blink 値設定前に呼び出す
+- [ ] 左右同値でのまばたき (testbed は BlinkL = BlinkR = eye.l)
+- [ ] テスト: stabilizeBlink が頭部Y回転に基づいて blink 値を補正すること
+
+### Step 8.7: Head → Neck 適用先の修正
+
+**ファイル**: `crates/app/src/update.rs`
+
+> testbed は `rigRotation("Neck", riggedFace.head, 0.7)` で頭部回転を Neck ボーンに適用。現在は Head ボーンに直接適用している。
+>
+> リファレンス: [script.js rigFace() 内の Neck](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js)
+
+- [ ] `apply_rig_to_model()` で `HumanoidBoneName::Head` → `HumanoidBoneName::Neck` に変更
+- [ ] dampener=0.7 を適用
+- [ ] テスト: face solver の head rotation が Neck ボーンに反映されること
+
+### Step 8.8: Face / Pose 並列推論
+
+**ファイル**: `crates/tracker/src/holistic.rs`
+
+> 現在 Face → Pose → Hand(L) → Hand(R) が直列実行。Face と Pose は独立しているため並列化可能。
+
+- [ ] `rayon` を tracker クレートの依存に追加
+- [ ] `HolisticTracker::detect()` で Face と Pose を `rayon::join` で並列実行
+- [ ] Hand は Pose 結果 (Step 8.1 の ROI) に依存するため Pose 完了後に実行
+- [ ] テスト: 並列化前後で同一入力に対する出力が一致すること
+
+### Step 8.9: Phase 8 検証
+
+- [ ] **テスト実装**:
+  - Step 8.1: ROI 算出の単体テスト
+  - Step 8.2: slerp 補間の単体テスト
+  - Step 8.3: ハンドボーン適用の確認
+  - Step 8.4: Hip position 適用の確認
+  - Step 8.5: LookAt 適用の確認
+  - Step 8.6: blink 補間の確認
+  - Step 8.7: Neck 適用先の確認
+  - `cargo test -p solver -p vrm -p renderer` 全パス
+  - `cargo check --workspace` 成功
+  - `cargo clippy --workspace -- -D warnings` 警告0
+  - `cargo fmt --check` 差分なし
+- [ ] **動作検証** (ヘッドレス環境のため未検証):
+  - Webカメラでリアルタイムモーションキャプチャが testbed と同等に動作すること
+  - 手の指が正しく動くこと
+  - 体の移動 (Hip position) が反映されること
+  - 目の追従・まばたきが自然なこと
+  - 動きが滑らか (ガタつきなし) であること

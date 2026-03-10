@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 /// Per-bone interpolation configuration.
 #[derive(Debug, Clone, Copy)]
 pub struct BoneConfig {

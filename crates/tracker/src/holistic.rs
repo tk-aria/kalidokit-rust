@@ -1,4 +1,10 @@
-use crate::{face_mesh::FaceMeshDetector, hand::HandDetector, pose::PoseDetector, HolisticResult};
+use crate::{
+    face_mesh::FaceMeshDetector,
+    hand::HandDetector,
+    pose::PoseDetector,
+    preprocess::{calc_hand_roi, crop_image},
+    HolisticResult,
+};
 use image::DynamicImage;
 
 /// Combined inference pipeline for face, pose, and hand tracking.
@@ -35,10 +41,40 @@ impl HolisticTracker {
     pub fn detect(&mut self, frame: &DynamicImage) -> anyhow::Result<HolisticResult> {
         let face_landmarks = self.face_detector.detect(frame).unwrap_or(None);
         let (pose_3d, pose_2d) = self.pose_detector.detect(frame).unwrap_or((None, None));
-        let left_hand = self.left_hand_detector.detect(frame, true).unwrap_or(None);
+
+        let img_w = frame.width();
+        let img_h = frame.height();
+
+        // Use pose wrist landmarks to crop hand ROIs for better accuracy.
+        // Pose landmark index 15 = left wrist, 16 = right wrist.
+        let (left_frame, right_frame) = match &pose_2d {
+            Some(landmarks) if landmarks.len() > 16 => {
+                let left_wrist = landmarks[15];
+                let right_wrist = landmarks[16];
+                let (lx, ly, lw, lh) = calc_hand_roi(left_wrist, img_w, img_h);
+                let (rx, ry, rw, rh) = calc_hand_roi(right_wrist, img_w, img_h);
+                let left_crop = if lw > 0 && lh > 0 {
+                    crop_image(frame, lx, ly, lw, lh)
+                } else {
+                    frame.clone()
+                };
+                let right_crop = if rw > 0 && rh > 0 {
+                    crop_image(frame, rx, ry, rw, rh)
+                } else {
+                    frame.clone()
+                };
+                (left_crop, right_crop)
+            }
+            _ => (frame.clone(), frame.clone()),
+        };
+
+        let left_hand = self
+            .left_hand_detector
+            .detect(&left_frame, true)
+            .unwrap_or(None);
         let right_hand = self
             .right_hand_detector
-            .detect(frame, false)
+            .detect(&right_frame, false)
             .unwrap_or(None);
 
         Ok(HolisticResult {

@@ -154,14 +154,18 @@ fn capture_frame(camera: &mut Option<nokhwa::Camera>) -> (image::DynamicImage, V
 
 /// Apply solver results to VRM model bones and blend shapes.
 fn apply_rig_to_model(state: &mut AppState) {
+    let cfg = &state.rig_config;
+
     // Apply face rig
     if let Some(face) = &state.rig.face {
-        // Head rotation
+        // Head rotation (using neck config: dampener=0.7, lerp=0.3)
         let head_quat = face.head.to_quat();
-        state
-            .vrm_model
-            .humanoid_bones
-            .set_rotation(vrm::bone::HumanoidBoneName::Head, head_quat);
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
+            vrm::bone::HumanoidBoneName::Head,
+            head_quat,
+            cfg.neck.dampener,
+            cfg.neck.lerp_amount,
+        );
 
         // Eye blink (inverted: 1.0 - value)
         let eye_l = 1.0 - face.eye.l;
@@ -206,52 +210,81 @@ fn apply_rig_to_model(state: &mut AppState) {
             pose.hips.position.y + 1.0,
             -pose.hips.position.z,
         );
-        state.vrm_model.humanoid_bones.set_rotation(
+
+        // Hips rotation
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::Hips,
             pose.hips.rotation.to_quat(),
+            cfg.hips_rotation.dampener,
+            cfg.hips_rotation.lerp_amount,
         );
 
-        state
-            .vrm_model
-            .humanoid_bones
-            .set_rotation(vrm::bone::HumanoidBoneName::Spine, pose.spine.to_quat());
-        state
-            .vrm_model
-            .humanoid_bones
-            .set_rotation(vrm::bone::HumanoidBoneName::Chest, pose.chest.to_quat());
-        state.vrm_model.humanoid_bones.set_rotation(
+        // Spine
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
+            vrm::bone::HumanoidBoneName::Spine,
+            pose.spine.to_quat(),
+            cfg.spine.dampener,
+            cfg.spine.lerp_amount,
+        );
+
+        // Chest
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
+            vrm::bone::HumanoidBoneName::Chest,
+            pose.chest.to_quat(),
+            cfg.chest.dampener,
+            cfg.chest.lerp_amount,
+        );
+
+        // Arms (limbs config)
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::RightUpperArm,
             pose.right_upper_arm.to_quat(),
+            cfg.limbs.dampener,
+            cfg.limbs.lerp_amount,
         );
-        state.vrm_model.humanoid_bones.set_rotation(
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::RightLowerArm,
             pose.right_lower_arm.to_quat(),
+            cfg.limbs.dampener,
+            cfg.limbs.lerp_amount,
         );
-        state.vrm_model.humanoid_bones.set_rotation(
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::LeftUpperArm,
             pose.left_upper_arm.to_quat(),
+            cfg.limbs.dampener,
+            cfg.limbs.lerp_amount,
         );
-        state.vrm_model.humanoid_bones.set_rotation(
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::LeftLowerArm,
             pose.left_lower_arm.to_quat(),
+            cfg.limbs.dampener,
+            cfg.limbs.lerp_amount,
         );
 
-        // Legs
-        state.vrm_model.humanoid_bones.set_rotation(
+        // Legs (limbs config)
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::RightUpperLeg,
             pose.right_upper_leg.to_quat(),
+            cfg.limbs.dampener,
+            cfg.limbs.lerp_amount,
         );
-        state.vrm_model.humanoid_bones.set_rotation(
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::RightLowerLeg,
             pose.right_lower_leg.to_quat(),
+            cfg.limbs.dampener,
+            cfg.limbs.lerp_amount,
         );
-        state.vrm_model.humanoid_bones.set_rotation(
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::LeftUpperLeg,
             pose.left_upper_leg.to_quat(),
+            cfg.limbs.dampener,
+            cfg.limbs.lerp_amount,
         );
-        state.vrm_model.humanoid_bones.set_rotation(
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::LeftLowerLeg,
             pose.left_lower_leg.to_quat(),
+            cfg.limbs.dampener,
+            cfg.limbs.lerp_amount,
         );
 
         // Store hip position for potential use

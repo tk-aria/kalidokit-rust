@@ -14,6 +14,7 @@ use winit::window::Window;
 use nokhwa::pixel_format::RgbFormat;
 use nokhwa::utils::{CameraFormat, CameraIndex, FrameFormat, RequestedFormat, RequestedFormatType};
 
+use crate::rig_config::RigConfig;
 use crate::state::{AppState, RigState};
 
 /// Default paths for ONNX models and VRM avatar.
@@ -138,6 +139,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         tracker_thread,
         camera,
         rig: RigState::default(),
+        rig_config: RigConfig::default(),
         last_frame_time: Instant::now(),
         rig_dirty: true,
         last_tracking_result: None,

@@ -1,4 +1,4 @@
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 use image::DynamicImage;
 use ndarray::Array4;
 
@@ -58,6 +58,34 @@ pub fn normalize_landmarks(
         .collect()
 }
 
+/// Calculate a square ROI around a wrist position for hand detection.
+///
+/// `wrist` contains normalized (0-1) x/y coordinates from pose landmarks.
+/// Returns `(x, y, width, height)` in pixel coordinates, clamped to image bounds.
+/// The ROI size is 25% of image width, centered on the wrist.
+pub fn calc_hand_roi(wrist: Vec2, image_width: u32, image_height: u32) -> (u32, u32, u32, u32) {
+    let roi_size = (image_width as f32 * 0.25).round() as u32;
+
+    let cx = (wrist.x * image_width as f32).round() as i32;
+    let cy = (wrist.y * image_height as f32).round() as i32;
+    let half = roi_size as i32 / 2;
+
+    let x = (cx - half).max(0) as u32;
+    let y = (cy - half).max(0) as u32;
+
+    let w = roi_size.min(image_width.saturating_sub(x));
+    let h = roi_size.min(image_height.saturating_sub(y));
+
+    (x, y, w, h)
+}
+
+/// Crop a rectangular region from an image.
+///
+/// Returns a new `DynamicImage` containing the pixels in the specified region.
+pub fn crop_image(image: &DynamicImage, x: u32, y: u32, w: u32, h: u32) -> DynamicImage {
+    image.crop_imm(x, y, w, h)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,5 +135,44 @@ mod tests {
     fn normalize_landmarks_empty_input() {
         let result = normalize_landmarks(&[], 5, 100.0, 100.0);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn calc_hand_roi_center() {
+        // Wrist at center of 640x480 image
+        let (x, y, w, h) = calc_hand_roi(Vec2::new(0.5, 0.5), 640, 480);
+        // ROI size = 640 * 0.25 = 160
+        assert_eq!(w, 160);
+        assert_eq!(h, 160);
+        // Centered: x = 320 - 80 = 240, y = 240 - 80 = 160
+        assert_eq!(x, 240);
+        assert_eq!(y, 160);
+    }
+
+    #[test]
+    fn calc_hand_roi_top_left_edge() {
+        // Wrist at top-left corner — ROI should be clamped to image bounds
+        let (x, y, w, h) = calc_hand_roi(Vec2::new(0.0, 0.0), 640, 480);
+        assert_eq!(x, 0);
+        assert_eq!(y, 0);
+        assert!(w <= 160);
+        assert!(h <= 160);
+    }
+
+    #[test]
+    fn calc_hand_roi_bottom_right_edge() {
+        // Wrist at bottom-right corner
+        let (x, y, w, h) = calc_hand_roi(Vec2::new(1.0, 1.0), 640, 480);
+        // x + w should not exceed image width
+        assert!(x + w <= 640);
+        assert!(y + h <= 480);
+    }
+
+    #[test]
+    fn crop_image_valid_region() {
+        let img = DynamicImage::new_rgb8(200, 200);
+        let cropped = crop_image(&img, 10, 20, 50, 60);
+        assert_eq!(cropped.width(), 50);
+        assert_eq!(cropped.height(), 60);
     }
 }

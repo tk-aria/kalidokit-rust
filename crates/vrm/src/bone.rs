@@ -147,6 +147,7 @@ pub struct Bone {
 /// VRMヒューマノイドボーン集合
 pub struct HumanoidBones {
     bones: HashMap<HumanoidBoneName, Bone>,
+    prev_rotations: HashMap<HumanoidBoneName, Quat>,
 }
 
 impl HumanoidBones {
@@ -193,7 +194,10 @@ impl HumanoidBones {
                 );
             }
         }
-        Ok(Self { bones })
+        Ok(Self {
+            bones,
+            prev_rotations: HashMap::new(),
+        })
     }
 
     pub fn get(&self, name: HumanoidBoneName) -> Option<&Bone> {
@@ -203,6 +207,30 @@ impl HumanoidBones {
     pub fn set_rotation(&mut self, name: HumanoidBoneName, rotation: Quat) {
         if let Some(bone) = self.bones.get_mut(&name) {
             bone.local_rotation = rotation;
+        }
+    }
+
+    /// Set rotation with dampener and slerp interpolation (matching KalidoKit rigRotation).
+    ///
+    /// 1. Apply dampener: slerp from IDENTITY toward `target` by `dampener`
+    /// 2. Interpolate from previous rotation toward dampened target by `lerp_amount`
+    pub fn set_rotation_interpolated(
+        &mut self,
+        name: HumanoidBoneName,
+        target: Quat,
+        dampener: f32,
+        lerp_amount: f32,
+    ) {
+        let dampened = Quat::IDENTITY.slerp(target, dampener);
+        let prev = self
+            .prev_rotations
+            .get(&name)
+            .copied()
+            .unwrap_or(Quat::IDENTITY);
+        let interpolated = prev.slerp(dampened, lerp_amount);
+        self.prev_rotations.insert(name, interpolated);
+        if let Some(bone) = self.bones.get_mut(&name) {
+            bone.local_rotation = interpolated;
         }
     }
 
@@ -373,6 +401,45 @@ mod tests {
         assert!(bones.get(HumanoidBoneName::Spine).is_some());
         assert!(bones.get(HumanoidBoneName::Head).is_some());
         assert!(bones.get(HumanoidBoneName::LeftHand).is_none());
+    }
+
+    #[test]
+    fn slerp_interpolation_produces_intermediate_value() {
+        let json: serde_json::Value = serde_json::from_str(
+            r#"{
+                "humanoid": {
+                    "humanBones": [
+                        { "bone": "hips", "node": 0 }
+                    ]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let node_transforms = vec![crate::model::NodeTransform {
+            translation: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+            children: vec![],
+        }];
+
+        let mut bones = HumanoidBones::from_vrm_json(&json, &node_transforms).unwrap();
+
+        // Target: 90 degrees around Y axis
+        let target = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+
+        // dampener=1.0 means full target, lerp_amount=0.3 means 30% toward target
+        bones.set_rotation_interpolated(HumanoidBoneName::Hips, target, 1.0, 0.3);
+
+        let result = bones.get(HumanoidBoneName::Hips).unwrap().local_rotation;
+
+        // Result should be between IDENTITY and target
+        let angle = result.angle_between(Quat::IDENTITY);
+        assert!(angle > 0.01, "Result should differ from IDENTITY");
+        assert!(
+            angle < std::f32::consts::FRAC_PI_2 - 0.01,
+            "Result should be less than the full 90-degree target"
+        );
     }
 
     #[test]
