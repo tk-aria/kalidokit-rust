@@ -98,8 +98,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         .get_all_weights(num_morph_targets);
 
     let camera = renderer::camera::Camera {
-        aspect: state.render_ctx.config.width as f32
-            / state.render_ctx.config.height.max(1) as f32,
+        aspect: state.render_ctx.config.width as f32 / state.render_ctx.config.height.max(1) as f32,
         ..renderer::camera::Camera::default()
     };
     let camera_uniform = camera.to_uniform(glam::Mat4::IDENTITY);
@@ -174,10 +173,8 @@ fn apply_rig_to_model(state: &mut AppState) {
         let eye_r_raw = (1.0 - face.eye.r).clamp(0.0, 1.0);
         let eye_l = state.rig.prev_blink_l + (eye_l_raw - state.rig.prev_blink_l) * cfg.eye_blink;
         let eye_r = state.rig.prev_blink_r + (eye_r_raw - state.rig.prev_blink_r) * cfg.eye_blink;
-        let stabilized = solver::face::stabilize_blink(
-            &EyeValues { l: eye_l, r: eye_r },
-            face.head.y,
-        );
+        let stabilized =
+            solver::face::stabilize_blink(&EyeValues { l: eye_l, r: eye_r }, face.head.y);
         state.rig.prev_blink_l = stabilized.l;
         state.rig.prev_blink_r = stabilized.r;
         // Testbed uses same value (stabilized.l) for both BlinkL and BlinkR
@@ -365,8 +362,7 @@ fn apply_rig_to_model(state: &mut AppState) {
             .as_ref()
             .map(|p| p.right_hand.z)
             .unwrap_or(0.0);
-        let wrist_combined =
-            EulerAngles::new(right_hand.wrist.x, right_hand.wrist.y, pose_wrist_z);
+        let wrist_combined = EulerAngles::new(right_hand.wrist.x, right_hand.wrist.y, pose_wrist_z);
         apply_hand_bones(
             &mut state.vrm_model.humanoid_bones,
             right_hand,
@@ -404,10 +400,7 @@ fn apply_hand_bones(
                 &hand.index_intermediate,
             ),
             (HumanoidBoneName::LeftIndexDistal, &hand.index_distal),
-            (
-                HumanoidBoneName::LeftMiddleProximal,
-                &hand.middle_proximal,
-            ),
+            (HumanoidBoneName::LeftMiddleProximal, &hand.middle_proximal),
             (
                 HumanoidBoneName::LeftMiddleIntermediate,
                 &hand.middle_intermediate,
@@ -419,10 +412,7 @@ fn apply_hand_bones(
                 &hand.ring_intermediate,
             ),
             (HumanoidBoneName::LeftRingDistal, &hand.ring_distal),
-            (
-                HumanoidBoneName::LeftLittleProximal,
-                &hand.little_proximal,
-            ),
+            (HumanoidBoneName::LeftLittleProximal, &hand.little_proximal),
             (
                 HumanoidBoneName::LeftLittleIntermediate,
                 &hand.little_intermediate,
@@ -431,28 +421,19 @@ fn apply_hand_bones(
         ],
         Side::Right => [
             (HumanoidBoneName::RightHand, wrist_combined),
-            (
-                HumanoidBoneName::RightThumbProximal,
-                &hand.thumb_proximal,
-            ),
+            (HumanoidBoneName::RightThumbProximal, &hand.thumb_proximal),
             (
                 HumanoidBoneName::RightThumbIntermediate,
                 &hand.thumb_intermediate,
             ),
             (HumanoidBoneName::RightThumbDistal, &hand.thumb_distal),
-            (
-                HumanoidBoneName::RightIndexProximal,
-                &hand.index_proximal,
-            ),
+            (HumanoidBoneName::RightIndexProximal, &hand.index_proximal),
             (
                 HumanoidBoneName::RightIndexIntermediate,
                 &hand.index_intermediate,
             ),
             (HumanoidBoneName::RightIndexDistal, &hand.index_distal),
-            (
-                HumanoidBoneName::RightMiddleProximal,
-                &hand.middle_proximal,
-            ),
+            (HumanoidBoneName::RightMiddleProximal, &hand.middle_proximal),
             (
                 HumanoidBoneName::RightMiddleIntermediate,
                 &hand.middle_intermediate,
@@ -464,10 +445,7 @@ fn apply_hand_bones(
                 &hand.ring_intermediate,
             ),
             (HumanoidBoneName::RightRingDistal, &hand.ring_distal),
-            (
-                HumanoidBoneName::RightLittleProximal,
-                &hand.little_proximal,
-            ),
+            (HumanoidBoneName::RightLittleProximal, &hand.little_proximal),
             (
                 HumanoidBoneName::RightLittleIntermediate,
                 &hand.little_intermediate,
@@ -477,7 +455,12 @@ fn apply_hand_bones(
     };
 
     for (bone_name, euler) in &mappings {
-        bones.set_rotation_interpolated(*bone_name, euler.to_quat(), config.dampener, config.lerp_amount);
+        bones.set_rotation_interpolated(
+            *bone_name,
+            euler.to_quat(),
+            config.dampener,
+            config.lerp_amount,
+        );
     }
 }
 

@@ -163,11 +163,19 @@ impl Scene {
             .map(|i| {
                 let mat_input = mesh_materials.get(i);
                 let defaults = MeshMaterialInput::default();
-                let base_color = mat_input.map(|m| m.base_color).unwrap_or(defaults.base_color);
-                let shade_color = mat_input.map(|m| m.shade_color).unwrap_or(defaults.shade_color);
+                let base_color = mat_input
+                    .map(|m| m.base_color)
+                    .unwrap_or(defaults.base_color);
+                let shade_color = mat_input
+                    .map(|m| m.shade_color)
+                    .unwrap_or(defaults.shade_color);
                 let rim_color = mat_input.map(|m| m.rim_color).unwrap_or(defaults.rim_color);
-                let shade_shift = mat_input.map(|m| m.shade_shift).unwrap_or(defaults.shade_shift);
-                let shade_toony = mat_input.map(|m| m.shade_toony).unwrap_or(defaults.shade_toony);
+                let shade_shift = mat_input
+                    .map(|m| m.shade_shift)
+                    .unwrap_or(defaults.shade_shift);
+                let shade_toony = mat_input
+                    .map(|m| m.shade_toony)
+                    .unwrap_or(defaults.shade_toony);
                 let rim_power = mat_input.map(|m| m.rim_power).unwrap_or(defaults.rim_power);
                 let rim_lift = mat_input.map(|m| m.rim_lift).unwrap_or(defaults.rim_lift);
 
@@ -179,7 +187,7 @@ impl Scene {
                 };
                 let material_buffer =
                     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some(&format!("material_buffer_{}", i)),
+                        label: Some(&format!("material_buffer_{i}")),
                         contents: bytemuck::bytes_of(&material_uniform),
                         usage: wgpu::BufferUsages::UNIFORM,
                     });
@@ -195,7 +203,7 @@ impl Scene {
                 };
 
                 let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some(&format!("material_bind_group_{}", i)),
+                    label: Some(&format!("material_bind_group_{i}")),
                     layout: &material_bind_group_layout,
                     entries: &[
                         wgpu::BindGroupEntry {

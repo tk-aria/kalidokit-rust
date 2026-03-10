@@ -10,3 +10,4 @@ ndarray = { workspace = true }
 glam = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+rayon = "1.10"

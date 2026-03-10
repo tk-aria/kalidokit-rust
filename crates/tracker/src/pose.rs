@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use glam::{Vec2, Vec3};
 use image::DynamicImage;
 use ort::session::Session;
@@ -11,25 +13,30 @@ pub type PoseResult = (Option<Vec<Vec3>>, Option<Vec<Vec2>>);
 /// Pose detector using ONNX Runtime.
 ///
 /// Detects 33 pose landmarks (3D in meters + 2D normalized).
+/// The session is wrapped in a `Mutex` to allow `&self` detect calls,
+/// enabling parallel inference with other detectors via `rayon::join`.
 pub struct PoseDetector {
-    session: Session,
+    session: Mutex<Session>,
 }
 
 impl PoseDetector {
     /// Initialize from an ONNX model file.
     pub fn new(model_path: &str) -> anyhow::Result<Self> {
         let session = Session::builder()?.commit_from_file(model_path)?;
-        Ok(Self { session })
+        Ok(Self {
+            session: Mutex::new(session),
+        })
     }
 
     /// Detect pose landmarks from a camera frame.
     ///
     /// Returns (3D world landmarks, 2D screen landmarks), either of which may be None.
-    pub fn detect(&mut self, frame: &DynamicImage) -> anyhow::Result<PoseResult> {
+    pub fn detect(&self, frame: &DynamicImage) -> anyhow::Result<PoseResult> {
         let input_tensor = preprocess::preprocess_image(frame, 256, 256);
         let input_ref = TensorRef::from_array_view(&input_tensor)?;
 
-        let outputs = self.session.run(ort::inputs![input_ref])?;
+        let mut session = self.session.lock().unwrap();
+        let outputs = session.run(ort::inputs![input_ref])?;
 
         // Parse 3D world landmarks from output[0]: [1, 33*5] (x, y, z, visibility, presence)
         let landmarks_3d = if outputs.len() > 0 {

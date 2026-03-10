@@ -40,16 +40,15 @@ fn check_model_files() -> Result<()> {
     if !missing.is_empty() {
         let list = missing
             .iter()
-            .map(|(path, desc)| format!("  - {} ({})", path, desc))
+            .map(|(path, desc)| format!("  - {path} ({desc})"))
             .collect::<Vec<_>>()
             .join("\n");
 
         anyhow::bail!(
-            "Required model files not found:\n{}\n\n\
+            "Required model files not found:\n{list}\n\n\
              To download them, run:\n  \
              sh scripts/setup.sh download-models\n\n\
-             Or download manually — see README.md for details.",
-            list
+             Or download manually — see README.md for details."
         );
     }
     Ok(())
@@ -91,8 +90,8 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
     let mesh_materials: Vec<MeshMaterialInput> = vrm_model
         .meshes
         .iter()
-        .map(|mesh| {
-            match mesh.material_index.and_then(|i| vrm_model.materials.get(i)) {
+        .map(
+            |mesh| match mesh.material_index.and_then(|i| vrm_model.materials.get(i)) {
                 Some(mat) => MeshMaterialInput {
                     base_color: mat.base_color,
                     shade_color: mat.shade_color,
@@ -104,8 +103,8 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
                     base_color_texture: mat.base_color_texture.clone(),
                 },
                 None => MeshMaterialInput::default(),
-            }
-        })
+            },
+        )
         .collect();
 
     let scene = Scene::new(
@@ -151,14 +150,10 @@ fn init_camera() -> Result<nokhwa::Camera> {
     let index = CameraIndex::Index(0);
     let format = CameraFormat::new_from(640, 480, FrameFormat::MJPEG, 30);
     let requested = RequestedFormat::new::<RgbFormat>(RequestedFormatType::Closest(format));
-    let mut camera = nokhwa::Camera::new(index, requested)
-        .context("Failed to create camera")?;
+    let mut camera = nokhwa::Camera::new(index, requested).context("Failed to create camera")?;
     camera
         .open_stream()
         .context("Failed to open camera stream")?;
-    log::info!(
-        "Webcam initialized: {:?}",
-        camera.camera_format()
-    );
+    log::info!("Webcam initialized: {:?}", camera.camera_format());
     Ok(camera)
 }

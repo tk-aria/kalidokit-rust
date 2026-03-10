@@ -118,23 +118,21 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
     let loaded_images: Vec<Option<image::DynamicImage>> = gltf
         .document
         .images()
-        .map(|img| {
-            match img.source() {
-                gltf::image::Source::View { view, mime_type: _ } => {
-                    let offset = view.offset();
-                    let length = view.length();
-                    let data = &blob[offset..offset + length];
-                    image::load_from_memory(data)
-                        .map_err(|e| {
-                            log::warn!("Failed to decode image {}: {}", img.index(), e);
-                            e
-                        })
-                        .ok()
-                }
-                gltf::image::Source::Uri { .. } => {
-                    log::warn!("URI-based images not supported in GLB");
-                    None
-                }
+        .map(|img| match img.source() {
+            gltf::image::Source::View { view, mime_type: _ } => {
+                let offset = view.offset();
+                let length = view.length();
+                let data = &blob[offset..offset + length];
+                image::load_from_memory(data)
+                    .map_err(|e| {
+                        log::warn!("Failed to decode image {}: {}", img.index(), e);
+                        e
+                    })
+                    .ok()
+            }
+            gltf::image::Source::Uri { .. } => {
+                log::warn!("URI-based images not supported in GLB");
+                None
             }
         })
         .collect();
@@ -146,12 +144,10 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
         .map(|mat| {
             let pbr = mat.pbr_metallic_roughness();
             let base_color = pbr.base_color_factor();
-            let base_color_texture = pbr
-                .base_color_texture()
-                .and_then(|info| {
-                    let tex_index = info.texture().source().index();
-                    loaded_images.get(tex_index).and_then(|opt| opt.clone())
-                });
+            let base_color_texture = pbr.base_color_texture().and_then(|info| {
+                let tex_index = info.texture().source().index();
+                loaded_images.get(tex_index).and_then(|opt| opt.clone())
+            });
             Material {
                 base_color,
                 base_color_texture,
@@ -265,7 +261,7 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
     // gltf crate's Document doesn't expose extensions directly,
     // so we read the file as raw JSON to extract the VRM extension.
     let raw_bytes = std::fs::read(path)
-        .map_err(|e| VrmError::MissingData(format!("Failed to read file: {}", e)))?;
+        .map_err(|e| VrmError::MissingData(format!("Failed to read file: {e}")))?;
 
     // For GLB files, the JSON chunk starts after a 12-byte header + 8-byte chunk header
     let vrm_json = if raw_bytes.starts_with(b"glTF") {

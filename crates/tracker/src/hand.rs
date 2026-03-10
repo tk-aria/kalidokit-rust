@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use glam::Vec3;
 use image::DynamicImage;
 use ort::session::Session;
@@ -8,15 +10,19 @@ use crate::preprocess;
 /// Hand landmark detector using ONNX Runtime.
 ///
 /// Detects 21 hand landmarks for a single hand.
+/// The session is wrapped in a `Mutex` to allow `&self` detect calls,
+/// enabling parallel inference with other detectors via `rayon::join`.
 pub struct HandDetector {
-    session: Session,
+    session: Mutex<Session>,
 }
 
 impl HandDetector {
     /// Initialize from an ONNX model file.
     pub fn new(model_path: &str) -> anyhow::Result<Self> {
         let session = Session::builder()?.commit_from_file(model_path)?;
-        Ok(Self { session })
+        Ok(Self {
+            session: Mutex::new(session),
+        })
     }
 
     /// Detect hand landmarks from a camera frame.
@@ -25,15 +31,12 @@ impl HandDetector {
     /// MediaPipe's rightHandLandmarks correspond to the user's left hand.
     ///
     /// Returns `None` if no hand is detected.
-    pub fn detect(
-        &mut self,
-        frame: &DynamicImage,
-        is_left: bool,
-    ) -> anyhow::Result<Option<Vec<Vec3>>> {
+    pub fn detect(&self, frame: &DynamicImage, is_left: bool) -> anyhow::Result<Option<Vec<Vec3>>> {
         let input_tensor = preprocess::preprocess_image(frame, 224, 224);
         let input_ref = TensorRef::from_array_view(&input_tensor)?;
 
-        let outputs = self.session.run(ort::inputs![input_ref])?;
+        let mut session = self.session.lock().unwrap();
+        let outputs = session.run(ort::inputs![input_ref])?;
 
         if outputs.len() == 0 {
             return Ok(None);

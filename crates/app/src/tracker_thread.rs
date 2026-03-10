@@ -21,7 +21,7 @@ impl TrackerThread {
     /// The worker receives frames on an internal channel, runs `detect()`,
     /// and sends results back.  Both channels have a buffer size of 1 so that
     /// stale frames are dropped rather than queued.
-    pub fn new(mut tracker: HolisticTracker) -> Self {
+    pub fn new(tracker: HolisticTracker) -> Self {
         // Buffer size 1: if the tracker is still busy, try_send will fail
         // and the main loop simply drops that frame.
         let (frame_sender, frame_receiver) = mpsc::sync_channel::<(DynamicImage, VideoInfo)>(1);

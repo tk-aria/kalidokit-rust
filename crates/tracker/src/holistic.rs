@@ -37,10 +37,15 @@ impl HolisticTracker {
 
     /// Detect all landmarks from a camera frame.
     ///
-    /// Each detector runs independently; if one fails, others still produce results.
-    pub fn detect(&mut self, frame: &DynamicImage) -> anyhow::Result<HolisticResult> {
-        let face_landmarks = self.face_detector.detect(frame).unwrap_or(None);
-        let (pose_3d, pose_2d) = self.pose_detector.detect(frame).unwrap_or((None, None));
+    /// Face and pose detection run in parallel via `rayon::join` since they are
+    /// independent. Hand detection runs afterwards because it depends on pose
+    /// wrist landmarks for ROI cropping.
+    pub fn detect(&self, frame: &DynamicImage) -> anyhow::Result<HolisticResult> {
+        // Run face and pose detection in parallel (independent of each other).
+        let (face_landmarks, (pose_3d, pose_2d)) = rayon::join(
+            || self.face_detector.detect(frame).unwrap_or(None),
+            || self.pose_detector.detect(frame).unwrap_or((None, None)),
+        );
 
         let img_w = frame.width();
         let img_h = frame.height();

@@ -35,7 +35,7 @@ impl ApplicationHandler for App {
                 self.state = Some(app_state);
             }
             Err(e) => {
-                log::error!("Failed to initialize application: {}", e);
+                log::error!("Failed to initialize application: {e}");
                 event_loop.exit();
             }
         }
@@ -69,7 +69,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 if let Err(e) = crate::update::update_frame(state) {
-                    log::error!("Frame update error: {}", e);
+                    log::error!("Frame update error: {e}");
                 }
                 state.render_ctx.window.request_redraw();
             }
