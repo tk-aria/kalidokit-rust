@@ -11,3 +11,5 @@ glam = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 rayon = "1.10"
+log = { workspace = true }
+pipeline-logger = { workspace = true }

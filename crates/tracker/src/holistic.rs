@@ -6,6 +6,7 @@ use crate::{
     HolisticResult,
 };
 use image::DynamicImage;
+use log;
 
 /// Combined inference pipeline for face, pose, and hand tracking.
 pub struct HolisticTracker {
@@ -41,6 +42,13 @@ impl HolisticTracker {
     /// independent. Hand detection runs afterwards because it depends on pose
     /// wrist landmarks for ROI cropping.
     pub fn detect(&self, frame: &DynamicImage) -> anyhow::Result<HolisticResult> {
+        pipeline_logger::tracker(log::Level::Debug, "detection started")
+            .field("frame_w", frame.width())
+            .field("frame_h", frame.height())
+            .emit();
+
+        let detect_start = std::time::Instant::now();
+
         // Run face and pose detection in parallel (independent of each other).
         let (face_landmarks, (pose_3d, pose_2d)) = rayon::join(
             || self.face_detector.detect(frame).unwrap_or(None),
@@ -81,6 +89,38 @@ impl HolisticTracker {
             .right_hand_detector
             .detect(&right_frame, false)
             .unwrap_or(None);
+
+        let elapsed = detect_start.elapsed();
+        pipeline_logger::tracker(log::Level::Debug, "detection complete")
+            .field(
+                "elapsed_ms",
+                format!("{:.1}", elapsed.as_secs_f64() * 1000.0),
+            )
+            .field(
+                "face",
+                face_landmarks
+                    .as_ref()
+                    .map_or("none".to_string(), |v| v.len().to_string()),
+            )
+            .field(
+                "pose_3d",
+                pose_3d
+                    .as_ref()
+                    .map_or("none".to_string(), |v| v.len().to_string()),
+            )
+            .field(
+                "left_hand",
+                left_hand
+                    .as_ref()
+                    .map_or("none".to_string(), |v| v.len().to_string()),
+            )
+            .field(
+                "right_hand",
+                right_hand
+                    .as_ref()
+                    .map_or("none".to_string(), |v| v.len().to_string()),
+            )
+            .emit();
 
         Ok(HolisticResult {
             face_landmarks,

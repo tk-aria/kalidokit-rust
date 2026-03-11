@@ -71,6 +71,25 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
     let vrm_model = vrm::loader::load(DEFAULT_VRM_PATH)
         .context("Failed to load VRM avatar. Run: sh scripts/setup.sh download-models")?;
 
+    // Log VRM model stats for debugging skinning pipeline
+    {
+        let total_verts: usize = vrm_model.meshes.iter().map(|m| m.vertices.len()).sum();
+        let skinned_verts: usize = vrm_model
+            .meshes
+            .iter()
+            .flat_map(|m| &m.vertices)
+            .filter(|v| v.joint_weights.iter().any(|w| *w > 0.0))
+            .count();
+        pipeline_logger::bone(log::Level::Info, "VRM model loaded")
+            .field("meshes", vrm_model.meshes.len())
+            .field("total_verts", total_verts)
+            .field("skinned_verts", skinned_verts)
+            .field("skin_joints", vrm_model.skins.len())
+            .field("materials", vrm_model.materials.len())
+            .field("node_transforms", vrm_model.node_transforms.len())
+            .emit();
+    }
+
     // 3. Create GPU scene from VRM model meshes
     let vertices_list: Vec<(&[Vertex], &[u32])> = vrm_model
         .meshes
@@ -124,9 +143,16 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
 
     // 5. Initialize webcam via nokhwa
     let camera = match init_camera() {
-        Ok(cam) => Some(cam),
+        Ok(cam) => {
+            pipeline_logger::camera(log::Level::Info, "webcam initialized")
+                .field("format", format!("{:?}", cam.camera_format()))
+                .emit();
+            Some(cam)
+        }
         Err(e) => {
-            log::warn!("Failed to initialize webcam: {e}. Falling back to dummy frames.");
+            pipeline_logger::camera(log::Level::Warn, "webcam init failed, using dummy frames")
+                .field("error", format!("{e}"))
+                .emit();
             None
         }
     };

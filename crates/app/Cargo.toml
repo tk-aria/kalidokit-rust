@@ -8,6 +8,7 @@ renderer = { path = "../renderer" }
 vrm = { path = "../vrm" }
 solver = { path = "../solver" }
 tracker = { path = "../tracker" }
+pipeline-logger = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }
 glam = { workspace = true }

@@ -24,12 +24,40 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
 
     // Capture frame from webcam, falling back to dummy black image
     let (frame, video) = capture_frame(&mut state.camera);
+    let is_real_camera = state.camera.is_some();
+    pipeline_logger::camera(log::Level::Debug, "frame captured")
+        .field("source", if is_real_camera { "webcam" } else { "dummy" })
+        .field("width", video.width)
+        .field("height", video.height)
+        .emit();
 
     // 1. Send frame to tracker thread (non-blocking; drops frame if tracker is busy)
     state.tracker_thread.send_frame(frame, video.clone());
 
     // 2. Try to receive a new tracking result (non-blocking)
     if let Some(result) = state.tracker_thread.try_recv_result() {
+        pipeline_logger::tracker(log::Level::Debug, "result received")
+            .field(
+                "face",
+                result.face_landmarks.as_ref().map_or(0, |v| v.len()),
+            )
+            .field(
+                "pose_3d",
+                result.pose_landmarks_3d.as_ref().map_or(0, |v| v.len()),
+            )
+            .field(
+                "pose_2d",
+                result.pose_landmarks_2d.as_ref().map_or(0, |v| v.len()),
+            )
+            .field(
+                "left_hand",
+                result.left_hand_landmarks.as_ref().map_or(0, |v| v.len()),
+            )
+            .field(
+                "right_hand",
+                result.right_hand_landmarks.as_ref().map_or(0, |v| v.len()),
+            )
+            .emit();
         state.last_tracking_result = Some(result);
     }
 
@@ -39,6 +67,14 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     if let Some(result) = &state.last_tracking_result {
         if let Some(face_lm) = &result.face_landmarks {
             let face = solver::face::solve(face_lm, &video);
+            pipeline_logger::solver(log::Level::Debug, "face solved")
+                .field("head_x", format!("{:.3}", face.head.x))
+                .field("head_y", format!("{:.3}", face.head.y))
+                .field("head_z", format!("{:.3}", face.head.z))
+                .field("eye_l", format!("{:.3}", face.eye.l))
+                .field("eye_r", format!("{:.3}", face.eye.r))
+                .field("mouth_a", format!("{:.3}", face.mouth.a))
+                .emit();
             state.rig.face = Some(face);
             rig_changed = true;
         }
@@ -51,25 +87,72 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                 pose_2d.to_vec()
             };
             let pose = solver::pose::solve(pose_3d, &pose_2d_vec, &video);
+            pipeline_logger::solver(log::Level::Debug, "pose solved")
+                .field(
+                    "hip_pos",
+                    format!(
+                        "{:.3},{:.3},{:.3}",
+                        pose.hips.position.x, pose.hips.position.y, pose.hips.position.z
+                    ),
+                )
+                .field(
+                    "hip_rot",
+                    format!(
+                        "{:.3},{:.3},{:.3}",
+                        pose.hips.rotation.x, pose.hips.rotation.y, pose.hips.rotation.z
+                    ),
+                )
+                .field(
+                    "spine",
+                    format!(
+                        "{:.3},{:.3},{:.3}",
+                        pose.spine.x, pose.spine.y, pose.spine.z
+                    ),
+                )
+                .emit();
             state.rig.pose = Some(pose);
             rig_changed = true;
         }
 
         if let Some(left_lm) = &result.left_hand_landmarks {
             let hand = solver::hand::solve(left_lm, Side::Left);
+            pipeline_logger::solver(log::Level::Debug, "left hand solved")
+                .field(
+                    "wrist",
+                    format!(
+                        "{:.3},{:.3},{:.3}",
+                        hand.wrist.x, hand.wrist.y, hand.wrist.z
+                    ),
+                )
+                .emit();
             state.rig.left_hand = Some(hand);
             rig_changed = true;
         }
 
         if let Some(right_lm) = &result.right_hand_landmarks {
             let hand = solver::hand::solve(right_lm, Side::Right);
+            pipeline_logger::solver(log::Level::Debug, "right hand solved")
+                .field(
+                    "wrist",
+                    format!(
+                        "{:.3},{:.3},{:.3}",
+                        hand.wrist.x, hand.wrist.y, hand.wrist.z
+                    ),
+                )
+                .emit();
             state.rig.right_hand = Some(hand);
             rig_changed = true;
         }
+    } else {
+        pipeline_logger::solver(log::Level::Trace, "no tracking result available").emit();
     }
 
     // 4. Apply rig to VRM model (only if rig changed or first frame)
     if rig_changed || state.rig_dirty {
+        pipeline_logger::bone(log::Level::Debug, "applying rig to model")
+            .field("rig_changed", rig_changed)
+            .field("rig_dirty", state.rig_dirty)
+            .emit();
         apply_rig_to_model(state);
         state.rig_dirty = false;
     }
@@ -92,6 +175,36 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         .iter()
         .map(|joint| world_matrices[joint.node_index] * joint.inverse_bind_matrix)
         .collect();
+
+    // Log bone/skinning diagnostics
+    {
+        let non_identity_joints = joint_matrices
+            .iter()
+            .filter(|m| **m != glam::Mat4::IDENTITY)
+            .count();
+        pipeline_logger::bone(log::Level::Debug, "joint matrices computed")
+            .field("world_nodes", world_matrices.len())
+            .field("skin_joints", joint_matrices.len())
+            .field("non_identity", non_identity_joints)
+            .emit();
+
+        // Log hips bone world matrix as a key diagnostic
+        if let Some(hips) = state
+            .vrm_model
+            .humanoid_bones
+            .get(vrm::bone::HumanoidBoneName::Hips)
+        {
+            let hips_world = world_matrices
+                .get(hips.node_index)
+                .copied()
+                .unwrap_or(glam::Mat4::IDENTITY);
+            let t = hips_world.col(3);
+            pipeline_logger::bone(log::Level::Debug, "hips world transform")
+                .field("node_idx", hips.node_index)
+                .field("translation", format!("{:.3},{:.3},{:.3}", t.x, t.y, t.z))
+                .emit();
+        }
+    }
     let num_morph_targets = state
         .vrm_model
         .meshes
@@ -110,6 +223,11 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     };
     let camera_uniform = camera.to_uniform(glam::Mat4::IDENTITY);
 
+    pipeline_logger::gpu(log::Level::Debug, "uploading buffers")
+        .field("joint_matrices", joint_matrices.len())
+        .field("morph_weights", morph_weights.len())
+        .emit();
+
     state.scene.prepare(
         &state.render_ctx.queue,
         &joint_matrices,
@@ -118,6 +236,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     );
 
     // 5. Render
+    pipeline_logger::render(log::Level::Trace, "submitting draw commands").emit();
     state.scene.render(&state.render_ctx)?;
 
     Ok(())
