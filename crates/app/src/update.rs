@@ -166,6 +166,11 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     }
 
     // 4. Update GPU buffers
+    // Rotate model 180° around Y to face camera (matching testbed: scene.rotation.y = Math.PI)
+    // This must be applied to joint matrices too, not just the camera uniform,
+    // because skinned vertices bypass camera.model in the shader.
+    let model_matrix = glam::Mat4::from_rotation_y(std::f32::consts::PI);
+
     // Compute world matrices for all nodes via FK, then build per-joint skinning matrices
     let world_matrices = state
         .vrm_model
@@ -175,7 +180,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         .vrm_model
         .skins
         .iter()
-        .map(|joint| world_matrices[joint.node_index] * joint.inverse_bind_matrix)
+        .map(|joint| model_matrix * world_matrices[joint.node_index] * joint.inverse_bind_matrix)
         .collect();
 
     // Log bone/skinning diagnostics
@@ -230,8 +235,6 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             ..default_cam
         }
     };
-    // Rotate model 180° around Y to face camera (matching testbed: scene.rotation.y = Math.PI)
-    let model_matrix = glam::Mat4::from_rotation_y(std::f32::consts::PI);
     let camera_uniform = camera.to_uniform(model_matrix);
 
     pipeline_logger::gpu(log::Level::Debug, "uploading buffers")
