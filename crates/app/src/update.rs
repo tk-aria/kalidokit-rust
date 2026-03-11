@@ -82,7 +82,13 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         if let Some(pose_3d) = &result.pose_landmarks_3d {
             let pose_2d = result.pose_landmarks_2d.as_deref().unwrap_or(&[]);
             let pose_2d_vec: Vec<glam::Vec2> = if pose_2d.is_empty() {
-                vec![glam::Vec2::ZERO; 33]
+                // Derive 2D screen landmarks from 3D world landmarks.
+                // The 3D x/y values are in world-meters but their relative positions
+                // approximate screen-space. Normalize to [0,1] range for the solver.
+                pose_3d
+                    .iter()
+                    .map(|v| glam::Vec2::new(v.x * 0.5 + 0.5, v.y * 0.5 + 0.5))
+                    .collect()
             } else {
                 pose_2d.to_vec()
             };

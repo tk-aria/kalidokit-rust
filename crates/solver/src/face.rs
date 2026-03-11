@@ -9,14 +9,17 @@ use std::f32::consts::PI;
 /// They are scaled to pixel coordinates using `video` dimensions internally,
 /// matching the original KalidoKit behavior.
 pub fn solve(landmarks: &[Vec3], video: &VideoInfo) -> RiggedFace {
-    // Scale normalized landmarks to pixel coordinates (KalidoKit convention)
+    // Scale normalized landmarks to pixel coordinates (KalidoKit convention).
+    // x/y are normalized [0,1] from tracker -> scale to pixel coords.
+    // z is already in raw pixel scale from normalize_landmarks (not divided by width),
+    // so it does NOT need to be scaled again.
     let lm: Vec<Vec3> = landmarks
         .iter()
         .map(|p| {
             Vec3::new(
                 p.x * video.width as f32,
                 p.y * video.height as f32,
-                p.z * video.width as f32,
+                p.z, // z is already in pixel-scale from ONNX model output
             )
         })
         .collect();
@@ -127,8 +130,10 @@ fn eye_lid_ratio(points: &[Vec3; 8]) -> f32 {
 
 /// Calculate eye openness using KalidoKit's calcEyes algorithm.
 fn calc_eyes(lm: &[Vec3]) -> EyeValues {
-    if lm.len() < 475 {
-        return EyeValues::default();
+    // Need at least 468 landmarks (standard face mesh) for eye detection.
+    // KalidoKit requires 478 (with iris), but eye lid ratio works with 468.
+    if lm.len() < 468 {
+        return EyeValues { l: 1.0, r: 1.0 };
     }
 
     // Left eye points: [130, 133, 160, 159, 158, 144, 145, 153]
@@ -158,7 +163,7 @@ fn calc_eyes(lm: &[Vec3]) -> EyeValues {
 ///
 /// Uses eye distances as reference scale (not face height).
 fn calc_mouth(lm: &[Vec3]) -> MouthShape {
-    if lm.len() < 475 {
+    if lm.len() < 468 {
         return MouthShape::default();
     }
 
@@ -208,7 +213,9 @@ fn ratio_u_helper(u: f32) -> f32 {
 
 /// Calculate pupil position using KalidoKit's algorithm.
 fn calc_pupil_position(lm: &[Vec3]) -> glam::Vec2 {
+    // Pupil tracking requires iris landmarks (468-477), so need 478 total
     if lm.len() < 478 {
+        // Fall back to center gaze when iris landmarks not available
         return glam::Vec2::ZERO;
     }
 
@@ -243,7 +250,7 @@ fn calc_pupil_position(lm: &[Vec3]) -> glam::Vec2 {
 
 /// Calculate brow raise using KalidoKit's eyeLidRatio on brow landmarks.
 fn calc_brow_raise(lm: &[Vec3]) -> f32 {
-    if lm.len() < 475 {
+    if lm.len() < 468 {
         return 0.0;
     }
 

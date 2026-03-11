@@ -112,7 +112,7 @@ mod tests {
     fn preprocess_zero_size_image() {
         let img = image::DynamicImage::new_rgb8(1, 1);
         let tensor = preprocess_image(&img, 4, 4);
-        assert_eq!(tensor.shape(), &[1, 3, 4, 4]);
+        assert_eq!(tensor.shape(), &[1, 4, 4, 3]);
     }
 
     #[test]

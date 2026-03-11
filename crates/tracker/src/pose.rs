@@ -85,7 +85,22 @@ impl PoseDetector {
 
         // Parse 2D screen landmarks from output[1] if available
         let landmarks_2d = if outputs.len() > 1 {
-            let (_, raw_data) = outputs[1].try_extract_tensor::<f32>()?;
+            let (shape2, raw_data) = outputs[1].try_extract_tensor::<f32>()?;
+            pipeline_logger::tracker(log::Level::Debug, "pose output[1]")
+                .field("shape", format!("{:?}", shape2))
+                .field("data_len", raw_data.len())
+                .field(
+                    "sample",
+                    if raw_data.len() >= 5 {
+                        format!(
+                            "[{:.3},{:.3},{:.3},{:.3},{:.3}]",
+                            raw_data[0], raw_data[1], raw_data[2], raw_data[3], raw_data[4]
+                        )
+                    } else {
+                        format!("{:?}", &raw_data[..raw_data.len().min(5)])
+                    },
+                )
+                .emit();
             if raw_data.len() >= 33 * 2 {
                 let stride = raw_data.len() / 33;
                 let lm: Vec<Vec2> = (0..33)
