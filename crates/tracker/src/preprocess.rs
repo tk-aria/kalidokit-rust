@@ -2,7 +2,9 @@ use glam::{Vec2, Vec3};
 use image::DynamicImage;
 use ndarray::Array4;
 
-/// Convert an image to a model input tensor [1, 3, H, W] normalized to 0-1.
+/// Convert an image to a model input tensor [1, H, W, 3] (NHWC) normalized to 0-1.
+///
+/// MediaPipe ONNX models expect NHWC layout, not NCHW.
 pub fn preprocess_image(
     image: &DynamicImage,
     target_width: u32,
@@ -15,13 +17,13 @@ pub fn preprocess_image(
     );
     let rgb = resized.to_rgb8();
 
-    let mut tensor = Array4::<f32>::zeros((1, 3, target_height as usize, target_width as usize));
+    let mut tensor = Array4::<f32>::zeros((1, target_height as usize, target_width as usize, 3));
     for y in 0..target_height {
         for x in 0..target_width {
             let pixel = rgb.get_pixel(x, y);
-            tensor[[0, 0, y as usize, x as usize]] = pixel[0] as f32 / 255.0;
-            tensor[[0, 1, y as usize, x as usize]] = pixel[1] as f32 / 255.0;
-            tensor[[0, 2, y as usize, x as usize]] = pixel[2] as f32 / 255.0;
+            tensor[[0, y as usize, x as usize, 0]] = pixel[0] as f32 / 255.0;
+            tensor[[0, y as usize, x as usize, 1]] = pixel[1] as f32 / 255.0;
+            tensor[[0, y as usize, x as usize, 2]] = pixel[2] as f32 / 255.0;
         }
     }
     tensor
@@ -94,7 +96,7 @@ mod tests {
     fn preprocess_image_shape() {
         let img = image::DynamicImage::new_rgb8(640, 480);
         let tensor = preprocess_image(&img, 192, 192);
-        assert_eq!(tensor.shape(), &[1, 3, 192, 192]);
+        assert_eq!(tensor.shape(), &[1, 192, 192, 3]);
     }
 
     #[test]
