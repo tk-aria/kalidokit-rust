@@ -15,8 +15,8 @@ pub struct AppState {
     pub scene: Scene,
     pub vrm_model: VrmModel,
     pub tracker_thread: TrackerThread,
-    /// Webcam camera handle (stubbed out — nokhwa removed for musl compatibility).
-    pub camera: Option<()>,
+    /// Webcam camera handle (None if camera initialization failed).
+    pub camera: Option<nokhwa::Camera>,
     pub rig: RigState,
     pub rig_config: RigConfig,
     pub last_frame_time: Instant,

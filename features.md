@@ -1460,11 +1460,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 **ファイル**: `Cargo.toml` (ワークスペースルート), `crates/app/Cargo.toml`
 
-- [ ] ワークスペースルート `Cargo.toml` に `nokhwa` が既に定義されていることを確認:
+- [x] ワークスペースルート `Cargo.toml` に `nokhwa` が既に定義されていることを確認: <!-- 2026-03-11 14:27 JST -->
   ```toml
   nokhwa = { version = "0.10", features = ["input-native"] }
   ```
-- [ ] `crates/app/Cargo.toml` の `[dependencies]` に `nokhwa` を追加:
+- [x] `crates/app/Cargo.toml` の `[dependencies]` に `nokhwa` を追加: <!-- 2026-03-11 14:27 JST -->
   ```toml
   nokhwa = { workspace = true }
   ```
@@ -1473,38 +1473,38 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 **ファイル**: `crates/app/src/state.rs`
 
-- [ ] `camera` フィールドの型をスタブから実型に変更:
+- [x] `camera` フィールドの型をスタブから実型に変更: <!-- 2026-03-11 14:27 JST -->
   ```rust
   // 変更前
   pub camera: Option<()>,
   // 変更後
   pub camera: Option<nokhwa::Camera>,
   ```
-- [ ] 必要な `use` 文を追加
+- [x] 必要な `use` 文を追加 <!-- 2026-03-11 14:27 JST -->
 
 ### Step 9.5: カメラ初期化の復元
 
 **ファイル**: `crates/app/src/init.rs`
 
-- [ ] `init_camera()` 関数を実装:
+- [x] `init_camera()` 関数を実装: <!-- 2026-03-11 14:27 JST -->
   ```rust
   fn init_camera() -> Option<nokhwa::Camera> {
       // 640x480 MJPEG 30fps でカメラ初期化
       // 失敗時は log::warn! して None を返す
   }
   ```
-- [ ] `init_all()` 内のスタブ (`let camera: Option<()> = None;`) を `init_camera()` 呼び出しに置換
-- [ ] nokhwa の `CameraIndex::Index(0)`, `RequestedFormat` 等を使用
-- [ ] エラー時のフォールバック: `log::warn!` でメッセージを出し `None` を返す（パニックしない）
+- [x] `init_all()` 内のスタブ (`let camera: Option<()> = None;`) を `init_camera()` 呼び出しに置換 <!-- 2026-03-11 14:27 JST -->
+- [x] nokhwa の `CameraIndex::Index(0)`, `RequestedFormat` 等を使用 <!-- 2026-03-11 14:27 JST -->
+- [x] エラー時のフォールバック: `log::warn!` でメッセージを出し `None` を返す（パニックしない） <!-- 2026-03-11 14:27 JST -->
 
 ### Step 9.6: フレーム取得の復元
 
 **ファイル**: `crates/app/src/update.rs`
 
-- [ ] `capture_frame()` の引数型を `Option<nokhwa::Camera>` に変更
-- [ ] カメラが `Some` の場合: `camera.frame()` → `frame.decode_image()` でフレーム取得
-- [ ] カメラが `None` またはフレーム取得失敗時: 640x480 ダミー黒画像にフォールバック
-- [ ] フレームの解像度を `VideoInfo` に反映（ハードコードしない）
+- [x] `capture_frame()` の引数型を `Option<nokhwa::Camera>` に変更 <!-- 2026-03-11 14:27 JST -->
+- [x] カメラが `Some` の場合: `camera.frame()` → `frame.decode_image()` でフレーム取得 <!-- 2026-03-11 14:27 JST -->
+- [x] カメラが `None` またはフレーム取得失敗時: 640x480 ダミー黒画像にフォールバック <!-- 2026-03-11 14:27 JST -->
+- [x] フレームの解像度を `VideoInfo` に反映（ハードコードしない） <!-- 2026-03-11 14:27 JST -->
 
 ### Step 9.7: ドキュメント更新
 

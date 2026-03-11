@@ -8,6 +8,9 @@ use renderer::scene::{MeshMaterialInput, Scene};
 use renderer::vertex::Vertex;
 use tracker::holistic::HolisticTracker;
 
+use nokhwa::pixel_format::RgbFormat;
+use nokhwa::utils::{CameraFormat, CameraIndex, FrameFormat, RequestedFormat, RequestedFormatType};
+
 use crate::tracker_thread::TrackerThread;
 use winit::window::Window;
 
@@ -119,9 +122,14 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         .context("Failed to initialize ML tracker. Run: sh scripts/setup.sh download-models")?;
     let tracker_thread = TrackerThread::new(tracker);
 
-    // 5. Webcam disabled (nokhwa removed for musl compatibility); always use dummy frames
-    let camera: Option<()> = None;
-    log::info!("Webcam capture disabled (nokhwa removed). Using dummy frames.");
+    // 5. Initialize webcam via nokhwa
+    let camera = match init_camera() {
+        Ok(cam) => Some(cam),
+        Err(e) => {
+            log::warn!("Failed to initialize webcam: {e}. Falling back to dummy frames.");
+            None
+        }
+    };
 
     Ok(AppState {
         render_ctx,
@@ -135,5 +143,19 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         rig_dirty: true,
         last_tracking_result: None,
     })
+}
+
+/// Try to initialize the default webcam (index 0) at 640x480.
+fn init_camera() -> Result<nokhwa::Camera> {
+    let index = CameraIndex::Index(0);
+    let format = CameraFormat::new_from(640, 480, FrameFormat::MJPEG, 30);
+    let requested = RequestedFormat::new::<RgbFormat>(RequestedFormatType::Closest(format));
+    let mut camera =
+        nokhwa::Camera::new(index, requested).context("Failed to create camera")?;
+    camera
+        .open_stream()
+        .context("Failed to open camera stream")?;
+    log::info!("Webcam initialized: {:?}", camera.camera_format());
+    Ok(camera)
 }
 
