@@ -2,7 +2,8 @@ use std::f32::consts::PI;
 
 use crate::types::*;
 use crate::utils::{
-    angle_between_3d_coords, clamp, find_rotation, lerp_vec3, remap01, roll_pitch_yaw,
+    angle_between_3d_coords, clamp, find_rotation, lerp_vec3, normalize_angle, remap01,
+    roll_pitch_yaw,
 };
 use glam::{Vec2, Vec3};
 
@@ -22,11 +23,47 @@ pub fn solve(landmarks_3d: &[Vec3], landmarks_2d: &[Vec2], _video: &VideoInfo) -
     let (right_upper_arm, right_lower_arm, right_hand) = calc_arms(lm, Side::Right);
     let (left_upper_arm, left_lower_arm, left_hand) = calc_arms(lm, Side::Left);
 
-    // --- Legs (keep simplified) ---
-    let right_upper_leg = calc_leg_rotation(lm[24], lm[26], lm[28]);
-    let right_lower_leg = calc_leg_rotation(lm[26], lm[28], lm[30]);
-    let left_upper_leg = calc_leg_rotation(lm[23], lm[25], lm[27]);
-    let left_lower_leg = calc_leg_rotation(lm[25], lm[27], lm[29]);
+    // --- Legs (matching KalidoKit calcLegs + rigLeg) ---
+    let (right_upper_leg, right_lower_leg) = calc_legs(lm, Side::Right);
+    let (left_upper_leg, left_lower_leg) = calc_legs(lm, Side::Left);
+
+    // Offscreen detection: reset to defaults when limbs are unreliable
+    // KalidoKit: hand offscreen if lm3d[idx].y > 0.1 or visibility < 0.23 or lm2d[idx].y > 0.995
+    let right_hand_offscreen = lm[15].y > 0.1 || lm2d[15].y > 0.995;
+    let left_hand_offscreen = lm[16].y > 0.1 || lm2d[16].y > 0.995;
+    let left_foot_offscreen = lm[23].y > 0.1 || hips.position.z > -0.4;
+    let right_foot_offscreen = lm[24].y > 0.1 || hips.position.z > -0.4;
+
+    // Resting defaults from KalidoKit
+    let mut right_upper_arm = right_upper_arm;
+    let mut right_lower_arm = right_lower_arm;
+    let mut right_hand = right_hand;
+    let mut left_upper_arm = left_upper_arm;
+    let mut left_lower_arm = left_lower_arm;
+    let mut left_hand = left_hand;
+    let mut right_upper_leg = right_upper_leg;
+    let mut right_lower_leg = right_lower_leg;
+    let mut left_upper_leg = left_upper_leg;
+    let mut left_lower_leg = left_lower_leg;
+
+    if left_hand_offscreen {
+        left_upper_arm = EulerAngles::new(0.0, 0.0, 1.25);
+        left_lower_arm = EulerAngles::default();
+        left_hand = EulerAngles::default();
+    }
+    if right_hand_offscreen {
+        right_upper_arm = EulerAngles::new(0.0, 0.0, -1.25);
+        right_lower_arm = EulerAngles::default();
+        right_hand = EulerAngles::default();
+    }
+    if right_foot_offscreen {
+        left_upper_leg = EulerAngles::default();
+        left_lower_leg = EulerAngles::default();
+    }
+    if left_foot_offscreen {
+        right_upper_leg = EulerAngles::default();
+        right_lower_leg = EulerAngles::default();
+    }
 
     RiggedPose {
         hips,
@@ -128,7 +165,8 @@ fn calc_arms(lm: &[Vec3], side: Side) -> (EulerAngles, EulerAngles, EulerAngles)
 
     upper_arm.z *= -2.3 * invert;
     upper_arm.y *= PI * invert;
-    upper_arm.y -= lower_arm.x.max(0.0);
+    // JS Math.max(LowerArm.x) with 1 arg returns the value unchanged
+    upper_arm.y -= lower_arm.x;
     upper_arm.y -= -invert * lower_arm.z.max(0.0);
     upper_arm.x -= 0.3 * invert;
 
@@ -210,15 +248,98 @@ fn calc_hips(lm3d: &[Vec3], lm2d: &[Vec2]) -> (HipTransform, EulerAngles) {
     )
 }
 
-/// Simplified leg rotation (kept from original implementation).
-fn calc_leg_rotation(a: Vec3, b: Vec3, c: Vec3) -> EulerAngles {
-    let ab = (b - a).normalize();
-    let bc = (c - b).normalize();
-    EulerAngles {
-        x: ab.y.atan2(ab.z),
-        y: ab.x.atan2(ab.z),
-        z: bc.x.atan2(bc.y),
-    }
+/// Calculate leg rotations matching KalidoKit calcLegs + rigLeg.
+/// Uses spherical coordinates with axis remapping {x: "y", y: "z", z: "x"}.
+fn calc_legs(lm: &[Vec3], side: Side) -> (EulerAngles, EulerAngles) {
+    let invert = match side {
+        Side::Right => 1.0_f32,
+        Side::Left => -1.0,
+    };
+
+    // Landmark indices: Right hip=23, knee=25, ankle=27; Left hip=24, knee=26, ankle=28
+    let (hip_idx, knee_idx, ankle_idx) = match side {
+        Side::Right => (23usize, 25, 27),
+        Side::Left => (24, 26, 28),
+    };
+
+    let hip = lm[hip_idx];
+    let knee = lm[knee_idx];
+    let ankle = lm[ankle_idx];
+
+    // getSphericalCoords(hip, knee, {x:"y", y:"z", z:"x"})
+    let upper_spherical = get_spherical_coords(hip, knee);
+    // getRelativeSphericalCoords(hip, knee, ankle, {x:"y", y:"z", z:"x"})
+    let lower_relative = get_relative_spherical_coords(hip, knee, ankle);
+
+    // hipRotation = findRotation(lm[23], lm[24])
+    let hip_rotation = find_rotation(lm[23], lm[24], true);
+
+    // UpperLeg = { x: upperSpherical.theta, y: lowerRelative.phi, z: upperSpherical.phi - hipRotation.z }
+    let upper_leg_raw = Vec3::new(
+        upper_spherical.0,                  // theta
+        lower_relative.1,                   // phi
+        upper_spherical.1 - hip_rotation.z, // phi - hipRotation.z
+    );
+
+    // LowerLeg = { x: -abs(lowerRelative.theta), y: 0, z: 0 }
+    let lower_leg_raw = Vec3::new(-lower_relative.0.abs(), 0.0, 0.0);
+
+    // rigLeg: clamp and scale by PI
+    let upper_leg = EulerAngles {
+        x: clamp(upper_leg_raw.x, 0.0, 0.5) * PI,
+        y: clamp(upper_leg_raw.y, -0.25, 0.25) * PI,
+        z: clamp(upper_leg_raw.z, -0.5, 0.5) * PI + invert * 0.1,
+    };
+    let lower_leg = EulerAngles {
+        x: lower_leg_raw.x * PI,
+        y: lower_leg_raw.y * PI,
+        z: lower_leg_raw.z * PI,
+    };
+
+    (upper_leg, lower_leg)
+}
+
+/// Get spherical coordinates with axis mapping {x:"y", y:"z", z:"x"}.
+/// Returns (theta, phi) normalized to [-1, 1].
+/// Matches KalidoKit Vector.getSphericalCoords.
+fn get_spherical_coords(a: Vec3, b: Vec3) -> (f32, f32) {
+    let v = (b - a).normalize_or_zero();
+    // With axis map {x:"y", y:"z", z:"x"}: mapped.x = v.y, mapped.y = v.z, mapped.z = v.x
+    let theta = v.z.atan2(v.y); // atan2(mapped.y, mapped.x)
+    let len = v.length();
+    let phi = if len > 1e-10 {
+        (v.x / len).clamp(-1.0, 1.0).acos()
+    } else {
+        0.0
+    }; // acos(mapped.z / length)
+    (normalize_angle(-theta), normalize_angle(PI / 2.0 - phi))
+}
+
+/// Get relative spherical coordinates with axis mapping {x:"y", y:"z", z:"x"}.
+/// Returns (theta, phi) normalized to [-1, 1].
+/// Matches KalidoKit Vector.getRelativeSphericalCoords.
+fn get_relative_spherical_coords(a: Vec3, b: Vec3, c: Vec3) -> (f32, f32) {
+    let v1 = (b - a).normalize_or_zero();
+    let v2 = (c - b).normalize_or_zero();
+    // With axis map {x:"y", y:"z", z:"x"}
+    let theta1 = v1.z.atan2(v1.y);
+    let len1 = v1.length();
+    let phi1 = if len1 > 1e-10 {
+        (v1.x / len1).clamp(-1.0, 1.0).acos()
+    } else {
+        0.0
+    };
+    let theta2 = v2.z.atan2(v2.y);
+    let len2 = v2.length();
+    let phi2 = if len2 > 1e-10 {
+        (v2.x / len2).clamp(-1.0, 1.0).acos()
+    } else {
+        0.0
+    };
+    (
+        normalize_angle(theta1 - theta2),
+        normalize_angle(phi1 - phi2),
+    )
 }
 
 #[cfg(test)]

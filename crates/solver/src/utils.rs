@@ -36,12 +36,27 @@ pub fn angle_between(v1: glam::Vec3, v2: glam::Vec3) -> f32 {
 }
 
 /// Angle between 3D coordinates at vertex b (KalidoKit Vector.angleBetween3DCoords).
-/// Returns the cross product magnitude (sin of the angle), NOT the angle itself.
-/// Output range: [0, 1] approximately.
+/// Returns normalizeRadians(acos(dot(v1, v2))), output in [-1, 1].
 pub fn angle_between_3d_coords(a: glam::Vec3, b: glam::Vec3, c: glam::Vec3) -> f32 {
     let v1 = (a - b).normalize();
     let v2 = (c - b).normalize();
-    v1.cross(v2).length()
+    let dot = v1.dot(v2).clamp(-1.0, 1.0);
+    let angle = dot.acos();
+    normalize_radians(angle)
+}
+
+/// Normalize radians to [-1, 1] range (KalidoKit Vector.normalizeRadians).
+/// Special handling for values outside [-PI/2, PI/2].
+pub fn normalize_radians(radians: f32) -> f32 {
+    let mut r = radians;
+    if r >= PI / 2.0 {
+        r -= 2.0 * PI;
+    }
+    if r <= -PI / 2.0 {
+        r += 2.0 * PI;
+        r = PI - r;
+    }
+    r / PI
 }
 
 /// Quaternion rotation from one direction to another.
@@ -55,13 +70,18 @@ pub fn find_2d_angle(cx: f32, cy: f32, ex: f32, ey: f32) -> f32 {
 }
 
 /// Find rotation between two 3D points as Euler-like XYZ (KalidoKit Vector.findRotation).
-/// If `normalize` is true, each component is divided by PI to give [-1, 1] range.
+/// If `normalize` is true, uses normalizeRadians to give [-1, 1] range.
+/// KalidoKit axis mapping: x=(a.z,a.x→b.z,b.x), y=(a.z,a.y→b.z,b.y), z=(a.x,a.y→b.x,b.y)
 pub fn find_rotation(a: glam::Vec3, b: glam::Vec3, normalize: bool) -> glam::Vec3 {
-    let x = find_2d_angle(a.z, a.y, b.z, b.y);
-    let y = find_2d_angle(a.z, a.x, b.z, b.x);
+    let x = find_2d_angle(a.z, a.x, b.z, b.x);
+    let y = find_2d_angle(a.z, a.y, b.z, b.y);
     let z = find_2d_angle(a.x, a.y, b.x, b.y);
     if normalize {
-        glam::Vec3::new(x / PI, y / PI, z / PI)
+        glam::Vec3::new(
+            normalize_radians(x),
+            normalize_radians(y),
+            normalize_radians(z),
+        )
     } else {
         glam::Vec3::new(x, y, z)
     }
@@ -218,9 +238,12 @@ mod tests {
     #[test]
     fn test_angle_between_3d_coords() {
         // Right angle at b: a=(1,0,0), b=(0,0,0), c=(0,1,0)
+        // acos(0) = PI/2, then normalizeRadians(PI/2) = (PI/2 - 2*PI) / PI ≈ -1.5
+        // Actually normalizeRadians: PI/2 >= PI/2, so r = PI/2 - 2*PI = -3*PI/2
+        // Then -3*PI/2 <= -PI/2, so r = -3*PI/2 + 2*PI = PI/2, then r = PI - PI/2 = PI/2
+        // result = (PI/2) / PI = 0.5
         let val = angle_between_3d_coords(glam::Vec3::X, glam::Vec3::ZERO, glam::Vec3::Y);
-        // sin(90deg) = 1.0
-        assert!((val - 1.0).abs() < 1e-5);
+        assert!((val - 0.5).abs() < 1e-5, "expected 0.5, got {val}");
     }
 
     #[test]
