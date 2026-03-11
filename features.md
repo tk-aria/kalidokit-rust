@@ -1520,15 +1520,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ### Step 9.8: Phase 9 検証
 
-- [ ] **ビルド検証**:
+- [x] **ビルド検証**: <!-- 2026-03-11 14:35 JST -->
   - `cargo check --workspace` 成功
   - `cargo clippy --workspace -- -D warnings` 警告 0
-  - `cargo fmt --check` 差分なし
-- [ ] **カメラ動作確認** (カメラ接続環境で実施):
+  - `cargo fmt --check` 差分なし (cargo fmt で自動修正済み)
+- [ ] **カメラ動作確認** (カメラ接続環境で実施) — ヘッドレス環境のため未検証:
   - アプリ起動時にカメラが初期化される (`init_camera()` が `Some` を返す)
   - 毎フレームカメラからの画像が取得される（ダミー黒画像でない）
   - カメラ未接続時にダミーフレームにフォールバックし、パニックしない
-- [ ] **CI 検証** (タグ push で release.yml を実行):
+- [ ] **CI 検証** (タグ push で release.yml を実行) — CI 実行環境がないため未検証:
   - Linux: `cargo zigbuild` で glibc 2.17 ターゲットのバイナリが生成される
   - macOS: `cargo build` でビルド成功（変更なし）
   - Windows: `cargo build` でビルド成功（変更なし）

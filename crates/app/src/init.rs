@@ -150,12 +150,10 @@ fn init_camera() -> Result<nokhwa::Camera> {
     let index = CameraIndex::Index(0);
     let format = CameraFormat::new_from(640, 480, FrameFormat::MJPEG, 30);
     let requested = RequestedFormat::new::<RgbFormat>(RequestedFormatType::Closest(format));
-    let mut camera =
-        nokhwa::Camera::new(index, requested).context("Failed to create camera")?;
+    let mut camera = nokhwa::Camera::new(index, requested).context("Failed to create camera")?;
     camera
         .open_stream()
         .context("Failed to open camera stream")?;
     log::info!("Webcam initialized: {:?}", camera.camera_format());
     Ok(camera)
 }
-
