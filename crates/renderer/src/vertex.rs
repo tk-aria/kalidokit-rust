@@ -4,6 +4,8 @@ pub struct Vertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub uv: [f32; 2],
+    pub joint_indices: [u32; 4],
+    pub joint_weights: [f32; 4],
 }
 
 impl Vertex {
@@ -27,6 +29,16 @@ impl Vertex {
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32x2,
                 },
+                wgpu::VertexAttribute {
+                    offset: 32,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Uint32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: 48,
+                    shader_location: 4,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
             ],
         }
     }
@@ -39,7 +51,7 @@ mod tests {
     #[test]
     fn vertex_layout_stride() {
         let layout = Vertex::layout();
-        assert_eq!(layout.array_stride, 32);
+        assert_eq!(layout.array_stride, 64);
     }
 
     #[test]
@@ -48,9 +60,11 @@ mod tests {
             position: [1.0, 2.0, 3.0],
             normal: [0.0, 1.0, 0.0],
             uv: [0.5, 0.5],
+            joint_indices: [0, 0, 0, 0],
+            joint_weights: [1.0, 0.0, 0.0, 0.0],
         };
         let bytes = bytemuck::bytes_of(&v);
-        assert_eq!(bytes.len(), 32);
+        assert_eq!(bytes.len(), 64);
     }
 
     #[test]

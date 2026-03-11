@@ -29,6 +29,8 @@ struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
+    @location(3) joint_indices: vec4<u32>,
+    @location(4) joint_weights: vec4<f32>,
 };
 
 struct VertexOutput {
@@ -42,16 +44,40 @@ struct VertexOutput {
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
-    let world_pos = camera.model * vec4<f32>(in.position, 1.0);
+    let weight_sum = in.joint_weights.x + in.joint_weights.y + in.joint_weights.z + in.joint_weights.w;
+
+    var world_pos: vec4<f32>;
+    var world_normal: vec3<f32>;
+
+    if (weight_sum > 0.0) {
+        // Linear Blend Skinning
+        let skin_matrix =
+            joint_matrices[in.joint_indices.x] * in.joint_weights.x +
+            joint_matrices[in.joint_indices.y] * in.joint_weights.y +
+            joint_matrices[in.joint_indices.z] * in.joint_weights.z +
+            joint_matrices[in.joint_indices.w] * in.joint_weights.w;
+
+        world_pos = skin_matrix * vec4<f32>(in.position, 1.0);
+        let normal_mat = mat3x3<f32>(
+            skin_matrix[0].xyz,
+            skin_matrix[1].xyz,
+            skin_matrix[2].xyz,
+        );
+        world_normal = normalize(normal_mat * in.normal);
+    } else {
+        // No skinning - use model matrix
+        world_pos = camera.model * vec4<f32>(in.position, 1.0);
+        let normal_matrix = mat3x3<f32>(
+            camera.model[0].xyz,
+            camera.model[1].xyz,
+            camera.model[2].xyz,
+        );
+        world_normal = normalize(normal_matrix * in.normal);
+    }
+
     out.clip_position = camera.view_proj * world_pos;
     out.world_pos = world_pos.xyz;
-
-    let normal_matrix = mat3x3<f32>(
-        camera.model[0].xyz,
-        camera.model[1].xyz,
-        camera.model[2].xyz,
-    );
-    out.world_normal = normalize(normal_matrix * in.normal);
+    out.world_normal = world_normal;
     out.uv = in.uv;
 
     return out;

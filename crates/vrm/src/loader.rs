@@ -180,11 +180,38 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
                 .map(|acc| read_accessor_as(blob, &acc))
                 .unwrap_or_default();
 
+            // Read joint indices (JOINTS_0) - typically u8 or u16 in glTF
+            let joint_indices: Vec<[u32; 4]> =
+                if let Some(acc) = primitive.get(&gltf::Semantic::Joints(0)) {
+                    let bytes = read_accessor_data(blob, &acc);
+                    match acc.data_type() {
+                        gltf::accessor::DataType::U8 => bytes
+                            .chunks_exact(4)
+                            .map(|c| [c[0] as u32, c[1] as u32, c[2] as u32, c[3] as u32])
+                            .collect(),
+                        gltf::accessor::DataType::U16 => bytemuck::cast_slice::<u8, u16>(&bytes)
+                            .chunks_exact(4)
+                            .map(|c| [c[0] as u32, c[1] as u32, c[2] as u32, c[3] as u32])
+                            .collect(),
+                        _ => vec![[0u32; 4]; positions.len()],
+                    }
+                } else {
+                    vec![[0u32; 4]; positions.len()]
+                };
+
+            // Read joint weights (WEIGHTS_0) - typically f32 in glTF
+            let joint_weights: Vec<[f32; 4]> = primitive
+                .get(&gltf::Semantic::Weights(0))
+                .map(|acc| read_accessor_as(blob, &acc))
+                .unwrap_or_else(|| vec![[0.0f32; 4]; positions.len()]);
+
             for (i, &pos) in positions.iter().enumerate() {
                 vertices.push(Vertex {
                     position: pos,
                     normal: normals.get(i).copied().unwrap_or([0.0, 1.0, 0.0]),
                     uv: uvs.get(i).copied().unwrap_or([0.0, 0.0]),
+                    joint_indices: joint_indices.get(i).copied().unwrap_or([0; 4]),
+                    joint_weights: joint_weights.get(i).copied().unwrap_or([0.0; 4]),
                 });
             }
 

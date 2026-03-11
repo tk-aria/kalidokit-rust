@@ -81,10 +81,17 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     }
 
     // 4. Update GPU buffers
-    let joint_matrices = state
+    // Compute world matrices for all nodes via FK, then build per-joint skinning matrices
+    let world_matrices = state
         .vrm_model
         .humanoid_bones
         .compute_joint_matrices(&state.vrm_model.node_transforms);
+    let joint_matrices: Vec<glam::Mat4> = state
+        .vrm_model
+        .skins
+        .iter()
+        .map(|joint| world_matrices[joint.node_index] * joint.inverse_bind_matrix)
+        .collect();
     let num_morph_targets = state
         .vrm_model
         .meshes
