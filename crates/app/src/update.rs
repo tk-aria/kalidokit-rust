@@ -365,9 +365,12 @@ fn apply_rig_to_model(state: &mut AppState) {
         state.rig.prev_look_target = interpolated;
 
         if let Some(look_at) = &state.vrm_model.look_at {
+            // Testbed passes raw pupil values as radians to THREE.Euler, then three-vrm
+            // internally converts RAD2DEG. Our apply() takes degrees, so convert here.
+            let rad2deg = 180.0_f32 / std::f32::consts::PI;
             let euler = vrm::look_at::EulerAngles {
-                yaw: interpolated.y * 30.0,
-                pitch: interpolated.x * 30.0,
+                yaw: interpolated.y * rad2deg,
+                pitch: interpolated.x * rad2deg,
             };
             let eye_quat = look_at.apply(&euler);
             state.vrm_model.humanoid_bones.set_rotation_interpolated(

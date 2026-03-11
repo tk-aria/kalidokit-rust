@@ -162,10 +162,11 @@ mod tests {
             vertical_up: CurveRange::default(),
             vertical_down: CurveRange::default(),
         };
-        // Simulate non-zero pupil values scaled to degrees (as done in apply_rig_to_model)
+        // Simulate non-zero pupil values converted from radians to degrees (as done in apply_rig_to_model)
+        let rad2deg = 180.0_f32 / std::f32::consts::PI;
         let euler = EulerAngles {
-            yaw: 0.5 * 30.0,   // 15 degrees
-            pitch: 0.3 * 30.0, // 9 degrees
+            yaw: 0.5 * rad2deg,   // ~28.6 degrees
+            pitch: 0.3 * rad2deg, // ~17.2 degrees
         };
         let q = applyer.apply(&euler);
         let angle = q.angle_between(Quat::IDENTITY);

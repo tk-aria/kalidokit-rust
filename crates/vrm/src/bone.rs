@@ -195,10 +195,21 @@ impl HumanoidBones {
                 );
             }
         }
+        // Initialize prev_rotations and prev_positions from bind pose values.
+        // In Three.js, Part.quaternion starts at the glTF bind pose, so
+        // Part.quaternion.slerp(target, lerpAmount) interpolates FROM bind pose.
+        // We must match this by initializing prev values from bind pose.
+        let mut prev_rotations = HashMap::new();
+        let mut prev_positions = HashMap::new();
+        for (&name, bone) in &bones {
+            prev_rotations.insert(name, bone.local_rotation);
+            prev_positions.insert(name, bone.local_position);
+        }
+
         Ok(Self {
             bones,
-            prev_rotations: HashMap::new(),
-            prev_positions: HashMap::new(),
+            prev_rotations,
+            prev_positions,
         })
     }
 
