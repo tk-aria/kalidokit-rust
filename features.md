@@ -1508,14 +1508,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ### Step 9.7: ドキュメント更新
 
-- [ ] `CLAUDE.md`:
+- [x] `CLAUDE.md`: <!-- 2026-03-11 14:32 JST -->
   - ORT ビルドの musl 注記 (`ORT ビルド (Linux musl): execinfo.h スタブ...`) を削除
   - `cargo-zigbuild` による Linux ビルド手順を追記
-- [ ] `features.md`:
+- [x] `features.md`: <!-- 2026-03-11 14:32 JST -->
   - ライブラリバージョン一覧の `nokhwa` が残っていることを確認
   - Step 6.2 (カメラ初期化) と Step 6.3 (フレーム取得) のチェックボックスは動作確認後にチェック
-- [ ] `README.md`:
+- [x] `README.md`: <!-- 2026-03-11 14:32 JST -->
   - アーキテクチャ図の Camera 部分が nokhwa であることを確認
+  - Linux ダウンロードセクションのターゲットを `x86_64-unknown-linux-musl` → `x86_64-unknown-linux-gnu` に変更
 
 ### Step 9.8: Phase 9 検証
 

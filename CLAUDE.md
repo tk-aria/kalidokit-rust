@@ -49,5 +49,5 @@ cargo build --release            # リリースビルド (要 ONNX Runtime)
 
 - winit 0.30: `ApplicationHandler` trait 実装。`about_to_wait()` で毎アイドル `request_redraw()` を呼ぶことでレンダーループを駆動
 - wgpu Metal backend: macOS 13.x 互換のため `.cargo/config.toml` で CoreML シンボルを `-U` リンカフラグで許容
-- ORT ビルド (Linux musl): execinfo.h スタブ、Eigen 事前クローン、FLATBUFFERS_LOCALE_INDEPENDENT=0 が必要
+- ORT ビルド (Linux): cargo-zigbuild で glibc 2.17+ ターゲットにクロスビルド。musl ワークアラウンドは不要
 - features.md が実装計画の信頼できる唯一のソース (Single Source of Truth)
