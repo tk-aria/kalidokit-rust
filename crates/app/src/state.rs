@@ -34,9 +34,6 @@ pub struct RigState {
     pub pose: Option<RiggedPose>,
     pub left_hand: Option<RiggedHand>,
     pub right_hand: Option<RiggedHand>,
-    /// Previous frame blink values for interpolation.
-    pub prev_blink_l: f32,
-    pub prev_blink_r: f32,
     /// Previous interpolated look target for pupil lerp smoothing.
     pub prev_look_target: glam::Vec2,
 }

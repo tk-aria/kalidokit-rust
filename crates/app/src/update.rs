@@ -233,7 +233,9 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             ..default_cam
         }
     };
-    let camera_uniform = camera.to_uniform(glam::Mat4::IDENTITY);
+    // Rotate model 180° around Y to face camera (matching testbed: scene.rotation.y = Math.PI)
+    let model_matrix = glam::Mat4::from_rotation_y(std::f32::consts::PI);
+    let camera_uniform = camera.to_uniform(model_matrix);
 
     pipeline_logger::gpu(log::Level::Debug, "uploading buffers")
         .field("joint_matrices", joint_matrices.len())
@@ -297,67 +299,66 @@ fn apply_rig_to_model(state: &mut AppState) {
 
     // Apply face rig
     if let Some(face) = &state.rig.face {
-        // Head rotation applied to Neck bone (matching testbed: rigRotation("Neck", ...))
-        let head_quat = face.head.to_quat();
+        // Head rotation: rigRotation("Neck", head, 0.7)
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::Neck,
-            head_quat,
-            cfg.neck.dampener,
+            face.head.to_quat_dampened(cfg.neck.dampener),
             cfg.neck.lerp_amount,
         );
 
-        // Eye blink: invert, clamp, lerp with previous frame, then stabilize
+        // Eye blink: lerp(clamp(1-eye, 0, 1), prevBlink, 0.5), then stabilize
+        let bs = &state.vrm_model.blend_shapes;
+        let prev_blink = bs.get(vrm::blendshape::BlendShapePreset::Blink);
         let eye_l_raw = (1.0 - face.eye.l).clamp(0.0, 1.0);
         let eye_r_raw = (1.0 - face.eye.r).clamp(0.0, 1.0);
-        let eye_l = state.rig.prev_blink_l + (eye_l_raw - state.rig.prev_blink_l) * cfg.eye_blink;
-        let eye_r = state.rig.prev_blink_r + (eye_r_raw - state.rig.prev_blink_r) * cfg.eye_blink;
+        // Testbed: lerp(newValue, oldValue, 0.5) = (new + old) / 2
+        let eye_l = eye_l_raw + (prev_blink - eye_l_raw) * 0.5;
+        let eye_r = eye_r_raw + (prev_blink - eye_r_raw) * 0.5;
         let stabilized =
             solver::face::stabilize_blink(&EyeValues { l: eye_l, r: eye_r }, face.head.y);
-        state.rig.prev_blink_l = stabilized.l;
-        state.rig.prev_blink_r = stabilized.r;
-        // Testbed uses same value (stabilized.l) for both BlinkL and BlinkR
+        // Testbed sets Blink (not BlinkL/BlinkR) to stabilized.l
         state
             .vrm_model
             .blend_shapes
-            .set(vrm::blendshape::BlendShapePreset::BlinkL, stabilized.l);
-        state
-            .vrm_model
-            .blend_shapes
-            .set(vrm::blendshape::BlendShapePreset::BlinkR, stabilized.l);
+            .set(vrm::blendshape::BlendShapePreset::Blink, stabilized.l);
 
-        // Mouth shapes
-        state
-            .vrm_model
-            .blend_shapes
-            .set(vrm::blendshape::BlendShapePreset::A, face.mouth.a);
-        state
-            .vrm_model
-            .blend_shapes
-            .set(vrm::blendshape::BlendShapePreset::I, face.mouth.i);
-        state
-            .vrm_model
-            .blend_shapes
-            .set(vrm::blendshape::BlendShapePreset::U, face.mouth.u);
-        state
-            .vrm_model
-            .blend_shapes
-            .set(vrm::blendshape::BlendShapePreset::E, face.mouth.e);
-        state
-            .vrm_model
-            .blend_shapes
-            .set(vrm::blendshape::BlendShapePreset::O, face.mouth.o);
+        // Mouth shapes with interpolation: lerp(new, prev, 0.5)
+        let bs = &state.vrm_model.blend_shapes;
+        let prev_a = bs.get(vrm::blendshape::BlendShapePreset::A);
+        let prev_i = bs.get(vrm::blendshape::BlendShapePreset::I);
+        let prev_u = bs.get(vrm::blendshape::BlendShapePreset::U);
+        let prev_e = bs.get(vrm::blendshape::BlendShapePreset::E);
+        let prev_o = bs.get(vrm::blendshape::BlendShapePreset::O);
+        state.vrm_model.blend_shapes.set(
+            vrm::blendshape::BlendShapePreset::A,
+            face.mouth.a + (prev_a - face.mouth.a) * 0.5,
+        );
+        state.vrm_model.blend_shapes.set(
+            vrm::blendshape::BlendShapePreset::I,
+            face.mouth.i + (prev_i - face.mouth.i) * 0.5,
+        );
+        state.vrm_model.blend_shapes.set(
+            vrm::blendshape::BlendShapePreset::U,
+            face.mouth.u + (prev_u - face.mouth.u) * 0.5,
+        );
+        state.vrm_model.blend_shapes.set(
+            vrm::blendshape::BlendShapePreset::E,
+            face.mouth.e + (prev_e - face.mouth.e) * 0.5,
+        );
+        state.vrm_model.blend_shapes.set(
+            vrm::blendshape::BlendShapePreset::O,
+            face.mouth.o + (prev_o - face.mouth.o) * 0.5,
+        );
 
         // Pupil tracking with lerp interpolation
-        let pupil_lerp = cfg.pupil;
         let prev = state.rig.prev_look_target;
         let target = face.pupil;
         let interpolated = glam::Vec2::new(
-            prev.x + (target.x - prev.x) * pupil_lerp,
-            prev.y + (target.y - prev.y) * pupil_lerp,
+            prev.x + (target.x - prev.x) * cfg.pupil,
+            prev.y + (target.y - prev.y) * cfg.pupil,
         );
         state.rig.prev_look_target = interpolated;
 
-        // Apply via LookAt if available
         if let Some(look_at) = &state.vrm_model.look_at {
             let euler = vrm::look_at::EulerAngles {
                 yaw: interpolated.x * 30.0,
@@ -367,13 +368,11 @@ fn apply_rig_to_model(state: &mut AppState) {
             state.vrm_model.humanoid_bones.set_rotation_interpolated(
                 vrm::bone::HumanoidBoneName::LeftEye,
                 eye_quat,
-                1.0,
                 0.3,
             );
             state.vrm_model.humanoid_bones.set_rotation_interpolated(
                 vrm::bone::HumanoidBoneName::RightEye,
                 eye_quat,
-                1.0,
                 0.3,
             );
         }
@@ -388,83 +387,72 @@ fn apply_rig_to_model(state: &mut AppState) {
             -pose.hips.position.z,
         );
 
-        // Hips rotation
+        // Hips: rigRotation("Hips", rotation, 0.7)
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::Hips,
-            pose.hips.rotation.to_quat(),
-            cfg.hips_rotation.dampener,
+            pose.hips.rotation.to_quat_dampened(cfg.hips_rotation.dampener),
             cfg.hips_rotation.lerp_amount,
         );
 
-        // Spine
+        // Spine: rigRotation("Spine", Spine, 0.45, 0.3)
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::Spine,
-            pose.spine.to_quat(),
-            cfg.spine.dampener,
+            pose.spine.to_quat_dampened(cfg.spine.dampener),
             cfg.spine.lerp_amount,
         );
 
-        // Chest
+        // Chest: rigRotation("Chest", Spine, 0.25, 0.3)
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::Chest,
-            pose.chest.to_quat(),
-            cfg.chest.dampener,
+            pose.chest.to_quat_dampened(cfg.chest.dampener),
             cfg.chest.lerp_amount,
         );
 
-        // Arms (limbs config)
+        // Arms: rigRotation(name, rotation, 1, 0.3)
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::RightUpperArm,
-            pose.right_upper_arm.to_quat(),
-            cfg.limbs.dampener,
+            pose.right_upper_arm.to_quat_dampened(cfg.limbs.dampener),
             cfg.limbs.lerp_amount,
         );
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::RightLowerArm,
-            pose.right_lower_arm.to_quat(),
-            cfg.limbs.dampener,
+            pose.right_lower_arm.to_quat_dampened(cfg.limbs.dampener),
             cfg.limbs.lerp_amount,
         );
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::LeftUpperArm,
-            pose.left_upper_arm.to_quat(),
-            cfg.limbs.dampener,
+            pose.left_upper_arm.to_quat_dampened(cfg.limbs.dampener),
             cfg.limbs.lerp_amount,
         );
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::LeftLowerArm,
-            pose.left_lower_arm.to_quat(),
-            cfg.limbs.dampener,
+            pose.left_lower_arm.to_quat_dampened(cfg.limbs.dampener),
             cfg.limbs.lerp_amount,
         );
 
-        // Legs (limbs config)
+        // Legs: rigRotation(name, rotation, 1, 0.3)
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::RightUpperLeg,
-            pose.right_upper_leg.to_quat(),
-            cfg.limbs.dampener,
+            pose.right_upper_leg.to_quat_dampened(cfg.limbs.dampener),
             cfg.limbs.lerp_amount,
         );
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::RightLowerLeg,
-            pose.right_lower_leg.to_quat(),
-            cfg.limbs.dampener,
+            pose.right_lower_leg.to_quat_dampened(cfg.limbs.dampener),
             cfg.limbs.lerp_amount,
         );
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::LeftUpperLeg,
-            pose.left_upper_leg.to_quat(),
-            cfg.limbs.dampener,
+            pose.left_upper_leg.to_quat_dampened(cfg.limbs.dampener),
             cfg.limbs.lerp_amount,
         );
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::LeftLowerLeg,
-            pose.left_lower_leg.to_quat(),
-            cfg.limbs.dampener,
+            pose.left_lower_leg.to_quat_dampened(cfg.limbs.dampener),
             cfg.limbs.lerp_amount,
         );
 
-        // Apply hip position
+        // Hip position: rigPosition("Hips", pos, 1, 0.07)
         state.vrm_model.humanoid_bones.set_position_interpolated(
             vrm::bone::HumanoidBoneName::Hips,
             hip_pos,
@@ -595,8 +583,7 @@ fn apply_hand_bones(
     for (bone_name, euler) in &mappings {
         bones.set_rotation_interpolated(
             *bone_name,
-            euler.to_quat(),
-            config.dampener,
+            euler.to_quat_dampened(config.dampener),
             config.lerp_amount,
         );
     }

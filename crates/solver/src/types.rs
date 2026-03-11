@@ -39,6 +39,17 @@ impl EulerAngles {
     pub fn to_quat(&self) -> Quat {
         Quat::from_euler(EulerRot::XYZ, self.x, self.y, self.z)
     }
+
+    /// Convert to quaternion with dampener applied to Euler angles first.
+    /// Matches testbed: `new THREE.Euler(x*d, y*d, z*d)` → `setFromEuler`.
+    pub fn to_quat_dampened(&self, dampener: f32) -> Quat {
+        Quat::from_euler(
+            EulerRot::XYZ,
+            self.x * dampener,
+            self.y * dampener,
+            self.z * dampener,
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]

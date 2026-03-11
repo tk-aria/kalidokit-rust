@@ -14,6 +14,7 @@ pub struct RigConfig {
     pub chest: BoneConfig,
     pub spine: BoneConfig,
     pub limbs: BoneConfig,
+    #[allow(dead_code)]
     pub eye_blink: f32,
     #[allow(dead_code)]
     pub mouth_shape: f32,

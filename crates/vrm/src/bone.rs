@@ -244,22 +244,21 @@ impl HumanoidBones {
 
     /// Set rotation with dampener and slerp interpolation (matching KalidoKit rigRotation).
     ///
-    /// 1. Apply dampener: slerp from IDENTITY toward `target` by `dampener`
-    /// 2. Interpolate from previous rotation toward dampened target by `lerp_amount`
+    /// The caller must apply dampener to the Euler angles BEFORE converting to
+    /// quaternion, matching the testbed: `Euler(x*d, y*d, z*d) → Quat → slerp`.
+    /// The `target` quaternion passed here is already dampened.
     pub fn set_rotation_interpolated(
         &mut self,
         name: HumanoidBoneName,
         target: Quat,
-        dampener: f32,
         lerp_amount: f32,
     ) {
-        let dampened = Quat::IDENTITY.slerp(target, dampener);
         let prev = self
             .prev_rotations
             .get(&name)
             .copied()
             .unwrap_or(Quat::IDENTITY);
-        let interpolated = prev.slerp(dampened, lerp_amount);
+        let interpolated = prev.slerp(target, lerp_amount);
         self.prev_rotations.insert(name, interpolated);
         if let Some(bone) = self.bones.get_mut(&name) {
             bone.local_rotation = interpolated;
@@ -466,8 +465,8 @@ mod tests {
         // Target: 90 degrees around Y axis
         let target = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
 
-        // dampener=1.0 means full target, lerp_amount=0.3 means 30% toward target
-        bones.set_rotation_interpolated(HumanoidBoneName::Hips, target, 1.0, 0.3);
+        // lerp_amount=0.3 means 30% toward target (dampener now applied by caller before quat conversion)
+        bones.set_rotation_interpolated(HumanoidBoneName::Hips, target, 0.3);
 
         let result = bones.get(HumanoidBoneName::Hips).unwrap().local_rotation;
 

@@ -103,6 +103,11 @@ impl BlendShapeGroup {
         })
     }
 
+    /// プリセットの現在値を取得 (デフォルト0.0)
+    pub fn get(&self, preset: BlendShapePreset) -> f32 {
+        self.current_weights.get(&preset).copied().unwrap_or(0.0)
+    }
+
     /// プリセットの重みを設定 (0.0〜1.0)
     pub fn set(&mut self, preset: BlendShapePreset, value: f32) {
         self.current_weights.insert(preset, value.clamp(0.0, 1.0));

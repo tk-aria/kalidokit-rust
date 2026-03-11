@@ -34,9 +34,9 @@ impl Camera {
 impl Default for Camera {
     fn default() -> Self {
         Self {
-            position: Vec3::new(0.0, 1.4, -0.7),
-            target: Vec3::new(0.0, 1.0, 0.0),
-            fov: 50.0,
+            position: Vec3::new(0.0, 1.4, 0.7),
+            target: Vec3::new(0.0, 1.4, 0.0),
+            fov: 35.0,
             aspect: 16.0 / 9.0,
             near: 0.01,
             far: 100.0,
