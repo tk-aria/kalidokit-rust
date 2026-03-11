@@ -51,8 +51,24 @@ impl HolisticTracker {
 
         // Run face and pose detection in parallel (independent of each other).
         let (face_landmarks, (pose_3d, pose_2d)) = rayon::join(
-            || self.face_detector.detect(frame).unwrap_or(None),
-            || self.pose_detector.detect(frame).unwrap_or((None, None)),
+            || match self.face_detector.detect(frame) {
+                Ok(result) => result,
+                Err(e) => {
+                    pipeline_logger::tracker(log::Level::Warn, "face detection error")
+                        .field("error", format!("{e:#}"))
+                        .emit();
+                    None
+                }
+            },
+            || match self.pose_detector.detect(frame) {
+                Ok(result) => result,
+                Err(e) => {
+                    pipeline_logger::tracker(log::Level::Warn, "pose detection error")
+                        .field("error", format!("{e:#}"))
+                        .emit();
+                    (None, None)
+                }
+            },
         );
 
         let img_w = frame.width();
@@ -81,14 +97,24 @@ impl HolisticTracker {
             _ => (frame.clone(), frame.clone()),
         };
 
-        let left_hand = self
-            .left_hand_detector
-            .detect(&left_frame, true)
-            .unwrap_or(None);
-        let right_hand = self
-            .right_hand_detector
-            .detect(&right_frame, false)
-            .unwrap_or(None);
+        let left_hand = match self.left_hand_detector.detect(&left_frame, true) {
+            Ok(result) => result,
+            Err(e) => {
+                pipeline_logger::tracker(log::Level::Warn, "left hand detection error")
+                    .field("error", format!("{e:#}"))
+                    .emit();
+                None
+            }
+        };
+        let right_hand = match self.right_hand_detector.detect(&right_frame, false) {
+            Ok(result) => result,
+            Err(e) => {
+                pipeline_logger::tracker(log::Level::Warn, "right hand detection error")
+                    .field("error", format!("{e:#}"))
+                    .emit();
+                None
+            }
+        };
 
         let elapsed = detect_start.elapsed();
         pipeline_logger::tracker(log::Level::Debug, "detection complete")

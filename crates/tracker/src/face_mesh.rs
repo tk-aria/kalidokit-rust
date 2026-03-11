@@ -2,6 +2,7 @@ use std::sync::Mutex;
 
 use glam::Vec3;
 use image::DynamicImage;
+use log;
 use ort::session::Session;
 use ort::value::TensorRef;
 
@@ -30,6 +31,10 @@ impl FaceMeshDetector {
     /// Returns `None` if no face is detected (insufficient landmarks).
     pub fn detect(&self, frame: &DynamicImage) -> anyhow::Result<Option<Vec<Vec3>>> {
         let input_tensor = preprocess::preprocess_image(frame, 192, 192);
+        pipeline_logger::tracker(log::Level::Trace, "face input tensor")
+            .field("shape", format!("{:?}", input_tensor.shape()))
+            .emit();
+
         let input_ref = TensorRef::from_array_view(&input_tensor)?;
 
         let mut session = self.session.lock().unwrap();
@@ -37,7 +42,28 @@ impl FaceMeshDetector {
 
         // MediaPipe face mesh outputs:
         // output[0]: landmarks [1, 1404] (468 * 3) or [1, 1434] (478 * 3)
-        let (_, raw_data) = outputs[0].try_extract_tensor::<f32>()?;
+        let (shape, raw_data) = outputs[0].try_extract_tensor::<f32>()?;
+
+        pipeline_logger::tracker(log::Level::Debug, "face output")
+            .field("shape", format!("{:?}", shape))
+            .field("data_len", raw_data.len())
+            .field(
+                "sample",
+                if raw_data.len() >= 6 {
+                    format!(
+                        "[{:.3},{:.3},{:.3},{:.3},{:.3},{:.3}]",
+                        raw_data[0],
+                        raw_data[1],
+                        raw_data[2],
+                        raw_data[3],
+                        raw_data[4],
+                        raw_data[5]
+                    )
+                } else {
+                    format!("{:?}", &raw_data[..raw_data.len().min(6)])
+                },
+            )
+            .emit();
 
         if raw_data.is_empty() {
             return Ok(None);
@@ -46,6 +72,10 @@ impl FaceMeshDetector {
         // Determine number of landmarks (468 or 478)
         let num_landmarks = raw_data.len() / 3;
         if num_landmarks < 468 {
+            pipeline_logger::tracker(log::Level::Warn, "face: insufficient landmarks")
+                .field("num_landmarks", num_landmarks)
+                .field("expected", ">=468")
+                .emit();
             return Ok(None);
         }
 

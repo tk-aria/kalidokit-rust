@@ -2,6 +2,7 @@ use std::sync::Mutex;
 
 use glam::{Vec2, Vec3};
 use image::DynamicImage;
+use log;
 use ort::session::Session;
 use ort::value::TensorRef;
 
@@ -33,14 +34,37 @@ impl PoseDetector {
     /// Returns (3D world landmarks, 2D screen landmarks), either of which may be None.
     pub fn detect(&self, frame: &DynamicImage) -> anyhow::Result<PoseResult> {
         let input_tensor = preprocess::preprocess_image(frame, 256, 256);
+        pipeline_logger::tracker(log::Level::Trace, "pose input tensor")
+            .field("shape", format!("{:?}", input_tensor.shape()))
+            .emit();
+
         let input_ref = TensorRef::from_array_view(&input_tensor)?;
 
         let mut session = self.session.lock().unwrap();
         let outputs = session.run(ort::inputs![input_ref])?;
 
+        pipeline_logger::tracker(log::Level::Debug, "pose outputs")
+            .field("num_outputs", outputs.len())
+            .emit();
+
         // Parse 3D world landmarks from output[0]: [1, 33*5] (x, y, z, visibility, presence)
         let landmarks_3d = if outputs.len() > 0 {
-            let (_, raw_data) = outputs[0].try_extract_tensor::<f32>()?;
+            let (shape, raw_data) = outputs[0].try_extract_tensor::<f32>()?;
+            pipeline_logger::tracker(log::Level::Debug, "pose output[0]")
+                .field("shape", format!("{:?}", shape))
+                .field("data_len", raw_data.len())
+                .field(
+                    "sample",
+                    if raw_data.len() >= 5 {
+                        format!(
+                            "[{:.3},{:.3},{:.3},{:.3},{:.3}]",
+                            raw_data[0], raw_data[1], raw_data[2], raw_data[3], raw_data[4]
+                        )
+                    } else {
+                        format!("{:?}", &raw_data[..raw_data.len().min(5)])
+                    },
+                )
+                .emit();
             if raw_data.len() >= 33 * 5 {
                 let lm: Vec<Vec3> = (0..33)
                     .map(|i| {
