@@ -45,6 +45,13 @@ jobs:
       - name: Build ONNX Runtime from source (static, glibc)
         if: steps.ort-cache.outputs.cache-hit != 'true'
         run: |
+          # Pre-clone Eigen at the exact commit ORT v1.20.1 expects
+          # (avoids FetchContent zip download hash mismatch from GitLab)
+          git clone https://gitlab.com/libeigen/eigen.git /tmp/eigen-src
+          cd /tmp/eigen-src
+          git checkout e7248b26a1ed53fa030c5c459f7ea095dfd276ac
+          cd /
+
           git clone --depth 1 --branch v1.20.1 \
             https://github.com/microsoft/onnxruntime /tmp/ort-src
           cd /tmp/ort-src
@@ -55,7 +62,8 @@ jobs:
             --compile_no_warning_as_error \
             --cmake_extra_defines CMAKE_POSITION_INDEPENDENT_CODE=ON \
             --cmake_extra_defines onnxruntime_BUILD_SHARED_LIB=OFF \
-            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
+            --cmake_extra_defines FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src
 
           mkdir -p /tmp/ort-build
           cp -a build/Linux/* /tmp/ort-build/
