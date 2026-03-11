@@ -147,8 +147,21 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
 
 /// Try to initialize the default webcam (index 0) at 640x480.
 fn init_camera() -> Result<nokhwa::Camera> {
+    // On macOS, request camera permission via AVFoundation before creating the camera.
+    // This blocks until the user grants/denies permission.
+    let (tx, rx) = std::sync::mpsc::channel();
+    nokhwa::nokhwa_initialize(move |granted| {
+        let _ = tx.send(granted);
+    });
+    let granted = rx
+        .recv_timeout(std::time::Duration::from_secs(30))
+        .unwrap_or(false);
+    if !granted {
+        anyhow::bail!("Camera permission denied by user");
+    }
+
     let index = CameraIndex::Index(0);
-    let format = CameraFormat::new_from(640, 480, FrameFormat::MJPEG, 30);
+    let format = CameraFormat::new_from(640, 480, FrameFormat::YUYV, 30);
     let requested = RequestedFormat::new::<RgbFormat>(RequestedFormatType::Closest(format));
     let mut camera = nokhwa::Camera::new(index, requested).context("Failed to create camera")?;
     camera
