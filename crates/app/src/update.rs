@@ -80,11 +80,8 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         }
 
         if let Some(pose_3d) = &result.pose_landmarks_3d {
-            let pose_2d_vec: Vec<glam::Vec2> = result
-                .pose_landmarks_2d
-                .as_deref()
-                .unwrap_or(&[])
-                .to_vec();
+            let pose_2d_vec: Vec<glam::Vec2> =
+                result.pose_landmarks_2d.as_deref().unwrap_or(&[]).to_vec();
             // If 2D landmarks are still empty (rare fallback), use zero vectors
             let pose_2d_vec = if pose_2d_vec.is_empty() {
                 vec![glam::Vec2::new(0.5, 0.5); 33]
@@ -390,7 +387,9 @@ fn apply_rig_to_model(state: &mut AppState) {
         // Hips: rigRotation("Hips", rotation, 0.7)
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::Hips,
-            pose.hips.rotation.to_quat_dampened(cfg.hips_rotation.dampener),
+            pose.hips
+                .rotation
+                .to_quat_dampened(cfg.hips_rotation.dampener),
             cfg.hips_rotation.lerp_amount,
         );
 

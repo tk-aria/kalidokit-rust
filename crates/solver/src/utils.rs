@@ -73,11 +73,7 @@ pub fn find_rotation(a: glam::Vec3, b: glam::Vec3, normalize: bool) -> glam::Vec
 /// 3-point mode (c = Some): forms a plane from a, b, c and computes euler angles.
 ///
 /// Output is normalized: each component divided by PI, giving [-1, 1] range.
-pub fn roll_pitch_yaw(
-    a: glam::Vec3,
-    b: glam::Vec3,
-    c: Option<glam::Vec3>,
-) -> glam::Vec3 {
+pub fn roll_pitch_yaw(a: glam::Vec3, b: glam::Vec3, c: Option<glam::Vec3>) -> glam::Vec3 {
     match c {
         None => {
             // 2-point mode
@@ -222,11 +218,7 @@ mod tests {
     #[test]
     fn test_angle_between_3d_coords() {
         // Right angle at b: a=(1,0,0), b=(0,0,0), c=(0,1,0)
-        let val = angle_between_3d_coords(
-            glam::Vec3::X,
-            glam::Vec3::ZERO,
-            glam::Vec3::Y,
-        );
+        let val = angle_between_3d_coords(glam::Vec3::X, glam::Vec3::ZERO, glam::Vec3::Y);
         // sin(90deg) = 1.0
         assert!((val - 1.0).abs() < 1e-5);
     }

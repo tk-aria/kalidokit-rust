@@ -323,7 +323,7 @@ mod tests {
     fn stabilize_blink_head_turned_right() {
         let eye = EyeValues { l: 0.8, r: 0.4 };
         let stabilized = stabilize_blink(&eye, 0.6); // > max_rot (0.5)
-        // Should use right eye for both
+                                                     // Should use right eye for both
         assert!((stabilized.l - 0.4).abs() < 1e-6);
         assert!((stabilized.r - 0.4).abs() < 1e-6);
     }
@@ -332,7 +332,7 @@ mod tests {
     fn stabilize_blink_head_turned_left() {
         let eye = EyeValues { l: 0.8, r: 0.4 };
         let stabilized = stabilize_blink(&eye, -0.6); // < -max_rot
-        // Should use left eye for both
+                                                      // Should use left eye for both
         assert!((stabilized.l - 0.8).abs() < 1e-6);
         assert!((stabilized.r - 0.8).abs() < 1e-6);
     }
@@ -379,7 +379,7 @@ mod tests {
         lm[144] = Vec3::new(110.0, 210.0, 0.0); // outer lower
         lm[145] = Vec3::new(125.0, 212.0, 0.0); // mid lower
         lm[153] = Vec3::new(140.0, 210.0, 0.0); // inner lower
-        // Right eye points [263, 362, 387, 386, 385, 373, 374, 380]
+                                                // Right eye points [263, 362, 387, 386, 385, 373, 374, 380]
         lm[263] = Vec3::new(250.0, 200.0, 0.0);
         lm[362] = Vec3::new(300.0, 200.0, 0.0);
         lm[387] = Vec3::new(260.0, 190.0, 0.0);
@@ -389,8 +389,16 @@ mod tests {
         lm[374] = Vec3::new(275.0, 212.0, 0.0);
         lm[380] = Vec3::new(290.0, 210.0, 0.0);
         let eye = calc_eyes(&lm);
-        assert!(eye.l >= 0.0 && eye.l <= 1.0, "left eye out of range: {}", eye.l);
-        assert!(eye.r >= 0.0 && eye.r <= 1.0, "right eye out of range: {}", eye.r);
+        assert!(
+            eye.l >= 0.0 && eye.l <= 1.0,
+            "left eye out of range: {}",
+            eye.l
+        );
+        assert!(
+            eye.r >= 0.0 && eye.r <= 1.0,
+            "right eye out of range: {}",
+            eye.r
+        );
     }
 
     #[test]

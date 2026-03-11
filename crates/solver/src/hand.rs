@@ -162,11 +162,7 @@ fn calc_non_thumb_finger(
             if is_right { -PI } else { 0.0 },
             if is_right { 0.0 } else { PI },
         );
-        result[i] = EulerAngles {
-            x: 0.0,
-            y: 0.0,
-            z,
-        };
+        result[i] = EulerAngles { x: 0.0, y: 0.0, z };
     }
     result
 }
@@ -201,7 +197,7 @@ mod tests {
         lm[0] = Vec3::new(0.0, 0.0, 0.0); // wrist
         lm[5] = Vec3::new(-0.5, 1.0, 0.0); // index base
         lm[17] = Vec3::new(0.5, 1.0, 0.0); // little base
-        // Fill finger joints with ascending Y positions
+                                           // Fill finger joints with ascending Y positions
         for finger in 0..5 {
             let base = 1 + finger * 4;
             for joint in 0..4 {
@@ -243,7 +239,11 @@ mod tests {
         lm[8] = Vec3::new(0.0, 0.0, 0.0);
         let result = calc_non_thumb_finger(&lm, &[0, 5, 6, 7, 8], Side::Right, 1.0);
         // Proximal z should be negative for right hand (angle * -PI * 1.0)
-        assert!(result[0].z < 0.0, "expected negative z, got {}", result[0].z);
+        assert!(
+            result[0].z < 0.0,
+            "expected negative z, got {}",
+            result[0].z
+        );
         // x and y should be 0
         assert_eq!(result[0].x, 0.0);
         assert_eq!(result[0].y, 0.0);
