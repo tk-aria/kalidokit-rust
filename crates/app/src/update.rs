@@ -80,17 +80,16 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         }
 
         if let Some(pose_3d) = &result.pose_landmarks_3d {
-            let pose_2d = result.pose_landmarks_2d.as_deref().unwrap_or(&[]);
-            let pose_2d_vec: Vec<glam::Vec2> = if pose_2d.is_empty() {
-                // Derive 2D screen landmarks from 3D world landmarks.
-                // The 3D x/y values are in world-meters but their relative positions
-                // approximate screen-space. Normalize to [0,1] range for the solver.
-                pose_3d
-                    .iter()
-                    .map(|v| glam::Vec2::new(v.x * 0.5 + 0.5, v.y * 0.5 + 0.5))
-                    .collect()
+            let pose_2d_vec: Vec<glam::Vec2> = result
+                .pose_landmarks_2d
+                .as_deref()
+                .unwrap_or(&[])
+                .to_vec();
+            // If 2D landmarks are still empty (rare fallback), use zero vectors
+            let pose_2d_vec = if pose_2d_vec.is_empty() {
+                vec![glam::Vec2::new(0.5, 0.5); 33]
             } else {
-                pose_2d.to_vec()
+                pose_2d_vec
             };
             let pose = solver::pose::solve(pose_3d, &pose_2d_vec, &video);
             pipeline_logger::solver(log::Level::Debug, "pose solved")

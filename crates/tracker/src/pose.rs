@@ -66,13 +66,44 @@ impl PoseDetector {
                 )
                 .emit();
             if raw_data.len() >= 33 * 5 {
+                // Convert pixel-space landmarks to world-like coordinates.
+                // MediaPipe Holistic JS world landmarks are centered at hip midpoint,
+                // with X right (person's perspective), Y up, Z toward camera.
+                // Our ONNX model outputs pixel coordinates (0-256, y-down).
+                let hip_l_x = raw_data[23 * 5];
+                let hip_l_y = raw_data[23 * 5 + 1];
+                let hip_l_z = raw_data[23 * 5 + 2];
+                let hip_r_x = raw_data[24 * 5];
+                let hip_r_y = raw_data[24 * 5 + 1];
+                let hip_r_z = raw_data[24 * 5 + 2];
+                let cx = (hip_l_x + hip_r_x) * 0.5;
+                let cy = (hip_l_y + hip_r_y) * 0.5;
+                let cz = (hip_l_z + hip_r_z) * 0.5;
+
                 let lm: Vec<Vec3> = (0..33)
                     .map(|i| {
                         let offset = i * 5;
-                        Vec3::new(raw_data[offset], raw_data[offset + 1], raw_data[offset + 2])
+                        // Negate x (pixel right→left = person's right)
+                        // Negate y (pixel down→up)
+                        // Keep z sign (positive = toward camera in both systems)
+                        Vec3::new(
+                            -(raw_data[offset] - cx) / 256.0,
+                            -(raw_data[offset + 1] - cy) / 256.0,
+                            (raw_data[offset + 2] - cz) / 256.0,
+                        )
                     })
                     .collect();
-                Some(lm)
+
+                // Also produce 2D screen landmarks from raw pixel coordinates
+                // (normalized to [0,1], NOT flipped — screen space convention).
+                let lm2d: Vec<Vec2> = (0..33)
+                    .map(|i| {
+                        let offset = i * 5;
+                        Vec2::new(raw_data[offset] / 256.0, raw_data[offset + 1] / 256.0)
+                    })
+                    .collect();
+
+                return Ok((Some(lm), Some(lm2d)));
             } else if raw_data.len() >= 33 * 3 {
                 let lm = preprocess::normalize_landmarks(raw_data, 33, 256.0, 256.0);
                 Some(lm)
