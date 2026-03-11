@@ -266,11 +266,16 @@ impl HumanoidBones {
     }
 
     /// Forward Kinematicsで全ボーンのワールド行列を計算
+    ///
+    /// glTFではノードインデックスの親子順序が保証されないため、
+    /// BFSでルートから子へ順に処理する（トポロジカル順序）。
     pub fn compute_joint_matrices(
         &self,
         node_transforms: &[crate::model::NodeTransform],
     ) -> Vec<Mat4> {
-        let mut world_matrices = vec![Mat4::IDENTITY; node_transforms.len()];
+        let n = node_transforms.len();
+        let mut world_matrices = vec![Mat4::IDENTITY; n];
+        let mut computed = vec![false; n];
 
         // Build bone node index lookups
         let bone_rotations: HashMap<usize, Quat> = self
@@ -284,19 +289,44 @@ impl HumanoidBones {
             .map(|b| (b.node_index, b.local_position))
             .collect();
 
-        // Process nodes in order (parent before children)
+        // Build parent lookup: parent_of[child] = parent_index
+        let mut parent_of = vec![None::<usize>; n];
         for (i, nt) in node_transforms.iter().enumerate() {
+            for &child in &nt.children {
+                if child < n {
+                    parent_of[child] = Some(i);
+                }
+            }
+        }
+
+        // Find root nodes (nodes with no parent) and BFS from them
+        let mut queue = std::collections::VecDeque::new();
+        for i in 0..n {
+            if parent_of[i].is_none() {
+                queue.push_back(i);
+            }
+        }
+
+        while let Some(i) = queue.pop_front() {
+            if computed[i] {
+                continue;
+            }
+            let nt = &node_transforms[i];
             let rotation = bone_rotations.get(&i).copied().unwrap_or(nt.rotation);
             let translation = bone_positions.get(&i).copied().unwrap_or(nt.translation);
             let local = Mat4::from_scale_rotation_translation(nt.scale, rotation, translation);
-            // Find parent by checking which node has this index as a child
-            let parent_matrix = node_transforms
-                .iter()
-                .enumerate()
-                .find(|(_, pnt)| pnt.children.contains(&i))
-                .map(|(pi, _)| world_matrices[pi])
+            let parent_matrix = parent_of[i]
+                .map(|pi| world_matrices[pi])
                 .unwrap_or(Mat4::IDENTITY);
             world_matrices[i] = parent_matrix * local;
+            computed[i] = true;
+
+            // Enqueue children
+            for &child in &nt.children {
+                if child < n {
+                    queue.push_back(child);
+                }
+            }
         }
 
         world_matrices
