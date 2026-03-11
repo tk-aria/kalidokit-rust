@@ -116,9 +116,12 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             rig_changed = true;
         }
 
-        if let Some(left_lm) = &result.left_hand_landmarks {
-            let hand = solver::hand::solve(left_lm, Side::Left);
-            pipeline_logger::solver(log::Level::Debug, "left hand solved")
+        // Hand landmarks are swapped: camera mirrors the image, so the tracker's
+        // "right" hand is actually the user's left hand (matching testbed:
+        // leftHandLandmarks = results.rightHandLandmarks)
+        if let Some(right_lm) = &result.right_hand_landmarks {
+            let hand = solver::hand::solve(right_lm, Side::Left);
+            pipeline_logger::solver(log::Level::Debug, "left hand solved (from right landmarks)")
                 .field(
                     "wrist",
                     format!(
@@ -131,9 +134,9 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             rig_changed = true;
         }
 
-        if let Some(right_lm) = &result.right_hand_landmarks {
-            let hand = solver::hand::solve(right_lm, Side::Right);
-            pipeline_logger::solver(log::Level::Debug, "right hand solved")
+        if let Some(left_lm) = &result.left_hand_landmarks {
+            let hand = solver::hand::solve(left_lm, Side::Right);
+            pipeline_logger::solver(log::Level::Debug, "right hand solved (from left landmarks)")
                 .field(
                     "wrist",
                     format!(
@@ -351,18 +354,20 @@ fn apply_rig_to_model(state: &mut AppState) {
         );
 
         // Pupil tracking with lerp interpolation
+        // Testbed: lookTarget = Euler(lerp(prev.x, pupil.y, 0.4), lerp(prev.y, pupil.x, 0.4), 0)
+        // Note the X/Y swap: pupil.y → Euler.x (pitch), pupil.x → Euler.y (yaw)
         let prev = state.rig.prev_look_target;
         let target = face.pupil;
         let interpolated = glam::Vec2::new(
-            prev.x + (target.x - prev.x) * cfg.pupil,
-            prev.y + (target.y - prev.y) * cfg.pupil,
+            prev.x + (target.y - prev.x) * cfg.pupil,
+            prev.y + (target.x - prev.y) * cfg.pupil,
         );
         state.rig.prev_look_target = interpolated;
 
         if let Some(look_at) = &state.vrm_model.look_at {
             let euler = vrm::look_at::EulerAngles {
-                yaw: interpolated.x * 30.0,
-                pitch: interpolated.y * 30.0,
+                yaw: interpolated.y * 30.0,
+                pitch: interpolated.x * 30.0,
             };
             let eye_quat = look_at.apply(&euler);
             state.vrm_model.humanoid_bones.set_rotation_interpolated(
