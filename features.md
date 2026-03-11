@@ -1406,3 +1406,129 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   - 体の移動 (Hip position) が反映されること
   - 目の追従・まばたきが自然なこと
   - 動きが滑らか (ガタつきなし) であること
+
+---
+
+## Phase 9: musl → glibc + cargo-zigbuild 移行 & カメラ復活
+
+**目的**: Linux ビルドを musl 静的リンクから glibc (2.17+) + cargo-zigbuild に移行し、nokhwa によるカメラキャプチャを全プラットフォームで復活させる
+
+**背景**: musl 対応のためにカメラ機能 (nokhwa) が完全に削除されスタブ化された。本プロジェクトは GPU + ウィンドウ + カメラを使うデスクトップアプリのため、musl (Alpine コンテナ向け) のメリットは薄い。glibc 2.17 は CentOS 7 以降のほぼ全ての Linux ディストリビューションをカバーする。
+
+### Step 9.1: CI — Linux ビルドジョブを cargo-zigbuild に移行
+
+**ファイル**: `.github/workflows/release.yml`
+
+- [x] `build-linux` ジョブ名を `Build (x86_64-unknown-linux-gnu)` に変更 <!-- 2026-03-11 14:22 JST -->
+- [x] Alpine コンテナ (`container: image: alpine:3.21`) を削除し、`ubuntu-latest` で直接実行 <!-- 2026-03-11 14:22 JST -->
+- [x] システム依存パッケージを apt-get に変更: <!-- 2026-03-11 14:22 JST -->
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y cmake pkg-config libx11-dev libxkbcommon-dev libwayland-dev
+  ```
+- [x] Rust ツールチェーンインストールを `dtolnay/rust-toolchain@stable` に変更し、`x86_64-unknown-linux-gnu` ターゲットを追加 <!-- 2026-03-11 14:22 JST -->
+- [x] `cargo install cargo-zigbuild` を追加 <!-- 2026-03-11 14:22 JST -->
+- [x] Zig ツールチェーンのインストールを追加 (例: `pip3 install ziglang` または公式バイナリ) <!-- 2026-03-11 14:22 JST -->
+- [x] 以下の musl ワークアラウンドを全て削除: <!-- 2026-03-11 14:22 JST -->
+  - execinfo.h スタブ (旧 lines 55-65)
+  - Eigen 事前クローン (旧 lines 67-72)
+  - sed パッチ (旧 lines 79-82)
+  - ORT ビルドフラグ `FLATBUFFERS_LOCALE_INDEPENDENT=0`, `ENABLE_BACKTRACE=OFF` (旧 lines 90-100)
+  - re2 スタンドアロンビルド (旧 lines 106-150)
+- [x] ビルドコマンドを変更: <!-- 2026-03-11 14:22 JST -->
+  ```bash
+  cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.17
+  ```
+- [x] パッケージングのアーカイブ名を `x86_64-unknown-linux-gnu` に変更 <!-- 2026-03-11 14:22 JST -->
+- [x] Upload artifact の名前を `x86_64-unknown-linux-gnu` に変更 <!-- 2026-03-11 14:22 JST -->
+- [x] ORT キャッシュキーを更新 (旧 `ort-musl-static-*` → 新しいキー名) <!-- 2026-03-11 14:22 JST -->
+- [x] ORT ビルドは glibc 環境ではデフォルト設定で動作するため、ビルドステップを大幅に簡素化 <!-- 2026-03-11 14:22 JST -->
+
+### Step 9.2: セットアップスクリプトの更新
+
+**ファイル**: `scripts/setup.sh`
+
+- [x] `_get_target()` 関数の Linux ターゲットを変更: <!-- 2026-03-11 14:22 JST -->
+  ```sh
+  # 変更前
+  linux)   echo "${_arch}-unknown-linux-musl" ;;
+  # 変更後
+  linux)   echo "${_arch}-unknown-linux-gnu" ;;
+  ```
+
+### Step 9.3: nokhwa 依存の復活
+
+**ファイル**: `Cargo.toml` (ワークスペースルート), `crates/app/Cargo.toml`
+
+- [ ] ワークスペースルート `Cargo.toml` に `nokhwa` が既に定義されていることを確認:
+  ```toml
+  nokhwa = { version = "0.10", features = ["input-native"] }
+  ```
+- [ ] `crates/app/Cargo.toml` の `[dependencies]` に `nokhwa` を追加:
+  ```toml
+  nokhwa = { workspace = true }
+  ```
+
+### Step 9.4: カメラ型の復元
+
+**ファイル**: `crates/app/src/state.rs`
+
+- [ ] `camera` フィールドの型をスタブから実型に変更:
+  ```rust
+  // 変更前
+  pub camera: Option<()>,
+  // 変更後
+  pub camera: Option<nokhwa::Camera>,
+  ```
+- [ ] 必要な `use` 文を追加
+
+### Step 9.5: カメラ初期化の復元
+
+**ファイル**: `crates/app/src/init.rs`
+
+- [ ] `init_camera()` 関数を実装:
+  ```rust
+  fn init_camera() -> Option<nokhwa::Camera> {
+      // 640x480 MJPEG 30fps でカメラ初期化
+      // 失敗時は log::warn! して None を返す
+  }
+  ```
+- [ ] `init_all()` 内のスタブ (`let camera: Option<()> = None;`) を `init_camera()` 呼び出しに置換
+- [ ] nokhwa の `CameraIndex::Index(0)`, `RequestedFormat` 等を使用
+- [ ] エラー時のフォールバック: `log::warn!` でメッセージを出し `None` を返す（パニックしない）
+
+### Step 9.6: フレーム取得の復元
+
+**ファイル**: `crates/app/src/update.rs`
+
+- [ ] `capture_frame()` の引数型を `Option<nokhwa::Camera>` に変更
+- [ ] カメラが `Some` の場合: `camera.frame()` → `frame.decode_image()` でフレーム取得
+- [ ] カメラが `None` またはフレーム取得失敗時: 640x480 ダミー黒画像にフォールバック
+- [ ] フレームの解像度を `VideoInfo` に反映（ハードコードしない）
+
+### Step 9.7: ドキュメント更新
+
+- [ ] `CLAUDE.md`:
+  - ORT ビルドの musl 注記 (`ORT ビルド (Linux musl): execinfo.h スタブ...`) を削除
+  - `cargo-zigbuild` による Linux ビルド手順を追記
+- [ ] `features.md`:
+  - ライブラリバージョン一覧の `nokhwa` が残っていることを確認
+  - Step 6.2 (カメラ初期化) と Step 6.3 (フレーム取得) のチェックボックスは動作確認後にチェック
+- [ ] `README.md`:
+  - アーキテクチャ図の Camera 部分が nokhwa であることを確認
+
+### Step 9.8: Phase 9 検証
+
+- [ ] **ビルド検証**:
+  - `cargo check --workspace` 成功
+  - `cargo clippy --workspace -- -D warnings` 警告 0
+  - `cargo fmt --check` 差分なし
+- [ ] **カメラ動作確認** (カメラ接続環境で実施):
+  - アプリ起動時にカメラが初期化される (`init_camera()` が `Some` を返す)
+  - 毎フレームカメラからの画像が取得される（ダミー黒画像でない）
+  - カメラ未接続時にダミーフレームにフォールバックし、パニックしない
+- [ ] **CI 検証** (タグ push で release.yml を実行):
+  - Linux: `cargo zigbuild` で glibc 2.17 ターゲットのバイナリが生成される
+  - macOS: `cargo build` でビルド成功（変更なし）
+  - Windows: `cargo build` でビルド成功（変更なし）
+  - GitHub Release に 3 プラットフォーム分のアーティファクトがアップロードされる

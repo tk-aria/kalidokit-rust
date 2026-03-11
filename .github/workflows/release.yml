@@ -13,154 +13,64 @@ env:
   BINARY_NAME: kalidokit-rust
 
 jobs:
-  # ---------- Linux (musl static binary) ----------
+  # ---------- Linux (glibc, zigbuild for glibc 2.17 compat) ----------
   build-linux:
-    name: Build (x86_64-unknown-linux-musl)
+    name: Build (x86_64-unknown-linux-gnu)
     runs-on: ubuntu-latest
-    container:
-      image: alpine:3.21
     steps:
-      - name: Install system dependencies
-        run: |
-          apk add --no-cache \
-            build-base cmake python3 py3-numpy py3-pip py3-flatbuffers git curl bash \
-            linux-headers pkgconfig perl \
-            libx11-dev libxkbcommon-dev wayland-dev mesa-dev \
-            openssl-dev openssl-libs-static zlib-dev zlib-static \
-            clang-dev
-
       - uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install system dependencies
         run: |
-          export HOME=/root
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-            sh -s -- -y --default-toolchain stable
-          . "$HOME/.cargo/env"
-          rustup target add x86_64-unknown-linux-musl
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          sudo apt-get update
+          sudo apt-get install -y cmake pkg-config libx11-dev libxkbcommon-dev libwayland-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Install cargo-zigbuild and Zig
+        run: |
+          cargo install cargo-zigbuild
+          pip3 install ziglang
 
       - name: Cache ONNX Runtime build
         id: ort-cache
         uses: actions/cache@v4
         with:
           path: /tmp/ort-build
-          key: ort-musl-static-v1.20.1-alpine321-v11
+          key: ort-glibc-static-v1.20.1-v1
 
-      - name: Build ONNX Runtime from source (static, musl)
+      - name: Build ONNX Runtime from source (static, glibc)
         if: steps.ort-cache.outputs.cache-hit != 'true'
-        env:
-          HOME: /root
         run: |
-          # musl doesn't have execinfo.h (glibc extension for backtrace)
-          # Provide a no-op stub - ORT only uses it for debug diagnostics
-          mkdir -p /usr/local/include
-          cat > /usr/local/include/execinfo.h << 'STUB'
-          #ifndef _EXECINFO_H
-          #define _EXECINFO_H
-          static inline int backtrace(void **b, int s) { (void)b; (void)s; return 0; }
-          static inline char **backtrace_symbols(void *const *b, int s) { (void)b; (void)s; return 0; }
-          static inline void backtrace_symbols_fd(void *const *b, int s, int f) { (void)b; (void)s; (void)f; }
-          #endif
-          STUB
-
-          # Pre-clone Eigen at the exact commit ORT v1.20.1 expects
-          # (avoids FetchContent zip download hash mismatch from GitLab)
-          git clone https://gitlab.com/libeigen/eigen.git /tmp/eigen-src
-          cd /tmp/eigen-src
-          git checkout e7248b26a1ed53fa030c5c459f7ea095dfd276ac
-          cd /
-
           git clone --depth 1 --branch v1.20.1 \
             https://github.com/microsoft/onnxruntime /tmp/ort-src
           cd /tmp/ort-src
 
-          # Patch out execinfo.h usage in source (belt-and-suspenders with stub header)
-          sed -i 's|#include <execinfo.h>|// execinfo.h removed for musl|' \
-            onnxruntime/core/platform/posix/stacktrace.cc || true
-          sed -i 's|backtrace(array, size)|0|; s|backtrace_symbols(array, nSize)|nullptr|' \
-            onnxruntime/core/platform/posix/stacktrace.cc || true
-
-          # Build static libraries only (no shared lib, no tests)
-          # - FETCHCONTENT_SOURCE_DIR_EIGEN: use pre-cloned Eigen (correct version)
-          # - compile_no_warning_as_error: GCC 14.2 false positives with -Werror
-          # - ENABLE_BACKTRACE=OFF: execinfo.h unavailable on musl
-          # - BUILD_UNIT_TESTS=OFF: flatbuffers uses strtoll_l (glibc-only) in test code
-          # - FLATBUFFERS_LOCALE_INDEPENDENT=0: musl lacks strtoll_l/strtoull_l
           ./build.sh --config Release \
             --update --build --parallel $(nproc) \
             --skip_tests \
-            --allow_running_as_root \
             --compile_no_warning_as_error \
             --cmake_extra_defines CMAKE_POSITION_INDEPENDENT_CODE=ON \
             --cmake_extra_defines onnxruntime_BUILD_SHARED_LIB=OFF \
-            --cmake_extra_defines onnxruntime_ENABLE_BACKTRACE=OFF \
-            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
-            --cmake_extra_defines FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src \
-            --cmake_extra_defines CMAKE_CXX_FLAGS="-DFLATBUFFERS_LOCALE_INDEPENDENT=0"
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
-          # Copy build output for caching
           mkdir -p /tmp/ort-build
           cp -a build/Linux/* /tmp/ort-build/
-
-      - name: Build missing re2 static library
-        if: steps.ort-cache.outputs.cache-hit != 'true'
-        run: |
-          # ORT v1.20.1 FetchContent fetches re2 source but doesn't produce libre2.a
-          # on Alpine musl. Build it manually from the fetched source.
-          ORT_DIR=/tmp/ort-build/Release
-          RE2_SRC_DIR="$ORT_DIR/_deps/re2-src"
-
-          if [ ! -f "$ORT_DIR/_deps/re2-build/libre2.a" ] && [ -d "$RE2_SRC_DIR" ]; then
-            echo "Building re2 from ORT-fetched source at $RE2_SRC_DIR"
-            # re2 requires abseil — try installing from ORT's existing build first
-            ABSL_BUILD="$ORT_DIR/_deps/abseil_cpp-build"
-            ABSL_SRC="$ORT_DIR/_deps/abseil_cpp-src"
-            echo "Installing abseil to /tmp/absl-install"
-            if ! cmake --install "$ABSL_BUILD" --prefix /tmp/absl-install 2>/dev/null; then
-              echo "cmake --install failed, rebuilding abseil from source"
-              cmake -B /tmp/absl-build -S "$ABSL_SRC" \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-                -DCMAKE_INSTALL_PREFIX=/tmp/absl-install \
-                -DABSL_BUILD_TESTING=OFF \
-                -DBUILD_SHARED_LIBS=OFF
-              cmake --build /tmp/absl-build -j $(nproc)
-              cmake --install /tmp/absl-build --prefix /tmp/absl-install
-            fi
-
-            cmake -B /tmp/re2-standalone-build -S "$RE2_SRC_DIR" \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-              -DRE2_BUILD_TESTING=OFF \
-              -DBUILD_SHARED_LIBS=OFF \
-              -DCMAKE_PREFIX_PATH=/tmp/absl-install
-            cmake --build /tmp/re2-standalone-build --config Release -j $(nproc)
-            mkdir -p "$ORT_DIR/_deps/re2-build"
-            cp /tmp/re2-standalone-build/libre2.a "$ORT_DIR/_deps/re2-build/libre2.a"
-            echo "Successfully built and installed libre2.a"
-          elif [ -f "$ORT_DIR/_deps/re2-build/libre2.a" ]; then
-            echo "libre2.a already exists"
-          else
-            echo "WARNING: re2 source not found at $RE2_SRC_DIR"
-          fi
-
-          echo "=== Final _deps .a files ==="
-          find "$ORT_DIR/_deps" -name "*.a" 2>/dev/null | sort
 
       - name: Build release binary
         env:
           ORT_LIB_PATH: /tmp/ort-build/Release
-          HOME: /root
         run: |
-          . "$HOME/.cargo/env"
-          cargo build --release --target x86_64-unknown-linux-musl
+          cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.17
 
       - name: Package
         run: |
-          ARCHIVE_NAME="${BINARY_NAME}-${{ github.ref_name }}-x86_64-unknown-linux-musl"
+          ARCHIVE_NAME="${BINARY_NAME}-${{ github.ref_name }}-x86_64-unknown-linux-gnu"
           mkdir -p "${ARCHIVE_NAME}"
-          cp "target/x86_64-unknown-linux-musl/release/${BINARY_NAME}" "${ARCHIVE_NAME}/"
+          cp "target/x86_64-unknown-linux-gnu/release/${BINARY_NAME}" "${ARCHIVE_NAME}/"
           cp -r assets "${ARCHIVE_NAME}/" 2>/dev/null || true
           tar czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
           echo "ASSET=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_ENV
@@ -168,7 +78,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.BINARY_NAME }}-x86_64-unknown-linux-musl
+          name: ${{ env.BINARY_NAME }}-x86_64-unknown-linux-gnu
           path: ${{ env.ASSET }}
 
   # ---------- macOS / Windows ----------

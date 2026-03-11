@@ -44,7 +44,7 @@ _get_target() {
   _os="$1"
   _arch="$2"
   case "$_os" in
-    linux)   echo "${_arch}-unknown-linux-musl" ;;
+    linux)   echo "${_arch}-unknown-linux-gnu" ;;
     darwin)  echo "aarch64-apple-darwin" ;;
     windows) echo "${_arch}-pc-windows-msvc" ;;
   esac
