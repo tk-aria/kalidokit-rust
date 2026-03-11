@@ -156,9 +156,36 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
         })
         .collect();
 
+    // Build mesh-to-skin mapping and skin offsets for multi-skin JOINTS_0 correction.
+    // In glTF, JOINTS_0 values are relative to each skin's own joint array.
+    // When we concatenate all skins into one flat array, we must offset JOINTS_0
+    // for meshes belonging to skins other than the first.
+    let mut mesh_to_skin: std::collections::HashMap<usize, usize> =
+        std::collections::HashMap::new();
+    for node in gltf.document.nodes() {
+        if let (Some(mesh), Some(skin)) = (node.mesh(), node.skin()) {
+            mesh_to_skin.insert(mesh.index(), skin.index());
+        }
+    }
+    let skin_offsets: Vec<usize> = {
+        let mut offsets = Vec::new();
+        let mut offset = 0usize;
+        for skin in gltf.document.skins() {
+            offsets.push(offset);
+            offset += skin.joints().count();
+        }
+        offsets
+    };
+
     // Parse meshes
     let mut meshes = Vec::new();
     for mesh in gltf.document.meshes() {
+        let joint_offset = mesh_to_skin
+            .get(&mesh.index())
+            .and_then(|&skin_idx| skin_offsets.get(skin_idx))
+            .copied()
+            .unwrap_or(0) as u32;
+
         for primitive in mesh.primitives() {
             let mut vertices = Vec::new();
 
@@ -210,7 +237,15 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
                     position: pos,
                     normal: normals.get(i).copied().unwrap_or([0.0, 1.0, 0.0]),
                     uv: uvs.get(i).copied().unwrap_or([0.0, 0.0]),
-                    joint_indices: joint_indices.get(i).copied().unwrap_or([0; 4]),
+                    joint_indices: {
+                        let ji = joint_indices.get(i).copied().unwrap_or([0; 4]);
+                        [
+                            ji[0] + joint_offset,
+                            ji[1] + joint_offset,
+                            ji[2] + joint_offset,
+                            ji[3] + joint_offset,
+                        ]
+                    },
                     joint_weights: joint_weights.get(i).copied().unwrap_or([0.0; 4]),
                 });
             }
