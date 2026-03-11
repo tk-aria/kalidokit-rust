@@ -1,5 +1,5 @@
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{MouseScrollDelta, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
@@ -72,6 +72,15 @@ impl ApplicationHandler for App {
                     log::error!("Frame update error: {e}");
                 }
                 state.render_ctx.window.request_redraw();
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let scroll_y = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y,
+                    MouseScrollDelta::PixelDelta(pos) => pos.y as f32 * 0.01,
+                };
+                // Scroll up (positive y) zooms in (decrease distance),
+                // scroll down (negative y) zooms out (increase distance).
+                state.camera_distance = (state.camera_distance - scroll_y * 0.3).clamp(0.5, 10.0);
             }
             _ => {}
         }

@@ -1,5 +1,7 @@
+use std::f32::consts::PI;
+
 use crate::types::*;
-use crate::utils::angle_between;
+use crate::utils::{angle_between_3d_coords, clamp, roll_pitch_yaw};
 use glam::Vec3;
 
 /// Solve hand rig from 21 hand landmarks.
@@ -11,20 +13,47 @@ pub fn solve(landmarks: &[Vec3], side: Side) -> RiggedHand {
         return default_hand();
     }
 
-    let wrist = calc_wrist_rotation(landmarks, side);
+    let lm = landmarks;
+    let invert: f32 = match side {
+        Side::Right => 1.0,
+        Side::Left => -1.0,
+    };
 
-    // MediaPipe hand landmark indices per finger:
-    // Thumb:  1, 2, 3, 4
-    // Index:  5, 6, 7, 8
-    // Middle: 9, 10, 11, 12
-    // Ring:   13, 14, 15, 16
-    // Little: 17, 18, 19, 20
+    // --- Wrist rotation (TypeScript HandSolver) ---
+    // palm = [lm[0], lm[side==Right ? 17 : 5], lm[side==Right ? 5 : 17]]
+    let (palm_b, palm_c) = match side {
+        Side::Right => (lm[17], lm[5]),
+        Side::Left => (lm[5], lm[17]),
+    };
+    let mut hand_rotation = roll_pitch_yaw(lm[0], palm_b, Some(palm_c));
+    // TypeScript: handRotation.y = handRotation.z; handRotation.y -= 0.4
+    hand_rotation.y = hand_rotation.z;
+    hand_rotation.y -= 0.4;
 
-    let thumb = calc_finger_rotations(landmarks, &[1, 2, 3, 4]);
-    let index = calc_finger_rotations(landmarks, &[5, 6, 7, 8]);
-    let middle = calc_finger_rotations(landmarks, &[9, 10, 11, 12]);
-    let ring = calc_finger_rotations(landmarks, &[13, 14, 15, 16]);
-    let little = calc_finger_rotations(landmarks, &[17, 18, 19, 20]);
+    // rigFingers wrist fixups
+    let wrist = EulerAngles {
+        x: clamp(hand_rotation.x * 2.0 * invert, -0.3, 0.3),
+        y: clamp(
+            hand_rotation.y * 2.3,
+            if side == Side::Right { -1.2 } else { -0.6 },
+            if side == Side::Right { 0.6 } else { 1.6 },
+        ),
+        z: hand_rotation.z * -2.3 * invert,
+    };
+
+    // --- Finger joints ---
+    // Landmark indices per finger (includes wrist/base at index 0):
+    // Thumb:  0, 1, 2, 3, 4
+    // Index:  0, 5, 6, 7, 8
+    // Middle: 0, 9, 10, 11, 12
+    // Ring:   0, 13, 14, 15, 16
+    // Little: 0, 17, 18, 19, 20
+
+    let thumb = calc_thumb(lm, side, invert);
+    let index = calc_non_thumb_finger(lm, &[0, 5, 6, 7, 8], side, invert);
+    let middle = calc_non_thumb_finger(lm, &[0, 9, 10, 11, 12], side, invert);
+    let ring = calc_non_thumb_finger(lm, &[0, 13, 14, 15, 16], side, invert);
+    let little = calc_non_thumb_finger(lm, &[0, 17, 18, 19, 20], side, invert);
 
     RiggedHand {
         wrist,
@@ -46,57 +75,97 @@ pub fn solve(landmarks: &[Vec3], side: Side) -> RiggedHand {
     }
 }
 
-/// Calculate wrist rotation from landmarks 0 (wrist), 5 (index base), 17 (little base).
-fn calc_wrist_rotation(lm: &[Vec3], side: Side) -> EulerAngles {
-    let wrist = lm[0];
-    let index_base = lm[5];
-    let little_base = lm[17];
+/// Calculate thumb finger joints with special dampener/startPos handling.
+fn calc_thumb(lm: &[Vec3], side: Side, invert: f32) -> [EulerAngles; 3] {
+    // Thumb landmarks: 0, 1, 2, 3, 4
+    // proximal = angle(0, 1, 2), intermediate = angle(1, 2, 3), distal = angle(2, 3, 4)
+    let angles = [
+        angle_between_3d_coords(lm[0], lm[1], lm[2]),
+        angle_between_3d_coords(lm[1], lm[2], lm[3]),
+        angle_between_3d_coords(lm[2], lm[3], lm[4]),
+    ];
 
-    // Palm forward direction: wrist → middle of index/little bases
-    let palm_center = (index_base + little_base) * 0.5;
-    let forward = (palm_center - wrist).normalize_or_zero();
+    let is_right = side == Side::Right;
 
-    // Palm lateral direction: index base → little base (cross-palm)
-    let lateral = (little_base - index_base).normalize_or_zero();
-
-    // Palm normal via cross product
-    let normal = forward.cross(lateral).normalize_or_zero();
-
-    // Compute euler angles from forward direction
-    let yaw = forward.x.atan2(forward.z);
-    let pitch = (-forward.y)
-        .asin()
-        .clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
-    let roll = normal.x.atan2(normal.y);
-
-    // Mirror yaw for left hand
-    let side_sign = match side {
-        Side::Right => 1.0,
-        Side::Left => -1.0,
+    // Proximal: dampener = {x: 2.2, y: 2.2, z: 0.5}, startPos = {x: 1.2, y: 1.1*invert, z: 0.2*invert}
+    let proximal = {
+        let angle = angles[0];
+        let (dx, dy, dz) = (2.2_f32, 2.2_f32, 0.5_f32);
+        let (sx, sy, sz) = (1.2_f32, 1.1 * invert, 0.2 * invert);
+        EulerAngles {
+            x: clamp(sx + angle * -PI * dx, -0.6, 0.3),
+            y: clamp(
+                sy + angle * -PI * dy * invert,
+                if is_right { -1.0 } else { -0.3 },
+                if is_right { 0.3 } else { 1.0 },
+            ),
+            z: clamp(
+                sz + angle * -PI * dz * invert,
+                if is_right { -0.6 } else { -0.3 },
+                if is_right { 0.3 } else { 0.6 },
+            ),
+        }
     };
 
-    EulerAngles {
-        x: pitch,
-        y: yaw * side_sign,
-        z: roll * side_sign,
-    }
+    // Intermediate: dampener = {x: 0, y: 0.7, z: 0.5}, startPos = {x: -0.2, y: 0.1*invert, z: 0.2*invert}
+    let intermediate = {
+        let angle = angles[1];
+        let (dx, dy, dz) = (0.0_f32, 0.7_f32, 0.5_f32);
+        let (sx, sy, sz) = (-0.2_f32, 0.1 * invert, 0.2 * invert);
+        EulerAngles {
+            x: clamp(sx + angle * -PI * dx, -2.0, 2.0),
+            y: clamp(sy + angle * -PI * dy * invert, -2.0, 2.0),
+            z: clamp(sz + angle * -PI * dz * invert, -2.0, 2.0),
+        }
+    };
+
+    // Distal: dampener = {x: 0, y: 1, z: 0.5}, startPos = {x: -0.2, y: 0.1*invert, z: 0.2*invert}
+    let distal = {
+        let angle = angles[2];
+        let (dx, dy, dz) = (0.0_f32, 1.0_f32, 0.5_f32);
+        let (sx, sy, sz) = (-0.2_f32, 0.1 * invert, 0.2 * invert);
+        EulerAngles {
+            x: clamp(sx + angle * -PI * dx, -2.0, 2.0),
+            y: clamp(sy + angle * -PI * dy * invert, -2.0, 2.0),
+            z: clamp(sz + angle * -PI * dz * invert, -2.0, 2.0),
+        }
+    };
+
+    [proximal, intermediate, distal]
 }
 
-/// Calculate Proximal, Intermediate, Distal rotations from 4 joint positions.
-fn calc_finger_rotations(lm: &[Vec3], indices: &[usize]) -> [EulerAngles; 3] {
-    let joints: Vec<Vec3> = indices.iter().map(|&i| lm[i]).collect();
+/// Calculate non-thumb finger joints.
+/// indices: [base, mcp, pip, dip, tip] where base is typically 0 (wrist).
+fn calc_non_thumb_finger(
+    lm: &[Vec3],
+    indices: &[usize; 5],
+    side: Side,
+    invert: f32,
+) -> [EulerAngles; 3] {
+    // proximal = angle(indices[0], indices[1], indices[2])
+    // intermediate = angle(indices[1], indices[2], indices[3])
+    // distal = angle(indices[2], indices[3], indices[4])
+    let angles = [
+        angle_between_3d_coords(lm[indices[0]], lm[indices[1]], lm[indices[2]]),
+        angle_between_3d_coords(lm[indices[1]], lm[indices[2]], lm[indices[3]]),
+        angle_between_3d_coords(lm[indices[2]], lm[indices[3]], lm[indices[4]]),
+    ];
+
+    let is_right = side == Side::Right;
+
     let mut result = [EulerAngles::default(); 3];
     for i in 0..3 {
-        let v1 = (joints[i + 1] - joints[i]).normalize_or_zero();
-        let v2 = if i + 2 < joints.len() {
-            (joints[i + 2] - joints[i + 1]).normalize_or_zero()
-        } else {
-            v1
-        };
+        // TypeScript stores bending in z component, then applies:
+        // z = clamp(angle * -PI * invert, R ? -PI : 0, R ? 0 : PI)
+        let z = clamp(
+            angles[i] * -PI * invert,
+            if is_right { -PI } else { 0.0 },
+            if is_right { 0.0 } else { PI },
+        );
         result[i] = EulerAngles {
-            x: angle_between(v1, v2),
+            x: 0.0,
             y: 0.0,
-            z: 0.0,
+            z,
         };
     }
     result
@@ -128,13 +197,11 @@ mod tests {
     use super::*;
 
     fn make_hand_landmarks() -> Vec<Vec3> {
-        // 21 landmarks: wrist at origin, fingers extending along +Y
         let mut lm = vec![Vec3::ZERO; 21];
         lm[0] = Vec3::new(0.0, 0.0, 0.0); // wrist
-                                          // Index base and little base for wrist rotation
         lm[5] = Vec3::new(-0.5, 1.0, 0.0); // index base
         lm[17] = Vec3::new(0.5, 1.0, 0.0); // little base
-                                           // Fill finger joints with ascending Y positions
+        // Fill finger joints with ascending Y positions
         for finger in 0..5 {
             let base = 1 + finger * 4;
             for joint in 0..4 {
@@ -151,56 +218,45 @@ mod tests {
     fn solve_returns_valid_hand() {
         let lm = make_hand_landmarks();
         let hand = solve(&lm, Side::Right);
-        // All angles should be finite
         assert!(hand.wrist.x.is_finite());
         assert!(hand.wrist.y.is_finite());
         assert!(hand.wrist.z.is_finite());
-        assert!(hand.index_proximal.x.is_finite());
+        assert!(hand.index_proximal.z.is_finite());
     }
 
     #[test]
     fn solve_insufficient_landmarks_returns_default() {
-        let lm = vec![Vec3::ZERO; 10]; // Not enough
+        let lm = vec![Vec3::ZERO; 10];
         let hand = solve(&lm, Side::Left);
         assert_eq!(hand.wrist.x, 0.0);
-        assert_eq!(hand.index_proximal.x, 0.0);
+        assert_eq!(hand.index_proximal.z, 0.0);
     }
 
     #[test]
-    fn finger_rotations_straight_finger_zero_angle() {
-        // Straight finger: all joints in a line along +Y
-        let lm = vec![
-            Vec3::ZERO,
-            Vec3::new(0.0, 1.0, 0.0),
-            Vec3::new(0.0, 2.0, 0.0),
-            Vec3::new(0.0, 3.0, 0.0),
-            Vec3::new(0.0, 4.0, 0.0),
-        ];
-        let rotations = calc_finger_rotations(&lm, &[1, 2, 3, 4]);
-        // Straight finger → angle between consecutive segments ≈ 0
-        for r in &rotations {
-            assert!(r.x.abs() < 1e-5, "expected near-zero angle, got {}", r.x);
-        }
-    }
-
-    #[test]
-    fn finger_rotations_bent_finger_nonzero() {
+    fn non_thumb_finger_bending_in_z() {
         // Bent finger: segments at 90 degrees
-        let lm = vec![
-            Vec3::ZERO,
-            Vec3::new(0.0, 0.0, 0.0), // joint 0
-            Vec3::new(0.0, 1.0, 0.0), // joint 1 (+Y)
-            Vec3::new(1.0, 1.0, 0.0), // joint 2 (+X, 90deg bend)
-            Vec3::new(1.0, 0.0, 0.0), // joint 3 (-Y, another 90deg)
-        ];
-        let rotations = calc_finger_rotations(&lm, &[1, 2, 3, 4]);
-        // First joint: angle between (0→1) and (1→2) should be ~90deg
-        let expected = std::f32::consts::FRAC_PI_2;
-        assert!(
-            (rotations[0].x - expected).abs() < 0.1,
-            "expected ~{}, got {}",
-            expected,
-            rotations[0].x
-        );
+        let mut lm = vec![Vec3::ZERO; 21];
+        lm[0] = Vec3::new(0.0, 0.0, 0.0);
+        lm[5] = Vec3::new(0.0, 1.0, 0.0);
+        lm[6] = Vec3::new(1.0, 1.0, 0.0); // 90 degree bend
+        lm[7] = Vec3::new(1.0, 0.0, 0.0);
+        lm[8] = Vec3::new(0.0, 0.0, 0.0);
+        let result = calc_non_thumb_finger(&lm, &[0, 5, 6, 7, 8], Side::Right, 1.0);
+        // Proximal z should be negative for right hand (angle * -PI * 1.0)
+        assert!(result[0].z < 0.0, "expected negative z, got {}", result[0].z);
+        // x and y should be 0
+        assert_eq!(result[0].x, 0.0);
+        assert_eq!(result[0].y, 0.0);
+    }
+
+    #[test]
+    fn thumb_produces_finite_values() {
+        let lm = make_hand_landmarks();
+        let result = calc_thumb(&lm, Side::Right, 1.0);
+        for joint in &result {
+            assert!(joint.x.is_finite());
+            assert!(joint.y.is_finite());
+            assert!(joint.z.is_finite());
+        }
     }
 }

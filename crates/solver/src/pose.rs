@@ -1,30 +1,32 @@
+use std::f32::consts::PI;
+
 use crate::types::*;
-use crate::utils::remap;
+use crate::utils::{
+    angle_between_3d_coords, clamp, find_rotation, lerp_vec3, remap01, roll_pitch_yaw,
+};
 use glam::{Vec2, Vec3};
 
 /// Solve pose rig from 33 pose landmarks (3D + 2D).
-pub fn solve(landmarks_3d: &[Vec3], landmarks_2d: &[Vec2], video: &VideoInfo) -> RiggedPose {
+pub fn solve(landmarks_3d: &[Vec3], landmarks_2d: &[Vec2], _video: &VideoInfo) -> RiggedPose {
     if landmarks_3d.len() < 33 || landmarks_2d.len() < 33 {
         return default_pose();
     }
 
-    let hips = calc_hip_transform(landmarks_3d, landmarks_2d, video);
-    let spine = calc_spine_rotation(landmarks_3d);
+    let lm = landmarks_3d;
+    let lm2d = landmarks_2d;
 
-    // MediaPipe pose landmark indices:
-    // 11=left_shoulder, 12=right_shoulder
-    // 13=left_elbow, 14=right_elbow
-    // 15=left_wrist, 16=right_wrist
-    // 17=left_pinky, 18=right_pinky
-    // 23=left_hip, 24=right_hip
-    // 25=left_knee, 26=right_knee
-    // 27=left_ankle, 28=right_ankle
-    // 29=left_heel, 30=right_heel
+    // --- Hips ---
+    let (hips, spine) = calc_hips(lm, lm2d);
 
-    let right_upper_arm = calc_limb_rotation(landmarks_3d[12], landmarks_3d[14], landmarks_3d[16]);
-    let right_lower_arm = calc_limb_rotation(landmarks_3d[14], landmarks_3d[16], landmarks_3d[18]);
-    let left_upper_arm = calc_limb_rotation(landmarks_3d[11], landmarks_3d[13], landmarks_3d[15]);
-    let left_lower_arm = calc_limb_rotation(landmarks_3d[13], landmarks_3d[15], landmarks_3d[17]);
+    // --- Arms ---
+    let (right_upper_arm, right_lower_arm, right_hand) = calc_arms(lm, Side::Right);
+    let (left_upper_arm, left_lower_arm, left_hand) = calc_arms(lm, Side::Left);
+
+    // --- Legs (keep simplified) ---
+    let right_upper_leg = calc_leg_rotation(lm[24], lm[26], lm[28]);
+    let right_lower_leg = calc_leg_rotation(lm[26], lm[28], lm[30]);
+    let left_upper_leg = calc_leg_rotation(lm[23], lm[25], lm[27]);
+    let left_lower_leg = calc_leg_rotation(lm[25], lm[27], lm[29]);
 
     RiggedPose {
         hips,
@@ -34,12 +36,12 @@ pub fn solve(landmarks_3d: &[Vec3], landmarks_2d: &[Vec2], video: &VideoInfo) ->
         right_lower_arm,
         left_upper_arm,
         left_lower_arm,
-        right_upper_leg: calc_limb_rotation(landmarks_3d[24], landmarks_3d[26], landmarks_3d[28]),
-        right_lower_leg: calc_limb_rotation(landmarks_3d[26], landmarks_3d[28], landmarks_3d[30]),
-        left_upper_leg: calc_limb_rotation(landmarks_3d[23], landmarks_3d[25], landmarks_3d[27]),
-        left_lower_leg: calc_limb_rotation(landmarks_3d[25], landmarks_3d[27], landmarks_3d[29]),
-        left_hand: EulerAngles::default(),
-        right_hand: EulerAngles::default(),
+        right_upper_leg,
+        right_lower_leg,
+        left_upper_leg,
+        left_lower_leg,
+        left_hand,
+        right_hand,
     }
 }
 
@@ -64,58 +66,152 @@ fn default_pose() -> RiggedPose {
     }
 }
 
-fn calc_hip_transform(lm3d: &[Vec3], lm2d: &[Vec2], video: &VideoInfo) -> HipTransform {
-    // Hip position: midpoint of left hip (23) and right hip (24)
-    let hip_center_3d = (lm3d[23] + lm3d[24]) * 0.5;
-    let hip_center_2d = (lm2d[23] + lm2d[24]) * 0.5;
+/// Calculate arms matching TypeScript KalidoKit calcArms + rigArm.
+fn calc_arms(lm: &[Vec3], side: Side) -> (EulerAngles, EulerAngles, EulerAngles) {
+    // MediaPipe indices:
+    // Right: shoulder=11->12? No. Let's be precise:
+    //   Right shoulder=12, right elbow=14, right wrist=16, right pinky=18, right index=20
+    //   Left shoulder=11, left elbow=13, left wrist=15, left pinky=17, left index=19
+    //
+    // TypeScript calcArms:
+    //   UpperArm.r = findRotation(lm[11], lm[13])  -- but lm[11] is LEFT shoulder, lm[13] is LEFT elbow
+    //   Wait, looking at the task description again:
+    //   UpperArm.r = findRotation(lm[11], lm[13])
+    //   UpperArm.l = findRotation(lm[12], lm[14])
+    //
+    //   This is the TypeScript convention where .r and .l seem swapped relative to MediaPipe naming.
+    //   Actually in KalidoKit TS, it's body-relative: right arm uses landmarks on the left side of image.
+    //   MediaPipe: 11=left_shoulder, 12=right_shoulder, 13=left_elbow, 14=right_elbow
+    //
+    //   So UpperArm.r uses lm[11](left_shoulder) and lm[13](left_elbow) -- this IS the right arm
+    //   from the avatar's perspective (mirrored from camera).
+    //
+    //   Actually no -- KalidoKit uses the MediaPipe convention directly. Let me re-read:
+    //   In KalidoKit TS: UpperArm.r = findRotation(lm[11], lm[13])
+    //   lm[11] = left_shoulder, lm[13] = left_elbow
+    //   This would be the LEFT arm landmarks, assigned to "right" -- this is the mirror mapping.
 
-    // Normalize position to screen space
+    let (shoulder_idx, elbow_idx, wrist_idx, pinky_idx, index_idx, other_shoulder_idx) = match side
+    {
+        // Right side of avatar = left side landmarks (mirrored)
+        Side::Right => (11usize, 13, 15, 17, 19, 12),
+        Side::Left => (12, 14, 16, 18, 20, 11),
+    };
+
+    let shoulder = lm[shoulder_idx];
+    let elbow = lm[elbow_idx];
+    let wrist = lm[wrist_idx];
+    let pinky = lm[pinky_idx];
+    let index_tip = lm[index_idx];
+    let other_shoulder = lm[other_shoulder_idx];
+
+    // findRotation returns normalized [-1, 1] values
+    let mut upper_arm = find_rotation(shoulder, elbow, true);
+    let mut lower_arm = find_rotation(elbow, wrist, true);
+
+    // Override y with angleBetween3DCoords
+    upper_arm.y = angle_between_3d_coords(other_shoulder, shoulder, elbow);
+    lower_arm.y = angle_between_3d_coords(shoulder, elbow, wrist);
+
+    // Clamp lower arm z
+    lower_arm.z = clamp(lower_arm.z, -2.14, 0.0);
+
+    // Hand rotation: findRotation(wrist, lerp(pinky, index, 0.5))
+    let hand_target = lerp_vec3(pinky, index_tip, 0.5);
+    let hand = find_rotation(wrist, hand_target, true);
+
+    // rigArm
+    let invert = match side {
+        Side::Right => 1.0,
+        Side::Left => -1.0,
+    };
+
+    upper_arm.z *= -2.3 * invert;
+    upper_arm.y *= PI * invert;
+    upper_arm.y -= lower_arm.x.max(0.0);
+    upper_arm.y -= -invert * lower_arm.z.max(0.0);
+    upper_arm.x -= 0.3 * invert;
+
+    lower_arm.z *= -2.14 * invert;
+    lower_arm.y *= 2.14 * invert;
+    lower_arm.x *= 2.14 * invert;
+
+    upper_arm.x = clamp(upper_arm.x, -0.5, PI);
+    lower_arm.x = clamp(lower_arm.x, -0.3, 0.3);
+
+    let hand_euler = EulerAngles {
+        x: 0.0,
+        y: clamp(hand.z * 2.0, -0.6, 0.6),
+        z: hand.z * -2.3 * invert,
+    };
+
+    (
+        EulerAngles::new(upper_arm.x, upper_arm.y, upper_arm.z),
+        EulerAngles::new(lower_arm.x, lower_arm.y, lower_arm.z),
+        hand_euler,
+    )
+}
+
+/// Apply hip/spine rotation fixups matching TypeScript KalidoKit calcHips.
+fn apply_hip_spine_fixups(mut rotation: Vec3) -> Vec3 {
+    if rotation.y > 0.5 {
+        rotation.y -= 2.0;
+    }
+    rotation.y += 0.5;
+    if rotation.z > 0.0 {
+        rotation.z = 1.0 - rotation.z;
+    }
+    if rotation.z < 0.0 {
+        rotation.z = -1.0 - rotation.z;
+    }
+    let turn_around = remap01(rotation.y.abs(), 0.2, 0.4);
+    rotation.z *= 1.0 - turn_around;
+    rotation.x = 0.0;
+    rotation
+}
+
+/// Calculate hips and spine matching TypeScript KalidoKit calcHips.
+fn calc_hips(lm3d: &[Vec3], lm2d: &[Vec2]) -> (HipTransform, EulerAngles) {
+    let _hip_left_2d = lm2d[23];
+    let hip_right_2d = lm2d[24];
+    let _shoulder_left_2d = lm2d[11];
+    let shoulder_right_2d = lm2d[12];
+
+    // TypeScript uses lerp(..., 1) which gives the second point (quirk/bug in original)
+    let hip_center_2d = hip_right_2d;
+    let shoulder_center_2d = shoulder_right_2d;
+
+    let spine_length = hip_center_2d.distance(shoulder_center_2d);
+
     let position = Vec3::new(
-        remap(hip_center_2d.x, 0.0, video.width as f32, -1.0, 1.0),
-        remap(hip_center_2d.y, 0.0, video.height as f32, 1.0, -1.0),
-        hip_center_3d.z,
+        clamp(hip_center_2d.x - 0.4, -1.0, 1.0),
+        0.0,
+        clamp(spine_length - 1.0, -2.0, 0.0),
     );
 
-    // Hip rotation from shoulder and hip vectors
-    let left_shoulder = lm3d[11];
-    let right_shoulder = lm3d[12];
-    let left_hip = lm3d[23];
-    let right_hip = lm3d[24];
+    // Hip rotation: rollPitchYaw 2-point mode on 3D hip landmarks
+    let hip_rpy = roll_pitch_yaw(lm3d[23], lm3d[24], None);
+    let mut hip_rotation = apply_hip_spine_fixups(hip_rpy);
 
-    let shoulder_vec = (right_shoulder - left_shoulder).normalize();
-    let hip_vec = (right_hip - left_hip).normalize();
+    // Spine rotation: rollPitchYaw 2-point mode on 3D shoulder landmarks
+    let spine_rpy = roll_pitch_yaw(lm3d[11], lm3d[12], None);
+    let mut spine_rotation = apply_hip_spine_fixups(spine_rpy);
 
-    let yaw = shoulder_vec.z.atan2(shoulder_vec.x);
-    let pitch = ((left_shoulder + right_shoulder) * 0.5 - (left_hip + right_hip) * 0.5)
-        .normalize()
-        .z
-        .atan2(1.0);
-    let roll = (hip_vec.y).atan2(hip_vec.x);
+    // Scale to radians
+    hip_rotation *= PI;
+    spine_rotation *= PI;
 
-    HipTransform {
-        rotation: EulerAngles {
-            x: pitch,
-            y: yaw,
-            z: roll,
+    (
+        HipTransform {
+            rotation: EulerAngles::new(hip_rotation.x, hip_rotation.y, hip_rotation.z),
+            position,
         },
-        position,
-    }
+        EulerAngles::new(spine_rotation.x, spine_rotation.y, spine_rotation.z),
+    )
 }
 
-fn calc_spine_rotation(lm3d: &[Vec3]) -> EulerAngles {
-    // Spine rotation from shoulder midpoint to hip midpoint
-    let shoulder_mid = (lm3d[11] + lm3d[12]) * 0.5;
-    let hip_mid = (lm3d[23] + lm3d[24]) * 0.5;
-    let spine_dir = (shoulder_mid - hip_mid).normalize();
-
-    EulerAngles {
-        x: spine_dir.z.atan2(spine_dir.y),
-        y: spine_dir.x.atan2(spine_dir.y),
-        z: 0.0,
-    }
-}
-
-fn calc_limb_rotation(a: Vec3, b: Vec3, c: Vec3) -> EulerAngles {
+/// Simplified leg rotation (kept from original implementation).
+fn calc_leg_rotation(a: Vec3, b: Vec3, c: Vec3) -> EulerAngles {
     let ab = (b - a).normalize();
     let bc = (c - b).normalize();
     EulerAngles {
@@ -164,33 +260,20 @@ mod tests {
     }
 
     #[test]
-    fn calc_limb_rotation_basic() {
-        let a = Vec3::new(0.0, 0.0, 0.0);
-        let b = Vec3::new(0.0, 1.0, 0.0);
-        let c = Vec3::new(0.0, 2.0, 0.0);
-        let euler = calc_limb_rotation(a, b, c);
-        assert!(!euler.x.is_nan());
-    }
-
-    #[test]
-    fn t_pose_arm_rotation_near_zero_x() {
-        // T-pose: arms straight out horizontally
+    fn t_pose_arm_rotation_finite() {
         let mut lm3d = vec![Vec3::ZERO; 33];
-        // Shoulders at same height
-        lm3d[11] = Vec3::new(-1.0, 1.5, 0.0); // left shoulder
-        lm3d[12] = Vec3::new(1.0, 1.5, 0.0); // right shoulder
-                                             // Elbows straight out
-        lm3d[13] = Vec3::new(-2.0, 1.5, 0.0); // left elbow
-        lm3d[14] = Vec3::new(2.0, 1.5, 0.0); // right elbow
-                                             // Wrists straight out
-        lm3d[15] = Vec3::new(-3.0, 1.5, 0.0); // left wrist
-        lm3d[16] = Vec3::new(3.0, 1.5, 0.0); // right wrist
-        lm3d[17] = Vec3::new(-3.5, 1.5, 0.0); // left pinky
-        lm3d[18] = Vec3::new(3.5, 1.5, 0.0); // right pinky
-                                             // Hips
+        lm3d[11] = Vec3::new(-1.0, 1.5, 0.0);
+        lm3d[12] = Vec3::new(1.0, 1.5, 0.0);
+        lm3d[13] = Vec3::new(-2.0, 1.5, 0.0);
+        lm3d[14] = Vec3::new(2.0, 1.5, 0.0);
+        lm3d[15] = Vec3::new(-3.0, 1.5, 0.0);
+        lm3d[16] = Vec3::new(3.0, 1.5, 0.0);
+        lm3d[17] = Vec3::new(-3.5, 1.5, 0.0);
+        lm3d[18] = Vec3::new(3.5, 1.5, 0.0);
+        lm3d[19] = Vec3::new(-3.5, 1.4, 0.0);
+        lm3d[20] = Vec3::new(3.5, 1.4, 0.0);
         lm3d[23] = Vec3::new(-0.5, 0.0, 0.0);
         lm3d[24] = Vec3::new(0.5, 0.0, 0.0);
-        // Legs straight down
         lm3d[25] = Vec3::new(-0.5, -1.0, 0.0);
         lm3d[26] = Vec3::new(0.5, -1.0, 0.0);
         lm3d[27] = Vec3::new(-0.5, -2.0, 0.0);
@@ -207,21 +290,34 @@ mod tests {
             height: 480,
         };
         let result = solve(&lm3d, &lm2d, &video);
-        // T-pose: straight horizontal arms → rotation.x should be ~pi/2 (atan2(y=0,z=0) depends on approach)
-        // but at minimum should be finite
         assert!(result.right_upper_arm.x.is_finite());
         assert!(result.left_upper_arm.x.is_finite());
+        assert!(result.right_hand.y.is_finite());
+        assert!(result.left_hand.z.is_finite());
     }
 
     #[test]
-    fn hip_position_normalized() {
+    fn hip_position_clamped() {
         let (lm3d, lm2d) = make_dummy_pose();
         let video = VideoInfo {
             width: 640,
             height: 480,
         };
         let result = solve(&lm3d, &lm2d, &video);
-        // Hip position.x should be normalized to [-1, 1] range
-        assert!(result.hips.position.x >= -2.0 && result.hips.position.x <= 2.0);
+        assert!(result.hips.position.x >= -1.0 && result.hips.position.x <= 1.0);
+        assert!(result.hips.position.z >= -2.0 && result.hips.position.z <= 0.0);
+    }
+
+    #[test]
+    fn chest_is_half_spine() {
+        let (lm3d, lm2d) = make_dummy_pose();
+        let video = VideoInfo {
+            width: 640,
+            height: 480,
+        };
+        let result = solve(&lm3d, &lm2d, &video);
+        assert!((result.chest.x - result.spine.x * 0.5).abs() < 1e-6);
+        assert!((result.chest.y - result.spine.y * 0.5).abs() < 1e-6);
+        assert!((result.chest.z - result.spine.z * 0.5).abs() < 1e-6);
     }
 }

@@ -168,6 +168,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         last_frame_time: Instant::now(),
         rig_dirty: true,
         last_tracking_result: None,
+        camera_distance: 3.0,
     })
 }
 

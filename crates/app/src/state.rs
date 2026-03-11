@@ -23,6 +23,8 @@ pub struct AppState {
     pub rig_dirty: bool,
     /// Cached latest tracking result from the background tracker thread.
     pub last_tracking_result: Option<HolisticResult>,
+    /// Camera distance from the look-at target (controlled by mouse wheel zoom).
+    pub camera_distance: f32,
 }
 
 /// Current rig solver results (face/pose/hand).

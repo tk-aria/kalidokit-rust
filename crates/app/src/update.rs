@@ -217,9 +217,16 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         .blend_shapes
         .get_all_weights(num_morph_targets);
 
-    let camera = renderer::camera::Camera {
-        aspect: state.render_ctx.config.width as f32 / state.render_ctx.config.height.max(1) as f32,
-        ..renderer::camera::Camera::default()
+    let camera = {
+        let default_cam = renderer::camera::Camera::default();
+        let dir = (default_cam.position - default_cam.target).normalize();
+        let eye = default_cam.target + dir * state.camera_distance;
+        renderer::camera::Camera {
+            position: eye,
+            aspect: state.render_ctx.config.width as f32
+                / state.render_ctx.config.height.max(1) as f32,
+            ..default_cam
+        }
     };
     let camera_uniform = camera.to_uniform(glam::Mat4::IDENTITY);
 

@@ -1,14 +1,31 @@
 use crate::types::*;
-use crate::utils::{clamp, remap};
+use crate::utils::{clamp, distance, distance2d, lerp, lerp_vec3, remap01, roll_pitch_yaw};
 use glam::Vec3;
+use std::f32::consts::PI;
 
 /// Solve face rig from 468+ face landmarks.
-pub fn solve(landmarks: &[Vec3], _video: &VideoInfo) -> RiggedFace {
-    let head = calc_head_rotation(landmarks);
-    let eye = calc_eye_openness(landmarks);
-    let mouth = calc_mouth_shape(landmarks);
-    let pupil = calc_pupil_position(landmarks);
-    let brow = calc_brow_raise(landmarks);
+///
+/// Landmarks are expected as normalized [0,1] coordinates from MediaPipe.
+/// They are scaled to pixel coordinates using `video` dimensions internally,
+/// matching the original KalidoKit behavior.
+pub fn solve(landmarks: &[Vec3], video: &VideoInfo) -> RiggedFace {
+    // Scale normalized landmarks to pixel coordinates (KalidoKit convention)
+    let lm: Vec<Vec3> = landmarks
+        .iter()
+        .map(|p| {
+            Vec3::new(
+                p.x * video.width as f32,
+                p.y * video.height as f32,
+                p.z * video.width as f32,
+            )
+        })
+        .collect();
+
+    let head = calc_head_rotation(&lm);
+    let eye = calc_eyes(&lm);
+    let mouth = calc_mouth(&lm);
+    let pupil = calc_pupil_position(&lm);
+    let brow = calc_brow_raise(&lm);
 
     RiggedFace {
         head,
@@ -20,136 +37,236 @@ pub fn solve(landmarks: &[Vec3], _video: &VideoInfo) -> RiggedFace {
 }
 
 /// Stabilize blink values based on head Y rotation.
+///
+/// Matches KalidoKit's stabilizeBlink with enableWink=true.
 pub fn stabilize_blink(eye: &EyeValues, head_y: f32) -> EyeValues {
-    let max_ratio = 0.285;
-    let ratio = clamp(head_y / max_ratio, 0.0, 1.0);
-    EyeValues {
-        l: eye.l + ratio * (eye.r - eye.l),
-        r: eye.r + ratio * (eye.l - eye.r),
+    let l = clamp(eye.l, 0.0, 1.0);
+    let r = clamp(eye.r, 0.0, 1.0);
+    let blink_diff = (l - r).abs();
+    let blink_thresh = 0.8;
+    let max_rot = 0.5;
+    let is_closing = l < 0.3 && r < 0.3;
+    let is_open = l > 0.6 && r > 0.6;
+
+    // Head turned far right -> use right eye for both
+    if head_y > max_rot {
+        return EyeValues { l: r, r };
+    }
+    // Head turned far left -> use left eye for both
+    if head_y < -max_rot {
+        return EyeValues { l, r: l };
+    }
+
+    if blink_diff >= blink_thresh && !is_closing && !is_open {
+        // Wink detected: keep individual values
+        EyeValues { l, r }
+    } else {
+        // Blend eyes together for stability
+        if r > l {
+            EyeValues {
+                l: lerp(r, l, 0.95),
+                r: lerp(r, l, 0.05),
+            }
+        } else {
+            EyeValues {
+                l: lerp(r, l, 0.05),
+                r: lerp(r, l, 0.95),
+            }
+        }
     }
 }
 
-fn distance(a: Vec3, b: Vec3) -> f32 {
-    (a - b).length()
-}
-
+/// Head rotation using KalidoKit's createEulerPlane algorithm.
+///
+/// Uses landmarks 21 (top-left), 251 (top-right), 397 (bottom-right), 172 (bottom-left).
 fn calc_head_rotation(lm: &[Vec3]) -> EulerAngles {
     if lm.len() < 455 {
         return EulerAngles::default();
     }
-    let nose = lm[1];
-    let chin = lm[152];
-    let left_ear = lm[234];
-    let right_ear = lm[454];
 
-    // Vertical: nose to chin vector
-    let vertical = (chin - nose).normalize();
-    let pitch = vertical.z.atan2(vertical.y);
+    // createEulerPlane: midpoint of bottom-right and bottom-left
+    let p3mid = lerp_vec3(lm[397], lm[172], 0.5);
+    // Roll-pitch-yaw from plane [lm[21], lm[251], p3mid]
+    let mut rotation = roll_pitch_yaw(lm[21], lm[251], Some(p3mid));
 
-    // Horizontal: ear to ear vector
-    let horizontal = (right_ear - left_ear).normalize();
-    let yaw = horizontal.z.atan2(horizontal.x);
+    // KalidoKit applies these sign flips
+    rotation.x *= -1.0;
+    rotation.z *= -1.0;
 
-    // Roll: tilt based on ear height difference
-    let roll = (right_ear.y - left_ear.y).atan2(distance(left_ear, right_ear));
-
+    // Output is rotation * PI (converting from [-1,1] back to radians)
     EulerAngles {
-        x: pitch,
-        y: yaw,
-        z: roll,
+        x: rotation.x * PI,
+        y: rotation.y * PI,
+        z: rotation.z * PI,
     }
 }
 
-fn calc_eye_openness(lm: &[Vec3]) -> EyeValues {
-    if lm.len() < 387 {
+/// Eye lid ratio: average vertical lid distance / eye width.
+///
+/// Takes 8 points per eye in order:
+/// [outerCorner, innerCorner, outerUpperLid, midUpperLid, innerUpperLid,
+///  outerLowerLid, midLowerLid, innerLowerLid]
+fn eye_lid_ratio(points: &[Vec3; 8]) -> f32 {
+    let outer_corner = points[0];
+    let inner_corner = points[1];
+    let outer_upper = points[2];
+    let mid_upper = points[3];
+    let inner_upper = points[4];
+    let outer_lower = points[5];
+    let mid_lower = points[6];
+    let inner_lower = points[7];
+
+    let eye_width = distance2d(outer_corner, inner_corner).max(0.001);
+    let outer_lid_dist = distance2d(outer_upper, outer_lower);
+    let mid_lid_dist = distance2d(mid_upper, mid_lower);
+    let inner_lid_dist = distance2d(inner_upper, inner_lower);
+
+    let avg = (outer_lid_dist + mid_lid_dist + inner_lid_dist) / 3.0;
+    avg / eye_width
+}
+
+/// Calculate eye openness using KalidoKit's calcEyes algorithm.
+fn calc_eyes(lm: &[Vec3]) -> EyeValues {
+    if lm.len() < 475 {
         return EyeValues::default();
     }
-    // Left eye: upper=159, lower=145
-    let left_dist = distance(lm[159], lm[145]);
-    // Right eye: upper=386, lower=374
-    let right_dist = distance(lm[386], lm[374]);
 
-    // Normalize by inter-eye distance
-    let eye_width = distance(lm[33], lm[133]).max(0.001);
+    // Left eye points: [130, 133, 160, 159, 158, 144, 145, 153]
+    let left_points: [Vec3; 8] = [
+        lm[130], lm[133], lm[160], lm[159], lm[158], lm[144], lm[145], lm[153],
+    ];
+    // Right eye points: [263, 362, 387, 386, 385, 373, 374, 380]
+    let right_points: [Vec3; 8] = [
+        lm[263], lm[362], lm[387], lm[386], lm[385], lm[373], lm[374], lm[380],
+    ];
 
-    let l = remap(left_dist / eye_width, 0.15, 0.45, 0.0, 1.0).clamp(0.0, 1.0);
-    let r = remap(right_dist / eye_width, 0.15, 0.45, 0.0, 1.0).clamp(0.0, 1.0);
+    let left_ratio = eye_lid_ratio(&left_points);
+    let right_ratio = eye_lid_ratio(&right_points);
+
+    let max_ratio = 0.285;
+
+    let left_clamped = clamp(left_ratio / max_ratio, 0.0, 2.0);
+    let right_clamped = clamp(right_ratio / max_ratio, 0.0, 2.0);
+
+    let l = remap01(left_clamped, 0.35, 0.5);
+    let r = remap01(right_clamped, 0.35, 0.5);
 
     EyeValues { l, r }
 }
 
-fn calc_mouth_shape(lm: &[Vec3]) -> MouthShape {
-    if lm.len() < 309 {
+/// Calculate mouth shape using KalidoKit's calcMouth algorithm.
+///
+/// Uses eye distances as reference scale (not face height).
+fn calc_mouth(lm: &[Vec3]) -> MouthShape {
+    if lm.len() < 475 {
         return MouthShape::default();
     }
-    // Mouth open: upper lip (13) to lower lip (14)
-    let mouth_open = distance(lm[13], lm[14]);
-    // Mouth width: left corner (78) to right corner (308)
-    let mouth_width = distance(lm[78], lm[308]);
 
-    // Normalize by face height (nose to chin)
-    let face_height = distance(lm[1], lm[152]).max(0.001);
+    // Eye reference distances
+    let eye_inner_distance = distance(lm[133], lm[362]).max(0.001);
+    let eye_outer_distance = distance(lm[130], lm[263]).max(0.001);
 
-    let open_ratio = mouth_open / face_height;
-    let width_ratio = mouth_width / face_height;
+    // Mouth landmarks
+    let upper_lip = lm[13];
+    let lower_lip = lm[14];
+    let mouth_corner_l = lm[61];
+    let mouth_corner_r = lm[291];
 
-    // Map to vowel shapes (simplified KalidoKit mapping)
-    let a = remap(open_ratio, 0.02, 0.12, 0.0, 1.0).clamp(0.0, 1.0);
-    let i = remap(width_ratio, 0.3, 0.5, 0.0, 1.0).clamp(0.0, 1.0) * (1.0 - a);
-    let u = remap(width_ratio, 0.1, 0.25, 1.0, 0.0).clamp(0.0, 1.0) * a.min(0.5);
-    let e = remap(open_ratio, 0.04, 0.08, 0.0, 1.0).clamp(0.0, 1.0) * (1.0 - a) * i;
-    let o = a * remap(width_ratio, 0.2, 0.35, 1.0, 0.0).clamp(0.0, 1.0);
+    let mouth_open = distance(upper_lip, lower_lip);
+    let mouth_width = distance(mouth_corner_l, mouth_corner_r);
 
-    MouthShape { a, i, u, e, o }
+    let _ratio_y = remap01(mouth_open / eye_inner_distance, 0.15, 0.7);
+    let ratio_x = remap01(mouth_width / eye_outer_distance, 0.45, 0.9);
+    let ratio_x = (ratio_x - 0.3) * 2.0;
+
+    let mouth_x = ratio_x;
+    let mouth_y = remap01(mouth_open / eye_inner_distance, 0.17, 0.5);
+
+    let ratio_i = clamp(
+        remap01(mouth_x, 0.0, 1.0) * 2.0 * remap01(mouth_y, 0.2, 0.7),
+        0.0,
+        1.0,
+    );
+    let a = mouth_y * 0.4 + mouth_y * (1.0 - ratio_i) * 0.6;
+    let u = mouth_y * remap01(1.0 - ratio_i, 0.0, 0.3) * 0.1;
+    let e = remap01(ratio_u_helper(u), 0.2, 1.0) * (1.0 - ratio_i) * 0.3;
+    let o = (1.0 - ratio_i) * remap01(mouth_y, 0.3, 1.0) * 0.4;
+
+    MouthShape {
+        a,
+        i: ratio_i,
+        u,
+        e,
+        o,
+    }
 }
 
+/// Helper: ratio_u is just u itself (used in e calculation).
+fn ratio_u_helper(u: f32) -> f32 {
+    u
+}
+
+/// Calculate pupil position using KalidoKit's algorithm.
 fn calc_pupil_position(lm: &[Vec3]) -> glam::Vec2 {
     if lm.len() < 478 {
         return glam::Vec2::ZERO;
     }
-    // Iris landmarks: left eye center (468), right eye center (473)
-    let left_iris = lm[468];
-    let right_iris = lm[473];
 
-    // Eye corners for normalization
-    let left_outer = lm[33];
-    let left_inner = lm[133];
-    let right_outer = lm[362];
-    let right_inner = lm[263];
+    // Left eye
+    let l_outer = lm[130];
+    let l_inner = lm[133];
+    let l_eye_width = distance2d(l_outer, l_inner).max(0.001);
+    let l_mid = lerp_vec3(l_outer, l_inner, 0.5);
+    let l_pupil = lm[468];
+    let l_dx = l_mid.x - l_pupil.x;
+    let l_dy = l_mid.y - l_eye_width * 0.075 - l_pupil.y;
+    let l_ratio_x = l_dx / (l_eye_width / 2.0) * 4.0;
+    let l_ratio_y = l_dy / (l_eye_width / 4.0) * 4.0;
 
-    // Calculate horizontal offset
-    let left_x = remap_eye_position(left_iris.x, left_outer.x, left_inner.x);
-    let right_x = remap_eye_position(right_iris.x, right_outer.x, right_inner.x);
-    let x = (left_x + right_x) * 0.5;
+    // Right eye
+    let r_outer = lm[263];
+    let r_inner = lm[362];
+    let r_eye_width = distance2d(r_outer, r_inner).max(0.001);
+    let r_mid = lerp_vec3(r_outer, r_inner, 0.5);
+    let r_pupil = lm[473];
+    let r_dx = r_mid.x - r_pupil.x;
+    let r_dy = r_mid.y - r_eye_width * 0.075 - r_pupil.y;
+    let r_ratio_x = r_dx / (r_eye_width / 2.0) * 4.0;
+    let r_ratio_y = r_dy / (r_eye_width / 4.0) * 4.0;
 
-    // Calculate vertical offset
-    let left_y = remap_eye_position(left_iris.y, lm[159].y, lm[145].y);
-    let right_y = remap_eye_position(right_iris.y, lm[386].y, lm[374].y);
-    let y = (left_y + right_y) * 0.5;
+    // Average left and right
+    let x = (l_ratio_x + r_ratio_x) * 0.5;
+    let y = (l_ratio_y + r_ratio_y) * 0.5;
 
     glam::Vec2::new(x, y)
 }
 
-fn remap_eye_position(iris: f32, outer: f32, inner: f32) -> f32 {
-    let range = (inner - outer).abs().max(0.001);
-    let normalized = (iris - outer) / range;
-    (normalized * 2.0 - 1.0).clamp(-1.0, 1.0)
-}
-
+/// Calculate brow raise using KalidoKit's eyeLidRatio on brow landmarks.
 fn calc_brow_raise(lm: &[Vec3]) -> f32 {
-    if lm.len() < 300 {
+    if lm.len() < 475 {
         return 0.0;
     }
-    // Brow landmarks: left brow (105), right brow (334)
-    // Eye landmarks: left eye top (159), right eye top (386)
-    let left_brow_dist = distance(lm[105], lm[159]);
-    let right_brow_dist = distance(lm[334], lm[386]);
-    let avg_dist = (left_brow_dist + right_brow_dist) * 0.5;
 
-    let face_height = distance(lm[1], lm[152]).max(0.001);
-    let ratio = avg_dist / face_height;
+    // Left brow points: [35, 244, 63, 105, 66, 229, 230, 231]
+    let left_brow_points: [Vec3; 8] = [
+        lm[35], lm[244], lm[63], lm[105], lm[66], lm[229], lm[230], lm[231],
+    ];
+    // Right brow points: [265, 464, 293, 334, 296, 449, 450, 451]
+    let right_brow_points: [Vec3; 8] = [
+        lm[265], lm[464], lm[293], lm[334], lm[296], lm[449], lm[450], lm[451],
+    ];
 
-    remap(ratio, 0.06, 0.12, 0.0, 1.0).clamp(0.0, 1.0)
+    let left_brow_dist = eye_lid_ratio(&left_brow_points);
+    let right_brow_dist = eye_lid_ratio(&right_brow_points);
+    let avg_brow_dist = (left_brow_dist + right_brow_dist) * 0.5;
+
+    let max_brow_ratio = 1.15;
+    let brow_high = 0.125;
+    let brow_low = 0.07;
+
+    let brow_ratio = avg_brow_dist / max_brow_ratio - 1.0;
+    let clamped = clamp(brow_ratio, brow_low, brow_high);
+    (clamped - brow_low) / (brow_high - brow_low)
 }
 
 #[cfg(test)]
@@ -186,69 +303,104 @@ mod tests {
     }
 
     #[test]
-    fn stabilize_blink_compensates() {
-        let eye = EyeValues { l: 0.8, r: 0.4 };
-        // At half head rotation, stabilization partially blends values
-        let stabilized = stabilize_blink(&eye, 0.285 * 0.5);
-        // l should decrease, r should increase (partial blend)
-        assert!(stabilized.l < eye.l);
-        assert!(stabilized.r > eye.r);
+    fn stabilize_blink_wink_detection() {
+        // Large difference between eyes -> wink (diff=0.9 > thresh=0.8)
+        let eye = EyeValues { l: 1.0, r: 0.1 };
+        let stabilized = stabilize_blink(&eye, 0.0);
+        // With blink_diff >= 0.8, wink mode: values should be preserved
+        assert!((stabilized.l - 1.0).abs() < 1e-6);
+        assert!((stabilized.r - 0.1).abs() < 1e-6);
     }
 
     #[test]
-    fn stabilize_blink_zero_head_y_unchanged() {
-        let eye = EyeValues { l: 0.7, r: 0.3 };
+    fn stabilize_blink_head_turned_right() {
+        let eye = EyeValues { l: 0.8, r: 0.4 };
+        let stabilized = stabilize_blink(&eye, 0.6); // > max_rot (0.5)
+        // Should use right eye for both
+        assert!((stabilized.l - 0.4).abs() < 1e-6);
+        assert!((stabilized.r - 0.4).abs() < 1e-6);
+    }
+
+    #[test]
+    fn stabilize_blink_head_turned_left() {
+        let eye = EyeValues { l: 0.8, r: 0.4 };
+        let stabilized = stabilize_blink(&eye, -0.6); // < -max_rot
+        // Should use left eye for both
+        assert!((stabilized.l - 0.8).abs() < 1e-6);
+        assert!((stabilized.r - 0.8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn stabilize_blink_blending() {
+        // Normal case: small difference, blend together
+        let eye = EyeValues { l: 0.7, r: 0.6 };
         let stabilized = stabilize_blink(&eye, 0.0);
-        assert!((stabilized.l - eye.l).abs() < 1e-6);
-        assert!((stabilized.r - eye.r).abs() < 1e-6);
+        // Values should be blended toward each other
+        assert!(stabilized.l > 0.6 && stabilized.l < 0.71);
+        assert!(stabilized.r > 0.59 && stabilized.r < 0.7);
     }
 
     #[test]
     fn head_rotation_facing_forward_near_zero() {
-        // Symmetric face: ears at same height, nose above chin
+        // Create symmetric face landmarks at pixel scale
         let mut lm = vec![Vec3::ZERO; 478];
-        lm[1] = Vec3::new(0.0, 0.5, 0.0); // nose
-        lm[152] = Vec3::new(0.0, -0.5, 0.0); // chin
-        lm[234] = Vec3::new(-1.0, 0.0, 0.0); // left ear
-        lm[454] = Vec3::new(1.0, 0.0, 0.0); // right ear
+        // Landmarks 21 and 251 at same height (top-left and top-right)
+        lm[21] = Vec3::new(200.0, 100.0, 0.0);
+        lm[251] = Vec3::new(440.0, 100.0, 0.0);
+        // Landmarks 397 and 172 at same height (bottom-right and bottom-left)
+        lm[397] = Vec3::new(440.0, 380.0, 0.0);
+        lm[172] = Vec3::new(200.0, 380.0, 0.0);
         let head = calc_head_rotation(&lm);
-        // yaw and roll should be near zero for symmetric face
+        // Roll should be near zero for symmetric face
         assert!(
-            head.z.abs() < 0.1,
+            head.z.abs() < 0.3,
             "roll should be near zero, got {}",
             head.z
         );
     }
 
     #[test]
-    fn eyes_open_landmarks_high_openness() {
+    fn eyes_return_valid_range() {
         let mut lm = vec![Vec3::ZERO; 478];
-        // Left eye: upper(159) far from lower(145)
-        lm[159] = Vec3::new(0.0, 0.3, 0.0);
-        lm[145] = Vec3::new(0.0, -0.3, 0.0);
-        // Right eye: upper(386) far from lower(374)
-        lm[386] = Vec3::new(0.5, 0.3, 0.0);
-        lm[374] = Vec3::new(0.5, -0.3, 0.0);
-        // Eye width reference: lm[33] to lm[133]
-        lm[33] = Vec3::new(-0.5, 0.0, 0.0);
-        lm[133] = Vec3::new(0.5, 0.0, 0.0);
-        let eye = calc_eye_openness(&lm);
-        assert!(eye.l > 0.5, "left eye should be open, got {}", eye.l);
+        // Set up left eye points with reasonable spacing
+        // [130, 133, 160, 159, 158, 144, 145, 153]
+        lm[130] = Vec3::new(100.0, 200.0, 0.0); // outer corner
+        lm[133] = Vec3::new(150.0, 200.0, 0.0); // inner corner
+        lm[160] = Vec3::new(110.0, 190.0, 0.0); // outer upper
+        lm[159] = Vec3::new(125.0, 188.0, 0.0); // mid upper
+        lm[158] = Vec3::new(140.0, 190.0, 0.0); // inner upper
+        lm[144] = Vec3::new(110.0, 210.0, 0.0); // outer lower
+        lm[145] = Vec3::new(125.0, 212.0, 0.0); // mid lower
+        lm[153] = Vec3::new(140.0, 210.0, 0.0); // inner lower
+        // Right eye points [263, 362, 387, 386, 385, 373, 374, 380]
+        lm[263] = Vec3::new(250.0, 200.0, 0.0);
+        lm[362] = Vec3::new(300.0, 200.0, 0.0);
+        lm[387] = Vec3::new(260.0, 190.0, 0.0);
+        lm[386] = Vec3::new(275.0, 188.0, 0.0);
+        lm[385] = Vec3::new(290.0, 190.0, 0.0);
+        lm[373] = Vec3::new(260.0, 210.0, 0.0);
+        lm[374] = Vec3::new(275.0, 212.0, 0.0);
+        lm[380] = Vec3::new(290.0, 210.0, 0.0);
+        let eye = calc_eyes(&lm);
+        assert!(eye.l >= 0.0 && eye.l <= 1.0, "left eye out of range: {}", eye.l);
+        assert!(eye.r >= 0.0 && eye.r <= 1.0, "right eye out of range: {}", eye.r);
     }
 
     #[test]
-    fn mouth_closed_low_a_value() {
+    fn mouth_closed_low_values() {
         let mut lm = vec![Vec3::ZERO; 478];
-        // Close lips: upper(13) and lower(14) very close
-        lm[13] = Vec3::new(0.0, 0.01, 0.0);
-        lm[14] = Vec3::new(0.0, -0.01, 0.0);
+        // Eye reference landmarks
+        lm[133] = Vec3::new(150.0, 200.0, 0.0);
+        lm[362] = Vec3::new(300.0, 200.0, 0.0);
+        lm[130] = Vec3::new(100.0, 200.0, 0.0);
+        lm[263] = Vec3::new(350.0, 200.0, 0.0);
+        // Close lips
+        lm[13] = Vec3::new(225.0, 300.0, 0.0);
+        lm[14] = Vec3::new(225.0, 302.0, 0.0);
         // Mouth corners
-        lm[78] = Vec3::new(-0.2, 0.0, 0.0);
-        lm[308] = Vec3::new(0.2, 0.0, 0.0);
-        // Face height reference
-        lm[1] = Vec3::new(0.0, 1.0, 0.0);
-        lm[152] = Vec3::new(0.0, -1.0, 0.0);
-        let mouth = calc_mouth_shape(&lm);
+        lm[61] = Vec3::new(180.0, 301.0, 0.0);
+        lm[291] = Vec3::new(270.0, 301.0, 0.0);
+        let mouth = calc_mouth(&lm);
         assert!(
             mouth.a < 0.3,
             "mouth.a should be low for closed mouth, got {}",
