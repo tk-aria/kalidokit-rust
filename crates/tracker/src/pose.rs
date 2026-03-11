@@ -83,11 +83,12 @@ impl PoseDetector {
                 let lm: Vec<Vec3> = (0..33)
                     .map(|i| {
                         let offset = i * 5;
-                        // Negate x (pixel right→left = person's right)
-                        // Negate y (pixel down→up)
-                        // Keep z sign (positive = toward camera in both systems)
+                        // Center at hip midpoint and normalize.
+                        // Keep x/y in pixel convention (matching MediaPipe's selfie-mode
+                        // where left hip has smaller x than right hip).
+                        // Negate y only (pixel y=down → world y=up).
                         Vec3::new(
-                            -(raw_data[offset] - cx) / 256.0,
+                            (raw_data[offset] - cx) / 256.0,
                             -(raw_data[offset + 1] - cy) / 256.0,
                             (raw_data[offset + 2] - cz) / 256.0,
                         )
