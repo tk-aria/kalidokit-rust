@@ -2,7 +2,6 @@
 ///
 /// Platform-specific implementations:
 /// - macOS: CoreMediaIO Camera Extension via `objc2-core-media-io`
-
 pub trait VirtualCamera {
     /// Start the virtual camera device.
     fn start(&mut self) -> anyhow::Result<()>;

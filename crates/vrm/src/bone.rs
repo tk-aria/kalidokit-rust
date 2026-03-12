@@ -312,8 +312,8 @@ impl HumanoidBones {
 
         // Find root nodes (nodes with no parent) and BFS from them
         let mut queue = std::collections::VecDeque::new();
-        for i in 0..n {
-            if parent_of[i].is_none() {
+        for (i, parent) in parent_of.iter().enumerate().take(n) {
+            if parent.is_none() {
                 queue.push_back(i);
             }
         }

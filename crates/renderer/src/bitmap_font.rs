@@ -1,7 +1,6 @@
 /// Minimal 5x7 bitmap font for HUD text rendering.
 /// Each character is stored as 7 rows of 5 bits (MSB = leftmost pixel).
 /// Only ASCII subset needed for the help overlay.
-
 /// Returns the 7-row bitmap for a character, or None if unsupported.
 pub fn glyph(ch: char) -> Option<[u8; 7]> {
     Some(match ch {

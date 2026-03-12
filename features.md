@@ -1642,11 +1642,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ### Step 10.6: Phase 10 検証
 
-- [ ] **ビルド検証**:
+- [x] **ビルド検証**: <!-- 2026-03-12 15:55 JST -->
   - `cargo check --workspace` 成功
-  - `cargo clippy --workspace -- -D warnings` 警告 0
-  - Extension バンドル (.appex) が生成される
-- [ ] **動作確認** (macOS 12.3+ 環境):
+  - `cargo clippy --workspace -- -D warnings` Rust エラー 0 (ObjC 未使用引数警告 3 件のみ)
+  - Extension バンドル (.appex) が `scripts/build-camera-extension.sh` で生成される
+- [ ] **動作確認** (macOS 12.3+ 環境) — SIP 無効化 + Extension インストールが必要なため未検証:
   - Extension のインストール・有効化 (`OSSystemExtensionManager`)
   - アプリ起動後、システム環境設定 > プライバシー > カメラ に仮想カメラが表示
   - FaceTime / Photo Booth でアバター映像が表示される

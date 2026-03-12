@@ -25,6 +25,7 @@ impl TrackerThread {
     /// The worker receives frames on an internal channel, runs `detect()`,
     /// and sends results back.  Both channels have a buffer size of 1 so that
     /// stale frames are dropped rather than queued.
+    #[allow(dead_code)]
     pub fn new(tracker: HolisticTracker) -> Self {
         Self::new_with_mode(tracker, false)
     }

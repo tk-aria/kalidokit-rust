@@ -95,6 +95,7 @@ const HAND_CONNECTIONS: &[(usize, usize)] = &[
 ];
 
 /// Key face landmark indices to draw (eyes, nose, mouth outline — not full tesselation).
+#[allow(dead_code)]
 const FACE_KEY_INDICES: &[usize] = &[
     // Left eye
     33, 133, 160, 159, 158, 144, 145, 153,
@@ -447,9 +448,9 @@ impl DebugOverlay {
             for (ch_idx, ch) in line.chars().enumerate() {
                 let Some(glyph) = bitmap_font::glyph(ch) else { continue };
                 let cx = start_x + ch_idx as f32 * bitmap_font::CHAR_SPACING;
-                for row in 0..7 {
+                for (row, &bits) in glyph.iter().enumerate() {
                     for col in 0..5 {
-                        if glyph[row] & (1 << (4 - col)) != 0 {
+                        if bits & (1 << (4 - col)) != 0 {
                             let px = cx + col as f32 * bitmap_font::PIXEL_SIZE;
                             let py = y - row as f32 * bitmap_font::PIXEL_SIZE;
                             let s = bitmap_font::PIXEL_SIZE * 0.45;

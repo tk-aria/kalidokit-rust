@@ -93,9 +93,10 @@ impl StageLight {
 }
 
 /// Shading mode for the fragment shader.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub enum ShadingMode {
     /// Virtual live concert-style toon (3-point stage lighting, cel-shade, rim, specular).
+    #[default]
     VirtualLive,
     /// Classic MToon (single directional light, 2-step toon, simple rim).
     Classic,
@@ -132,12 +133,6 @@ pub struct StageLighting {
     pub back: StageLight,
     #[serde(default)]
     pub shading_mode: ShadingMode,
-}
-
-impl Default for ShadingMode {
-    fn default() -> Self {
-        Self::VirtualLive
-    }
 }
 
 impl Default for StageLighting {

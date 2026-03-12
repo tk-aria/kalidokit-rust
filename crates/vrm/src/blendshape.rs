@@ -133,6 +133,7 @@ impl BlendShapeGroup {
     }
 
     /// デバッグ用: 全プリセットのバインディング情報を返す
+    #[allow(clippy::type_complexity)]
     pub fn debug_bindings(&self) -> Vec<(String, Vec<(usize, usize, f32)>)> {
         self.groups
             .iter()

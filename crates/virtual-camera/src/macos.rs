@@ -32,6 +32,12 @@ pub struct MacOsVirtualCamera {
     height: u32,
 }
 
+impl Default for MacOsVirtualCamera {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MacOsVirtualCamera {
     pub fn new() -> Self {
         Self {
@@ -151,7 +157,7 @@ impl MacOsVirtualCamera {
         let status = unsafe {
             objc2_core_media::CMVideoFormatDescriptionCreateForImageBuffer(
                 None,
-                &*pixel_buffer.as_ptr(),
+                pixel_buffer.as_ref(),
                 NonNull::new(&mut format_desc as *mut _ as *mut _).unwrap(),
             )
         };
@@ -165,7 +171,7 @@ impl MacOsVirtualCamera {
         let mut timing = objc2_core_media::CMSampleTimingInfo {
             duration,
             presentationTimeStamp: pts,
-            decodeTimeStamp: unsafe { *(&raw const objc2_core_media::kCMTimeInvalid) },
+            decodeTimeStamp: unsafe { objc2_core_media::kCMTimeInvalid },
         };
 
         // Create sample buffer

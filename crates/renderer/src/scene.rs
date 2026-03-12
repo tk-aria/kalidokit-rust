@@ -80,6 +80,7 @@ impl Scene {
     ///
     /// `mesh_morph_targets[i]` contains the morph target position deltas for mesh `i`.
     /// Each inner `Vec<[f32; 3]>` has one `[dx, dy, dz]` per vertex for that morph target.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
