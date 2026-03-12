@@ -294,6 +294,7 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
                 indices,
                 morph_targets,
                 material_index,
+                gltf_mesh_index: mesh.index(),
             });
         }
     }

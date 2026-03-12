@@ -99,12 +99,53 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         .collect();
 
     let max_joints = vrm_model.skins.len().max(1);
-    let num_morph_targets = vrm_model
+
+    // Extract per-mesh morph target position deltas for GPU upload
+    let mesh_morph_targets: Vec<Vec<Vec<[f32; 3]>>> = vrm_model
         .meshes
         .iter()
-        .flat_map(|m| &m.morph_targets)
-        .count()
-        .max(1);
+        .map(|m| {
+            m.morph_targets
+                .iter()
+                .map(|t| t.position_deltas.clone())
+                .collect()
+        })
+        .collect();
+
+    {
+        let total_targets: usize = mesh_morph_targets.iter().map(|t| t.len()).sum();
+        pipeline_logger::bone(log::Level::Info, "morph targets extracted")
+            .field("meshes_with_targets", mesh_morph_targets.iter().filter(|t| !t.is_empty()).count())
+            .field("total_targets", total_targets)
+            .emit();
+
+        // Log per-mesh morph target info
+        for (i, targets) in mesh_morph_targets.iter().enumerate() {
+            if !targets.is_empty() {
+                let verts = vrm_model.meshes[i].vertices.len();
+                let max_delta: f32 = targets.iter()
+                    .flat_map(|t| t.iter())
+                    .flat_map(|d| d.iter())
+                    .map(|v| v.abs())
+                    .fold(0.0f32, f32::max);
+                pipeline_logger::bone(log::Level::Info, "mesh morph targets")
+                    .field("mesh_index", i)
+                    .field("num_targets", targets.len())
+                    .field("num_vertices", verts)
+                    .field("max_delta", format!("{:.6}", max_delta))
+                    .emit();
+            }
+        }
+
+        // Log blend shape bindings
+        let bindings = vrm_model.blend_shapes.debug_bindings();
+        for (preset, binds) in &bindings {
+            pipeline_logger::bone(log::Level::Info, "blend shape binding")
+                .field("preset", preset.as_str())
+                .field("binds", format!("{:?}", binds))
+                .emit();
+        }
+    }
 
     // Build per-mesh material inputs from VRM materials
     let mesh_materials: Vec<MeshMaterialInput> = vrm_model
@@ -133,8 +174,8 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         &render_ctx.config,
         &vertices_list,
         &mesh_materials,
+        &mesh_morph_targets,
         max_joints,
-        num_morph_targets,
     );
 
     // 4. Initialize ML tracker on a background thread (face-only mode for debugging)

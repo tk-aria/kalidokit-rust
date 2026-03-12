@@ -55,6 +55,8 @@ pub struct MeshData {
     pub indices: Vec<u32>,
     pub morph_targets: Vec<MorphTargetData>,
     pub material_index: Option<usize>,
+    /// Original glTF mesh index (used for blend shape binding lookup).
+    pub gltf_mesh_index: usize,
 }
 
 /// MorphTargetの差分データ

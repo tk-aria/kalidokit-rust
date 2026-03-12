@@ -131,6 +131,41 @@ impl BlendShapeGroup {
         }
         weights
     }
+
+    /// デバッグ用: 全プリセットのバインディング情報を返す
+    pub fn debug_bindings(&self) -> Vec<(String, Vec<(usize, usize, f32)>)> {
+        self.groups
+            .iter()
+            .map(|(preset, bindings)| {
+                let name = format!("{:?}", preset);
+                let binds: Vec<(usize, usize, f32)> = bindings
+                    .iter()
+                    .map(|b| (b.mesh_index, b.morph_target_index, b.weight))
+                    .collect();
+                (name, binds)
+            })
+            .collect()
+    }
+
+    /// 特定メッシュのMorphTarget重み配列を取得 (per-mesh GPU転送用)
+    pub fn get_weights_for_mesh(&self, mesh_index: usize, num_targets: usize) -> Vec<f32> {
+        let mut weights = vec![0.0f32; num_targets];
+        for (preset, &value) in &self.current_weights {
+            if let Some(bindings) = self.groups.get(preset) {
+                for binding in bindings {
+                    if binding.mesh_index == mesh_index
+                        && binding.morph_target_index < num_targets
+                    {
+                        weights[binding.morph_target_index] += value * binding.weight;
+                    }
+                }
+            }
+        }
+        for w in &mut weights {
+            *w = w.clamp(0.0, 1.0);
+        }
+        weights
+    }
 }
 
 #[cfg(test)]
