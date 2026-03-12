@@ -23,3 +23,6 @@ objc2-core-video = { version = "0.3", features = [
 objc2-core-foundation = { version = "0.3", features = [
     "CFString", "CFCGTypes",
 ] }
+
+[target.'cfg(target_os = "macos")'.build-dependencies]
+cc = "1"

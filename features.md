@@ -1624,20 +1624,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ### Step 10.5: Extension ビルド & 署名設定
 
-- [ ] `build.rs`: `cc` crate で .m ファイルコンパイル + CoreMediaIO フレームワークリンク
+- [x] `build.rs`: `cc` crate で .m ファイルコンパイル + CoreMediaIO フレームワークリンク <!-- 2026-03-12 15:50 JST -->
   ```rust
   cc::Build::new()
-      .files(&["macos-extension/main.m", ...])
+      .files(&["macos-extension/ProviderSource.m", ...])
       .flag("-fobjc-arc")
       .compile("vcam_extension");
   println!("cargo:rustc-link-lib=framework=CoreMediaIO");
   println!("cargo:rustc-link-lib=framework=CoreMedia");
   println!("cargo:rustc-link-lib=framework=CoreVideo");
   ```
-- [ ] Xcode プロジェクト or xcodebuild スクリプト: Extension バンドル (.appex) 生成
-  - System Extension は .app バンドル内に埋め込み必須
-- [ ] 開発用: SIP 無効化手順ドキュメント
-- [ ] 配布用: Developer ID 署名 + 公証 (Notarization) 手順ドキュメント
+- [x] `scripts/build-camera-extension.sh`: Extension バンドル (.appex) 生成スクリプト <!-- 2026-03-12 15:50 JST -->
+  - clang で ObjC ソースをコンパイル → .appex バンドル構造を作成
+  - `--sign IDENTITY` オプションで Developer ID 署名対応
+- [x] 開発用: SIP 無効化手順ドキュメント (`docs/camera-extension-dev-setup.md`) <!-- 2026-03-12 15:50 JST -->
+- [x] 配布用: Developer ID 署名 + 公証 (Notarization) 手順ドキュメント (`docs/camera-extension-distribution.md`) <!-- 2026-03-12 15:50 JST -->
 
 ### Step 10.6: Phase 10 検証
 
