@@ -1,6 +1,7 @@
 use crate::camera::CameraUniform;
 use crate::context::RenderContext;
 use crate::depth::DepthTexture;
+use crate::light::StageLighting;
 use crate::mesh::GpuMesh;
 use crate::morph::{MorphBindGroupLayout, PerMeshMorph};
 use crate::pipeline::create_render_pipeline;
@@ -35,6 +36,7 @@ pub struct Scene {
     depth: DepthTexture,
     pipeline: wgpu::RenderPipeline,
     camera_buffer: wgpu::Buffer,
+    lights_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     // Kept alive for potential future dynamic material creation.
     #[allow(dead_code)]
@@ -81,6 +83,7 @@ impl Scene {
         mesh_materials: &[MeshMaterialInput],
         mesh_morph_targets: &[Vec<Vec<[f32; 3]>>],
         max_joints: usize,
+        stage_lighting: &StageLighting,
     ) -> Self {
         let meshes: Vec<GpuMesh> = vertices_list
             .iter()
@@ -113,28 +116,54 @@ impl Scene {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        // Lights uniform (shares bind group 0 with camera)
+        let lights_uniform = stage_lighting.to_uniform();
+        let lights_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("lights_buffer"),
+            contents: bytemuck::bytes_of(&lights_uniform),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
         let camera_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("camera_bind_group_layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                label: Some("camera_lights_bind_group_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                }],
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
             });
 
         let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("camera_bind_group"),
+            label: Some("camera_lights_bind_group"),
             layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: camera_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: lights_buffer.as_entire_binding(),
+                },
+            ],
         });
 
         // Material bind group layout (shared by all meshes)
@@ -266,6 +295,7 @@ impl Scene {
             depth,
             pipeline,
             camera_buffer,
+            lights_buffer,
             camera_bind_group,
             material_bind_group_layout,
         }
@@ -280,6 +310,7 @@ impl Scene {
         joint_matrices: &[Mat4],
         per_mesh_morph_weights: &[Vec<f32>],
         camera_uniform: &CameraUniform,
+        stage_lighting: &StageLighting,
     ) {
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(camera_uniform));
         if !joint_matrices.is_empty() {
@@ -290,6 +321,8 @@ impl Scene {
                 morph.update(queue, weights);
             }
         }
+        let lights_uniform = stage_lighting.to_uniform();
+        queue.write_buffer(&self.lights_buffer, 0, bytemuck::bytes_of(&lights_uniform));
     }
 
     /// Render the 3D scene to a texture view (does not acquire or present the surface).
@@ -304,7 +337,12 @@ impl Scene {
                     view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.12,
+                            g: 0.12,
+                            b: 0.15,
+                            a: 1.0,
+                        }),
                         store: wgpu::StoreOp::Store,
                     },
                 })],

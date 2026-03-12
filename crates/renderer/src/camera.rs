@@ -14,6 +14,8 @@ pub struct Camera {
 pub struct CameraUniform {
     pub view_proj: [[f32; 4]; 4],
     pub model: [[f32; 4]; 4],
+    /// Camera world position (xyz) + padding (w).
+    pub eye_pos: [f32; 4],
 }
 
 impl Camera {
@@ -27,6 +29,7 @@ impl Camera {
         CameraUniform {
             view_proj: self.build_view_proj().to_cols_array_2d(),
             model: model.to_cols_array_2d(),
+            eye_pos: [self.position.x, self.position.y, self.position.z, 1.0],
         }
     }
 }
@@ -68,7 +71,7 @@ mod tests {
         let cam = Camera::default();
         let u = cam.to_uniform(Mat4::IDENTITY);
         let bytes = bytemuck::bytes_of(&u);
-        assert_eq!(bytes.len(), 128); // 2 * 16 * f32(4) = 128
+        assert_eq!(bytes.len(), 144); // 2 * mat4(64) + vec4(16) = 144
     }
 
     #[test]
