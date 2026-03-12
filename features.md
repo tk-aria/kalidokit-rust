@@ -1615,12 +1615,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 **ファイル**: `crates/app/src/update.rs`, `crates/renderer/src/scene.rs`
 
-- [ ] `Scene` にフレームキャプチャ用ステージングバッファ追加
+- [x] `Scene` にフレームキャプチャ用ステージングバッファ追加 <!-- 2026-03-12 15:46 JST -->
   - `wgpu::BufferUsages::COPY_DST | MAP_READ`
   - レンダーテクスチャからの `copy_texture_to_buffer`
-- [ ] `buffer.map_async()` でフレーム読み出し
-- [ ] `update_frame()` から `VirtualCamera::send_frame()` 呼び出し
-- [ ] 仮想カメラの有効/無効トグル (キーバインド: `C` キー)
+- [x] `buffer.map_async()` でフレーム読み出し <!-- 2026-03-12 15:46 JST -->
+- [x] `update_frame()` から `VirtualCamera::send_frame()` 呼び出し <!-- 2026-03-12 15:46 JST -->
+- [x] 仮想カメラの有効/無効トグル (キーバインド: `C` キー) <!-- 2026-03-12 15:46 JST -->
 
 ### Step 10.5: Extension ビルド & 署名設定
 

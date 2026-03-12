@@ -41,6 +41,11 @@ pub struct Scene {
     // Kept alive for potential future dynamic material creation.
     #[allow(dead_code)]
     material_bind_group_layout: wgpu::BindGroupLayout,
+    /// Staging buffer for reading back rendered frames (virtual camera).
+    frame_capture_buffer: Option<wgpu::Buffer>,
+    frame_capture_texture: Option<wgpu::Texture>,
+    frame_capture_width: u32,
+    frame_capture_height: u32,
 }
 
 /// Input data for one mesh's material (base color + MToon params + optional texture image).
@@ -298,6 +303,10 @@ impl Scene {
             lights_buffer,
             camera_bind_group,
             material_bind_group_layout,
+            frame_capture_buffer: None,
+            frame_capture_texture: None,
+            frame_capture_width: 0,
+            frame_capture_height: 0,
         }
     }
 
@@ -387,5 +396,102 @@ impl Scene {
 
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         self.depth.resize(device, width, height);
+    }
+
+    /// Ensure the frame capture buffer/texture exist and match the given dimensions.
+    pub fn ensure_frame_capture(&mut self, device: &wgpu::Device, width: u32, height: u32) {
+        if self.frame_capture_width == width && self.frame_capture_height == height && self.frame_capture_texture.is_some() {
+            return;
+        }
+
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("frame_capture_texture"),
+            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+
+        // Bytes per row must be aligned to 256 (wgpu requirement)
+        let bytes_per_row = (width * 4 + 255) & !255;
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("frame_capture_buffer"),
+            size: (bytes_per_row * height) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        self.frame_capture_texture = Some(texture);
+        self.frame_capture_buffer = Some(buffer);
+        self.frame_capture_width = width;
+        self.frame_capture_height = height;
+    }
+
+    /// Get the frame capture texture view for rendering.
+    pub fn frame_capture_view(&self) -> Option<wgpu::TextureView> {
+        self.frame_capture_texture.as_ref().map(|t| t.create_view(&wgpu::TextureViewDescriptor::default()))
+    }
+
+    /// Copy the rendered frame capture texture into the staging buffer.
+    pub fn copy_frame_to_buffer(&self, encoder: &mut wgpu::CommandEncoder) {
+        if let (Some(texture), Some(_buffer)) = (&self.frame_capture_texture, &self.frame_capture_buffer) {
+            let bytes_per_row = (self.frame_capture_width * 4 + 255) & !255;
+            encoder.copy_texture_to_buffer(
+                wgpu::TexelCopyTextureInfo {
+                    texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyBufferInfo {
+                    buffer: self.frame_capture_buffer.as_ref().unwrap(),
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(bytes_per_row),
+                        rows_per_image: Some(self.frame_capture_height),
+                    },
+                },
+                wgpu::Extent3d {
+                    width: self.frame_capture_width,
+                    height: self.frame_capture_height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+    }
+
+    /// Read back the frame capture buffer. Returns BGRA pixels (or None).
+    pub fn read_frame_capture(&self, device: &wgpu::Device) -> Option<Vec<u8>> {
+        let buffer = self.frame_capture_buffer.as_ref()?;
+        let width = self.frame_capture_width;
+        let height = self.frame_capture_height;
+        let aligned_bpr = (width * 4 + 255) & !255;
+
+        let buffer_slice = buffer.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
+        device.poll(wgpu::Maintain::Wait);
+
+        if rx.recv().ok()?.is_err() {
+            return None;
+        }
+
+        let data = buffer_slice.get_mapped_range();
+        // Strip row padding
+        let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+        for row in 0..height {
+            let start = (row * aligned_bpr) as usize;
+            let end = start + (width * 4) as usize;
+            rgba.extend_from_slice(&data[start..end]);
+        }
+        drop(data);
+        buffer.unmap();
+
+        Some(rgba)
     }
 }

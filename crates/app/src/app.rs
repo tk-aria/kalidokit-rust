@@ -141,6 +141,10 @@ impl ApplicationHandler for App {
                                 state.stage_lighting.back.intensity = (state.stage_lighting.back.intensity - 0.2).max(0.0);
                                 log::info!("Back light intensity: {:.1}", state.stage_lighting.back.intensity);
                             }
+                            KeyCode::KeyC => {
+                                state.vcam_enabled = !state.vcam_enabled;
+                                log::info!("Virtual camera: {}", if state.vcam_enabled { "ON" } else { "OFF" });
+                            }
                             _ => {}
                         }
                     }

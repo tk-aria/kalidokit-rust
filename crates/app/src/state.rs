@@ -37,6 +37,11 @@ pub struct AppState {
     pub auto_blink: AutoBlink,
     /// Stage lighting configuration (3-point lights).
     pub stage_lighting: StageLighting,
+    /// Virtual camera for streaming to video apps (None if not started).
+    #[cfg(target_os = "macos")]
+    pub vcam: Option<virtual_camera::MacOsVirtualCamera>,
+    /// Whether virtual camera streaming is enabled.
+    pub vcam_enabled: bool,
 }
 
 /// Current rig solver results (face/pose/hand).

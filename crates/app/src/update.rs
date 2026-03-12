@@ -361,6 +361,11 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
 
     output.present();
 
+    // 6. Virtual camera: capture and send frame
+    if state.vcam_enabled {
+        vcam_send_frame(state);
+    }
+
     Ok(())
 }
 
@@ -723,6 +728,60 @@ fn apply_hand_bones(
     }
 }
 
+/// Capture the rendered frame and send it to the virtual camera.
+fn vcam_send_frame(state: &mut AppState) {
+    let width = state.render_ctx.config.width;
+    let height = state.render_ctx.config.height;
+
+    // Ensure staging resources exist
+    state.scene.ensure_frame_capture(&state.render_ctx.device, width, height);
+
+    // Render the scene to the capture texture
+    if let Some(view) = state.scene.frame_capture_view() {
+        state.scene.render_to_view(&state.render_ctx, &view);
+
+        // Copy texture to staging buffer
+        let mut encoder = state.render_ctx.device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor { label: Some("vcam_copy") },
+        );
+        state.scene.copy_frame_to_buffer(&mut encoder);
+        state.render_ctx.queue.submit(std::iter::once(encoder.finish()));
+
+        // Read back and send
+        if let Some(bgra_data) = state.scene.read_frame_capture(&state.render_ctx.device) {
+            #[cfg(target_os = "macos")]
+            {
+                // Initialize virtual camera on first frame
+                use virtual_camera::VirtualCamera;
+                if state.vcam.is_none() {
+                    let mut vcam = virtual_camera::MacOsVirtualCamera::new();
+                    match vcam.start() {
+                        Ok(()) => {
+                            state.vcam = Some(vcam);
+                        }
+                        Err(e) => {
+                            log::error!("[VCam] Failed to start: {e}");
+                            state.vcam_enabled = false;
+                            return;
+                        }
+                    }
+                }
+                if let Some(vcam) = &mut state.vcam {
+                    // BGRA from wgpu, but our VirtualCamera trait expects RGBA
+                    // The macOS impl converts RGBA->BGRA internally, so convert here
+                    let mut rgba = bgra_data;
+                    for chunk in rgba.chunks_exact_mut(4) {
+                        chunk.swap(0, 2); // B <-> R
+                    }
+                    if let Err(e) = vcam.send_frame(&rgba, width, height) {
+                        log::warn!("[VCam] send_frame error: {e}");
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Build HUD text lines showing current settings and key bindings.
 fn build_hud_lines(state: &AppState) -> Vec<String> {
     let lighting = &state.stage_lighting;
@@ -741,6 +800,7 @@ fn build_hud_lines(state: &AppState) -> Vec<String> {
         "Q/W: Key intensity +/-".to_string(),
         "A/S: Fill intensity +/-".to_string(),
         "Z/X: Back intensity +/-".to_string(),
+        format!("C: VCam ({})", if state.vcam_enabled { "ON" } else { "OFF" }),
     ]
 }
 

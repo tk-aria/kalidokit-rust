@@ -229,6 +229,9 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         blink_mode: prefs.blink_mode,
         auto_blink: AutoBlink::new(),
         stage_lighting: prefs.stage_lighting.clone(),
+        #[cfg(target_os = "macos")]
+        vcam: None,
+        vcam_enabled: false,
     })
 }
 
