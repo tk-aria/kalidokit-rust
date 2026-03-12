@@ -12,7 +12,7 @@ use tracker::holistic::HolisticTracker;
 use nokhwa::pixel_format::RgbFormat;
 use nokhwa::utils::{CameraFormat, CameraIndex, FrameFormat, RequestedFormat, RequestedFormatType};
 
-use crate::auto_blink::{AutoBlink, BlinkMode};
+use crate::auto_blink::AutoBlink;
 use crate::tracker_thread::TrackerThread;
 use crate::user_prefs::UserPrefs;
 use winit::window::Window;
@@ -208,6 +208,9 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         render_ctx.config.format,
     );
 
+    let prefs = UserPrefs::load();
+    log::info!("User prefs loaded: {:?}", prefs);
+
     Ok(AppState {
         render_ctx,
         scene,
@@ -220,9 +223,9 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         last_frame_time: Instant::now(),
         rig_dirty: true,
         last_tracking_result: None,
-        camera_distance: UserPrefs::load().camera_distance,
+        camera_distance: prefs.camera_distance,
         last_camera_frame: None,
-        blink_mode: BlinkMode::Tracking,
+        blink_mode: prefs.blink_mode,
         auto_blink: AutoBlink::new(),
     })
 }

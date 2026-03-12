@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 /// Blink animation mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BlinkMode {
     /// Use webcam tracking for blink detection.
     Tracking,

@@ -1,17 +1,21 @@
 use std::path::PathBuf;
 
-const PREFS_FILE: &str = "user_prefs.json";
+use crate::auto_blink::BlinkMode;
+
+const PREFS_FILE: &str = "user_prefs.yml";
 
 /// Persisted user preferences across sessions.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct UserPrefs {
     pub camera_distance: f32,
+    pub blink_mode: BlinkMode,
 }
 
 impl Default for UserPrefs {
     fn default() -> Self {
         Self {
             camera_distance: 3.0,
+            blink_mode: BlinkMode::Tracking,
         }
     }
 }
@@ -22,7 +26,7 @@ impl UserPrefs {
     pub fn load() -> Self {
         let path = prefs_path();
         match std::fs::read_to_string(&path) {
-            Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
+            Ok(contents) => serde_yaml::from_str(&contents).unwrap_or_default(),
             Err(_) => Self::default(),
         }
     }
@@ -30,9 +34,9 @@ impl UserPrefs {
     /// Save preferences to disk. Errors are logged but not fatal.
     pub fn save(&self) {
         let path = prefs_path();
-        match serde_json::to_string_pretty(self) {
-            Ok(json) => {
-                if let Err(e) = std::fs::write(&path, json) {
+        match serde_yaml::to_string(self) {
+            Ok(yaml) => {
+                if let Err(e) = std::fs::write(&path, yaml) {
                     log::warn!("Failed to save user prefs: {e}");
                 }
             }
@@ -60,12 +64,20 @@ mod tests {
     }
 
     #[test]
-    fn roundtrip_serialize() {
+    fn default_blink_mode() {
+        let prefs = UserPrefs::default();
+        assert_eq!(prefs.blink_mode, BlinkMode::Tracking);
+    }
+
+    #[test]
+    fn roundtrip_serialize_yaml() {
         let prefs = UserPrefs {
             camera_distance: 5.5,
+            blink_mode: BlinkMode::Auto,
         };
-        let json = serde_json::to_string(&prefs).unwrap();
-        let loaded: UserPrefs = serde_json::from_str(&json).unwrap();
+        let yaml = serde_yaml::to_string(&prefs).unwrap();
+        let loaded: UserPrefs = serde_yaml::from_str(&yaml).unwrap();
         assert!((loaded.camera_distance - 5.5).abs() < 1e-6);
+        assert_eq!(loaded.blink_mode, BlinkMode::Auto);
     }
 }

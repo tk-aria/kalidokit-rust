@@ -84,10 +84,7 @@ impl ApplicationHandler for App {
                 // Scroll up (positive y) zooms in (decrease distance),
                 // scroll down (negative y) zooms out (increase distance).
                 state.camera_distance = (state.camera_distance - scroll_y * 0.3).clamp(0.5, 10.0);
-                UserPrefs {
-                    camera_distance: state.camera_distance,
-                }
-                .save();
+                save_prefs(state);
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {
@@ -99,6 +96,7 @@ impl ApplicationHandler for App {
                                     BlinkMode::Auto => BlinkMode::Tracking,
                                 };
                                 log::info!("Blink mode: {:?}", state.blink_mode);
+                                save_prefs(state);
                             }
                             _ => {}
                         }
@@ -108,4 +106,12 @@ impl ApplicationHandler for App {
             _ => {}
         }
     }
+}
+
+fn save_prefs(state: &AppState) {
+    UserPrefs {
+        camera_distance: state.camera_distance,
+        blink_mode: state.blink_mode,
+    }
+    .save();
 }
