@@ -1,4 +1,5 @@
 mod app;
+mod auto_blink;
 mod init;
 mod rig_config;
 mod state;

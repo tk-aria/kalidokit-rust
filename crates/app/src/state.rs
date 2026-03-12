@@ -7,6 +7,7 @@ use solver::types::{RiggedFace, RiggedHand, RiggedPose};
 use tracker::HolisticResult;
 use vrm::model::VrmModel;
 
+use crate::auto_blink::{AutoBlink, BlinkMode};
 use crate::rig_config::RigConfig;
 use crate::tracker_thread::TrackerThread;
 
@@ -29,6 +30,10 @@ pub struct AppState {
     pub camera_distance: f32,
     /// Latest camera frame for debug overlay display.
     pub last_camera_frame: Option<image::DynamicImage>,
+    /// Blink mode: Tracking (webcam) or Auto (periodic random blinks).
+    pub blink_mode: BlinkMode,
+    /// Auto blink controller (used when blink_mode == Auto).
+    pub auto_blink: AutoBlink,
 }
 
 /// Current rig solver results (face/pose/hand).

@@ -4,6 +4,8 @@ use anyhow::Result;
 use nokhwa::pixel_format::RgbFormat;
 use renderer::debug_overlay::OverlayInput;
 use solver::types::{EulerAngles, EyeValues, RiggedHand, Side, VideoInfo};
+
+use crate::auto_blink::BlinkMode;
 use vrm::bone::HumanoidBoneName;
 
 use crate::rig_config::BoneConfig;
@@ -154,6 +156,16 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         }
     } else {
         pipeline_logger::solver(log::Level::Trace, "no tracking result available").emit();
+    }
+
+    // Auto blink: update every frame regardless of tracking
+    if state.blink_mode == BlinkMode::Auto {
+        state.auto_blink.update();
+        state
+            .vrm_model
+            .blend_shapes
+            .set(vrm::blendshape::BlendShapePreset::Blink, state.auto_blink.value);
+        rig_changed = true;
     }
 
     // 4. Apply rig to VRM model (only if rig changed or first frame)
@@ -399,29 +411,36 @@ fn apply_rig_to_model(state: &mut AppState) {
             cfg.neck.lerp_amount,
         );
 
-        // Eye blink: match reference testbed exactly.
-        // 1. Convert eye openness to blink amount (1=closed, 0=open)
-        // 2. Lerp with previous Blink blend shape value (smoothing)
-        // 3. Run stabilizeBlink on the blink amounts
-        // 4. Set Blink preset to stabilized.l
-        let bs = &state.vrm_model.blend_shapes;
-        let prev_blink = bs.get(vrm::blendshape::BlendShapePreset::Blink);
-        let blink_l = (1.0 - face.eye.l).clamp(0.0, 1.0);
-        let blink_r = (1.0 - face.eye.r).clamp(0.0, 1.0);
-        // lerp(new_blink, prev_blink, 0.5) = new + (prev - new) * 0.5
-        let blink_l = blink_l + (prev_blink - blink_l) * 0.5;
-        let blink_r = blink_r + (prev_blink - blink_r) * 0.5;
-        let stabilized = solver::face::stabilize_blink(
-            &EyeValues {
-                l: blink_l,
-                r: blink_r,
-            },
-            face.head.y,
-        );
-        state
-            .vrm_model
-            .blend_shapes
-            .set(vrm::blendshape::BlendShapePreset::Blink, stabilized.l);
+        // Eye blink: mode-dependent
+        match state.blink_mode {
+            BlinkMode::Tracking => {
+                // Match reference testbed exactly:
+                // 1. Convert eye openness to blink amount (1=closed, 0=open)
+                // 2. Lerp with previous Blink blend shape value (smoothing)
+                // 3. Run stabilizeBlink on the blink amounts
+                // 4. Set Blink preset to stabilized.l
+                let bs = &state.vrm_model.blend_shapes;
+                let prev_blink = bs.get(vrm::blendshape::BlendShapePreset::Blink);
+                let blink_l = (1.0 - face.eye.l).clamp(0.0, 1.0);
+                let blink_r = (1.0 - face.eye.r).clamp(0.0, 1.0);
+                let blink_l = blink_l + (prev_blink - blink_l) * 0.5;
+                let blink_r = blink_r + (prev_blink - blink_r) * 0.5;
+                let stabilized = solver::face::stabilize_blink(
+                    &EyeValues {
+                        l: blink_l,
+                        r: blink_r,
+                    },
+                    face.head.y,
+                );
+                state
+                    .vrm_model
+                    .blend_shapes
+                    .set(vrm::blendshape::BlendShapePreset::Blink, stabilized.l);
+            }
+            BlinkMode::Auto => {
+                // Auto blink is updated separately (outside face tracking block)
+            }
+        }
 
         // Mouth shapes with interpolation: lerp(new, prev, 0.5)
         let bs = &state.vrm_model.blend_shapes;

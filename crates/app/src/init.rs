@@ -12,6 +12,7 @@ use tracker::holistic::HolisticTracker;
 use nokhwa::pixel_format::RgbFormat;
 use nokhwa::utils::{CameraFormat, CameraIndex, FrameFormat, RequestedFormat, RequestedFormatType};
 
+use crate::auto_blink::{AutoBlink, BlinkMode};
 use crate::tracker_thread::TrackerThread;
 use winit::window::Window;
 
@@ -220,6 +221,8 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         last_tracking_result: None,
         camera_distance: 3.0,
         last_camera_frame: None,
+        blink_mode: BlinkMode::Tracking,
+        auto_blink: AutoBlink::new(),
     })
 }
 
