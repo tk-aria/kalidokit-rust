@@ -219,17 +219,57 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                 .emit();
         }
     }
-    let num_morph_targets = state
+    // Compute per-mesh morph weights (using glTF mesh index for blend shape lookup)
+    let per_mesh_morph_weights: Vec<Vec<f32>> = state
         .vrm_model
         .meshes
         .iter()
-        .flat_map(|m| &m.morph_targets)
-        .count()
-        .max(1);
-    let morph_weights = state
-        .vrm_model
-        .blend_shapes
-        .get_all_weights(num_morph_targets);
+        .map(|m| {
+            state
+                .vrm_model
+                .blend_shapes
+                .get_weights_for_mesh(m.gltf_mesh_index, m.morph_targets.len())
+        })
+        .collect();
+
+    // Log morph weight diagnostics
+    {
+        let blink_val = state
+            .vrm_model
+            .blend_shapes
+            .get(vrm::blendshape::BlendShapePreset::Blink);
+        let mouth_a = state
+            .vrm_model
+            .blend_shapes
+            .get(vrm::blendshape::BlendShapePreset::A);
+        let any_nonzero: Vec<(usize, usize, f32)> = per_mesh_morph_weights
+            .iter()
+            .enumerate()
+            .flat_map(|(mi, w)| {
+                w.iter()
+                    .enumerate()
+                    .filter(|(_, v)| **v > 0.001)
+                    .map(move |(ti, v)| (mi, ti, *v))
+            })
+            .collect();
+        pipeline_logger::bone(log::Level::Debug, "morph weights")
+            .field("blink_preset", format!("{:.3}", blink_val))
+            .field("mouth_a_preset", format!("{:.3}", mouth_a))
+            .field(
+                "mesh_targets",
+                format!(
+                    "{:?}",
+                    state
+                        .vrm_model
+                        .meshes
+                        .iter()
+                        .map(|m| m.morph_targets.len())
+                        .collect::<Vec<_>>()
+                ),
+            )
+            .field("active_weights", format!("{:?}", any_nonzero))
+            .emit();
+    }
 
     let camera = {
         let default_cam = renderer::camera::Camera::default();
@@ -246,13 +286,19 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
 
     pipeline_logger::gpu(log::Level::Debug, "uploading buffers")
         .field("joint_matrices", joint_matrices.len())
-        .field("morph_weights", morph_weights.len())
+        .field(
+            "morph_weights",
+            per_mesh_morph_weights
+                .iter()
+                .map(|w| w.len())
+                .sum::<usize>(),
+        )
         .emit();
 
     state.scene.prepare(
         &state.render_ctx.queue,
         &joint_matrices,
-        &morph_weights,
+        &per_mesh_morph_weights,
         &camera_uniform,
     );
 
@@ -353,17 +399,25 @@ fn apply_rig_to_model(state: &mut AppState) {
             cfg.neck.lerp_amount,
         );
 
-        // Eye blink: lerp(clamp(1-eye, 0, 1), prevBlink, 0.5), then stabilize
+        // Eye blink: match reference testbed exactly.
+        // 1. Convert eye openness to blink amount (1=closed, 0=open)
+        // 2. Lerp with previous Blink blend shape value (smoothing)
+        // 3. Run stabilizeBlink on the blink amounts
+        // 4. Set Blink preset to stabilized.l
         let bs = &state.vrm_model.blend_shapes;
         let prev_blink = bs.get(vrm::blendshape::BlendShapePreset::Blink);
-        let eye_l_raw = (1.0 - face.eye.l).clamp(0.0, 1.0);
-        let eye_r_raw = (1.0 - face.eye.r).clamp(0.0, 1.0);
-        // Testbed: lerp(newValue, oldValue, 0.5) = (new + old) / 2
-        let eye_l = eye_l_raw + (prev_blink - eye_l_raw) * 0.5;
-        let eye_r = eye_r_raw + (prev_blink - eye_r_raw) * 0.5;
-        let stabilized =
-            solver::face::stabilize_blink(&EyeValues { l: eye_l, r: eye_r }, face.head.y);
-        // Testbed sets Blink (not BlinkL/BlinkR) to stabilized.l
+        let blink_l = (1.0 - face.eye.l).clamp(0.0, 1.0);
+        let blink_r = (1.0 - face.eye.r).clamp(0.0, 1.0);
+        // lerp(new_blink, prev_blink, 0.5) = new + (prev - new) * 0.5
+        let blink_l = blink_l + (prev_blink - blink_l) * 0.5;
+        let blink_r = blink_r + (prev_blink - blink_r) * 0.5;
+        let stabilized = solver::face::stabilize_blink(
+            &EyeValues {
+                l: blink_l,
+                r: blink_r,
+            },
+            face.head.y,
+        );
         state
             .vrm_model
             .blend_shapes
@@ -376,25 +430,29 @@ fn apply_rig_to_model(state: &mut AppState) {
         let prev_u = bs.get(vrm::blendshape::BlendShapePreset::U);
         let prev_e = bs.get(vrm::blendshape::BlendShapePreset::E);
         let prev_o = bs.get(vrm::blendshape::BlendShapePreset::O);
+        let lerp_mouth = |new_val: f32, prev_val: f32| -> f32 {
+            let smoothed = new_val + (prev_val - new_val) * 0.5;
+            smoothed.clamp(0.0, 1.0)
+        };
         state.vrm_model.blend_shapes.set(
             vrm::blendshape::BlendShapePreset::A,
-            face.mouth.a + (prev_a - face.mouth.a) * 0.5,
+            lerp_mouth(face.mouth.a, prev_a),
         );
         state.vrm_model.blend_shapes.set(
             vrm::blendshape::BlendShapePreset::I,
-            face.mouth.i + (prev_i - face.mouth.i) * 0.5,
+            lerp_mouth(face.mouth.i, prev_i),
         );
         state.vrm_model.blend_shapes.set(
             vrm::blendshape::BlendShapePreset::U,
-            face.mouth.u + (prev_u - face.mouth.u) * 0.5,
+            lerp_mouth(face.mouth.u, prev_u),
         );
         state.vrm_model.blend_shapes.set(
             vrm::blendshape::BlendShapePreset::E,
-            face.mouth.e + (prev_e - face.mouth.e) * 0.5,
+            lerp_mouth(face.mouth.e, prev_e),
         );
         state.vrm_model.blend_shapes.set(
             vrm::blendshape::BlendShapePreset::O,
-            face.mouth.o + (prev_o - face.mouth.o) * 0.5,
+            lerp_mouth(face.mouth.o, prev_o),
         );
 
         // Pupil tracking with lerp interpolation

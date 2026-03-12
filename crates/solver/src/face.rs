@@ -161,7 +161,8 @@ fn calc_eyes(lm: &[Vec3]) -> EyeValues {
 
 /// Calculate mouth shape using KalidoKit's calcMouth algorithm.
 ///
-/// Uses eye distances as reference scale (not face height).
+/// Uses eye distances as reference scale (matching the reference testbed).
+/// Derives vowel shapes from mouth openness (y) and width (x).
 fn calc_mouth(lm: &[Vec3]) -> MouthShape {
     if lm.len() < 468 {
         return MouthShape::default();
@@ -180,6 +181,7 @@ fn calc_mouth(lm: &[Vec3]) -> MouthShape {
     let mouth_open = distance(upper_lip, lower_lip);
     let mouth_width = distance(mouth_corner_l, mouth_corner_r);
 
+    // KalidoKit original ratios
     let _ratio_y = remap01(mouth_open / eye_inner_distance, 0.15, 0.7);
     let ratio_x = remap01(mouth_width / eye_outer_distance, 0.45, 0.9);
     let ratio_x = (ratio_x - 0.3) * 2.0;
@@ -187,6 +189,7 @@ fn calc_mouth(lm: &[Vec3]) -> MouthShape {
     let mouth_x = ratio_x;
     let mouth_y = remap01(mouth_open / eye_inner_distance, 0.17, 0.5);
 
+    // KalidoKit vowel shape formulas
     let ratio_i = clamp(
         remap01(mouth_x, 0.0, 1.0) * 2.0 * remap01(mouth_y, 0.2, 0.7),
         0.0,
@@ -194,7 +197,7 @@ fn calc_mouth(lm: &[Vec3]) -> MouthShape {
     );
     let a = mouth_y * 0.4 + mouth_y * (1.0 - ratio_i) * 0.6;
     let u = mouth_y * remap01(1.0 - ratio_i, 0.0, 0.3) * 0.1;
-    let e = remap01(ratio_u_helper(u), 0.2, 1.0) * (1.0 - ratio_i) * 0.3;
+    let e = remap01(u, 0.2, 1.0) * (1.0 - ratio_i) * 0.3;
     let o = (1.0 - ratio_i) * remap01(mouth_y, 0.3, 1.0) * 0.4;
 
     MouthShape {
@@ -204,11 +207,6 @@ fn calc_mouth(lm: &[Vec3]) -> MouthShape {
         e,
         o,
     }
-}
-
-/// Helper: ratio_u is just u itself (used in e calculation).
-fn ratio_u_helper(u: f32) -> f32 {
-    u
 }
 
 /// Calculate pupil position using KalidoKit's algorithm.
