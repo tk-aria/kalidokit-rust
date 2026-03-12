@@ -189,8 +189,8 @@ fn calc_mouth(lm: &[Vec3]) -> MouthShape {
     let mouth_x = ratio_x;
     let raw_mouth_y = remap01(mouth_open / eye_inner_distance, 0.17, 0.5);
 
-    // Compress large openings: sqrt curve dampens wide-open movement
-    let mouth_y = raw_mouth_y.sqrt() * raw_mouth_y.sqrt().sqrt(); // ~pow(0.75)
+    // Compress large openings and cap at 70% to avoid over-exaggeration
+    let mouth_y = (raw_mouth_y.sqrt() * raw_mouth_y.sqrt().sqrt()) * 0.7; // ~pow(0.75) * 0.7
 
     // KalidoKit vowel shape formulas
     let ratio_i = clamp(
@@ -200,15 +200,21 @@ fn calc_mouth(lm: &[Vec3]) -> MouthShape {
     );
 
     // Shift toward O when mouth is wide open (rounder, cuter look)
-    let open_factor = remap01(raw_mouth_y, 0.4, 0.8); // how "wide open" the mouth is
-    let a = mouth_y * 0.4 + mouth_y * (1.0 - ratio_i) * 0.6 * (1.0 - open_factor * 0.6);
-    let u = mouth_y * remap01(1.0 - ratio_i, 0.0, 0.3) * 0.1;
-    let e = remap01(u, 0.2, 1.0) * (1.0 - ratio_i) * 0.3;
-    let o = (1.0 - ratio_i) * remap01(mouth_y, 0.2, 0.8) * (0.4 + open_factor * 0.4);
+    let open_factor = remap01(raw_mouth_y, 0.3, 0.7); // how "wide open" the mouth is
+
+    // Suppress I (horizontal stretch) when wide open to avoid diamond shape
+    let ratio_i_dampened = ratio_i * (1.0 - open_factor * 0.8);
+
+    // A: reduce significantly when wide open, letting O take over
+    let a = mouth_y * 0.3 + mouth_y * (1.0 - ratio_i_dampened) * 0.4 * (1.0 - open_factor * 0.7);
+    let u = mouth_y * remap01(1.0 - ratio_i_dampened, 0.0, 0.3) * 0.1;
+    let e = remap01(u, 0.2, 1.0) * (1.0 - ratio_i_dampened) * 0.3;
+    // O: dominant when wide open for round shape
+    let o = (1.0 - ratio_i_dampened) * remap01(mouth_y, 0.15, 0.6) * (0.5 + open_factor * 0.5);
 
     MouthShape {
         a,
-        i: ratio_i,
+        i: ratio_i_dampened,
         u,
         e,
         o,
