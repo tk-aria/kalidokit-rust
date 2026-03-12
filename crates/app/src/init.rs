@@ -14,6 +14,7 @@ use nokhwa::utils::{CameraFormat, CameraIndex, FrameFormat, RequestedFormat, Req
 
 use crate::auto_blink::{AutoBlink, BlinkMode};
 use crate::tracker_thread::TrackerThread;
+use crate::user_prefs::UserPrefs;
 use winit::window::Window;
 
 use crate::rig_config::RigConfig;
@@ -219,7 +220,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         last_frame_time: Instant::now(),
         rig_dirty: true,
         last_tracking_result: None,
-        camera_distance: 3.0,
+        camera_distance: UserPrefs::load().camera_distance,
         last_camera_frame: None,
         blink_mode: BlinkMode::Tracking,
         auto_blink: AutoBlink::new(),

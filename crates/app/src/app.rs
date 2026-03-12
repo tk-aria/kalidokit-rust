@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use crate::auto_blink::BlinkMode;
 use crate::state::AppState;
+use crate::user_prefs::UserPrefs;
 
 pub struct App {
     state: Option<AppState>,
@@ -83,6 +84,10 @@ impl ApplicationHandler for App {
                 // Scroll up (positive y) zooms in (decrease distance),
                 // scroll down (negative y) zooms out (increase distance).
                 state.camera_distance = (state.camera_distance - scroll_y * 0.3).clamp(0.5, 10.0);
+                UserPrefs {
+                    camera_distance: state.camera_distance,
+                }
+                .save();
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {

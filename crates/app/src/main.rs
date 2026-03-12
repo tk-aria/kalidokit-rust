@@ -5,6 +5,7 @@ mod rig_config;
 mod state;
 mod tracker_thread;
 mod update;
+mod user_prefs;
 
 fn main() {
     env_logger::init();
