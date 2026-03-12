@@ -153,8 +153,11 @@ fn calc_eyes(lm: &[Vec3]) -> EyeValues {
     let left_clamped = clamp(left_ratio / max_ratio, 0.0, 2.0);
     let right_clamped = clamp(right_ratio / max_ratio, 0.0, 2.0);
 
-    let l = remap01(left_clamped, 0.35, 0.5);
-    let r = remap01(right_clamped, 0.35, 0.5);
+    // Remap range calibrated to our ONNX model's actual output.
+    // Open eyes: clamped ≈ 1.0-1.3, blink: clamped ≈ 0.5-0.7
+    // Map this range so open=1.0 and closed=0.0.
+    let l = remap01(left_clamped, 0.55, 1.1);
+    let r = remap01(right_clamped, 0.55, 1.1);
 
     EyeValues { l, r }
 }

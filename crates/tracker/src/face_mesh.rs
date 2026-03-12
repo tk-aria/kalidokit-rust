@@ -159,7 +159,8 @@ impl FaceMeshDetector {
             })
             .collect();
 
-        // Apply temporal smoothing (EMA) to landmarks
+        // Apply temporal smoothing (EMA) to landmarks.
+        // Eye lid landmarks use a higher alpha (less smoothing) to preserve fast blinks.
         let smoothed = {
             let mut prev = self.prev_landmarks.lock().unwrap();
             let result = match &*prev {
@@ -167,11 +168,17 @@ impl FaceMeshDetector {
                     full_landmarks
                         .iter()
                         .zip(prev_lm.iter())
-                        .map(|(new, old)| {
+                        .enumerate()
+                        .map(|(i, (new, old))| {
+                            let alpha = if is_eye_lid_landmark(i) {
+                                0.9 // fast response for blink detection
+                            } else {
+                                LANDMARK_SMOOTHING
+                            };
                             Vec3::new(
-                                old.x + (new.x - old.x) * LANDMARK_SMOOTHING,
-                                old.y + (new.y - old.y) * LANDMARK_SMOOTHING,
-                                old.z + (new.z - old.z) * LANDMARK_SMOOTHING,
+                                old.x + (new.x - old.x) * alpha,
+                                old.y + (new.y - old.y) * alpha,
+                                old.z + (new.z - old.z) * alpha,
                             )
                         })
                         .collect()
@@ -276,6 +283,18 @@ fn estimate_face_crop(landmarks: &[Vec3], img_w: u32, img_h: u32) -> FaceCropReg
     }
 
     FaceCropRegion { x, y, w, h }
+}
+
+/// Check if a landmark index is part of the eye lid (used for blink detection).
+/// These landmarks need less smoothing to preserve fast blink movements.
+fn is_eye_lid_landmark(index: usize) -> bool {
+    // Left eye lid: 160,159,158 (upper), 144,145,153 (lower), 130,133 (corners)
+    // Right eye lid: 387,386,385 (upper), 373,374,380 (lower), 263,362 (corners)
+    matches!(
+        index,
+        130 | 133 | 144 | 145 | 153 | 158 | 159 | 160 | 263 | 362 | 373 | 374 | 380 | 385
+            | 386 | 387
+    )
 }
 
 #[cfg(test)]
