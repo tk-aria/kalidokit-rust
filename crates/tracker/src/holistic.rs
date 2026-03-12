@@ -38,38 +38,72 @@ impl HolisticTracker {
 
     /// Detect all landmarks from a camera frame.
     ///
-    /// Face and pose detection run in parallel via `rayon::join` since they are
-    /// independent. Hand detection runs afterwards because it depends on pose
-    /// wrist landmarks for ROI cropping.
+    /// When `face_only` is true, only face detection runs (pose/hand skipped).
+    /// Otherwise, face and pose run in parallel, then hand detection uses pose ROI.
     pub fn detect(&self, frame: &DynamicImage) -> anyhow::Result<HolisticResult> {
+        self.detect_with_mode(frame, false)
+    }
+
+    /// Detect with explicit mode control.
+    pub fn detect_with_mode(
+        &self,
+        frame: &DynamicImage,
+        face_only: bool,
+    ) -> anyhow::Result<HolisticResult> {
         pipeline_logger::tracker(log::Level::Debug, "detection started")
             .field("frame_w", frame.width())
             .field("frame_h", frame.height())
+            .field("mode", if face_only { "face_only" } else { "full" })
             .emit();
 
         let detect_start = std::time::Instant::now();
 
-        // Run face and pose detection in parallel (independent of each other).
-        let (face_landmarks, (pose_3d, pose_2d)) = rayon::join(
-            || match self.face_detector.detect(frame) {
-                Ok(result) => result,
-                Err(e) => {
-                    pipeline_logger::tracker(log::Level::Warn, "face detection error")
-                        .field("error", format!("{e:#}"))
-                        .emit();
-                    None
-                }
-            },
-            || match self.pose_detector.detect(frame) {
-                Ok(result) => result,
-                Err(e) => {
-                    pipeline_logger::tracker(log::Level::Warn, "pose detection error")
-                        .field("error", format!("{e:#}"))
-                        .emit();
-                    (None, None)
-                }
-            },
-        );
+        // Face detection (always runs)
+        let face_landmarks = match self.face_detector.detect(frame) {
+            Ok(result) => result,
+            Err(e) => {
+                pipeline_logger::tracker(log::Level::Warn, "face detection error")
+                    .field("error", format!("{e:#}"))
+                    .emit();
+                None
+            }
+        };
+
+        // Skip pose/hand when face_only mode
+        if face_only {
+            let elapsed = detect_start.elapsed();
+            pipeline_logger::tracker(log::Level::Debug, "detection complete (face only)")
+                .field(
+                    "elapsed_ms",
+                    format!("{:.1}", elapsed.as_secs_f64() * 1000.0),
+                )
+                .field(
+                    "face",
+                    face_landmarks
+                        .as_ref()
+                        .map_or("none".to_string(), |v| v.len().to_string()),
+                )
+                .emit();
+
+            return Ok(HolisticResult {
+                face_landmarks,
+                pose_landmarks_3d: None,
+                pose_landmarks_2d: None,
+                left_hand_landmarks: None,
+                right_hand_landmarks: None,
+            });
+        }
+
+        // Pose detection
+        let (pose_3d, pose_2d) = match self.pose_detector.detect(frame) {
+            Ok(result) => result,
+            Err(e) => {
+                pipeline_logger::tracker(log::Level::Warn, "pose detection error")
+                    .field("error", format!("{e:#}"))
+                    .emit();
+                (None, None)
+            }
+        };
 
         let img_w = frame.width();
         let img_h = frame.height();

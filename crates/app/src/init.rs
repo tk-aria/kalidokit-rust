@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use renderer::context::RenderContext;
+use renderer::debug_overlay::DebugOverlay;
 use renderer::scene::{MeshMaterialInput, Scene};
 use renderer::vertex::Vertex;
 use tracker::holistic::HolisticTracker;
@@ -136,10 +137,10 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         num_morph_targets,
     );
 
-    // 4. Initialize ML tracker on a background thread
+    // 4. Initialize ML tracker on a background thread (face-only mode for debugging)
     let tracker = HolisticTracker::new(FACE_MODEL_PATH, POSE_MODEL_PATH, HAND_MODEL_PATH)
         .context("Failed to initialize ML tracker. Run: sh scripts/setup.sh download-models")?;
-    let tracker_thread = TrackerThread::new(tracker);
+    let tracker_thread = TrackerThread::new_with_mode(tracker, true);
 
     // 5. Initialize webcam via nokhwa
     let camera = match init_camera() {
@@ -157,9 +158,17 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         }
     };
 
+    // 6. Initialize debug overlay
+    let debug_overlay = DebugOverlay::new(
+        &render_ctx.device,
+        &render_ctx.queue,
+        render_ctx.config.format,
+    );
+
     Ok(AppState {
         render_ctx,
         scene,
+        debug_overlay,
         vrm_model,
         tracker_thread,
         camera,
@@ -169,6 +178,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         rig_dirty: true,
         last_tracking_result: None,
         camera_distance: 3.0,
+        last_camera_frame: None,
     })
 }
 

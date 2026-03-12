@@ -1,4 +1,6 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 
 use image::DynamicImage;
@@ -13,6 +15,8 @@ use tracker::HolisticResult;
 pub struct TrackerThread {
     frame_sender: mpsc::SyncSender<(DynamicImage, VideoInfo)>,
     result_receiver: mpsc::Receiver<HolisticResult>,
+    /// When true, only face detection runs (pose/hand skipped).
+    face_only: Arc<AtomicBool>,
 }
 
 impl TrackerThread {
@@ -22,6 +26,14 @@ impl TrackerThread {
     /// and sends results back.  Both channels have a buffer size of 1 so that
     /// stale frames are dropped rather than queued.
     pub fn new(tracker: HolisticTracker) -> Self {
+        Self::new_with_mode(tracker, false)
+    }
+
+    /// Spawn a tracker worker with explicit face_only mode.
+    pub fn new_with_mode(tracker: HolisticTracker, face_only_initial: bool) -> Self {
+        let face_only = Arc::new(AtomicBool::new(face_only_initial));
+        let face_only_clone = face_only.clone();
+
         // Buffer size 1: if the tracker is still busy, try_send will fail
         // and the main loop simply drops that frame.
         let (frame_sender, frame_receiver) = mpsc::sync_channel::<(DynamicImage, VideoInfo)>(1);
@@ -32,7 +44,8 @@ impl TrackerThread {
             .spawn(move || {
                 log::info!("Tracker worker thread started");
                 while let Ok((frame, _video_info)) = frame_receiver.recv() {
-                    match tracker.detect(&frame) {
+                    let is_face_only = face_only_clone.load(Ordering::Relaxed);
+                    match tracker.detect_with_mode(&frame, is_face_only) {
                         Ok(result) => {
                             // If the main thread hasn't consumed the previous result yet,
                             // just drop the older one and replace it.
@@ -50,7 +63,14 @@ impl TrackerThread {
         Self {
             frame_sender,
             result_receiver,
+            face_only,
         }
+    }
+
+    /// Set face-only mode at runtime.
+    #[allow(dead_code)]
+    pub fn set_face_only(&self, face_only: bool) {
+        self.face_only.store(face_only, Ordering::Relaxed);
     }
 
     /// Send a frame to the tracker thread for processing.
