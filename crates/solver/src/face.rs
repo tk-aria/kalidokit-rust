@@ -187,7 +187,10 @@ fn calc_mouth(lm: &[Vec3]) -> MouthShape {
     let ratio_x = (ratio_x - 0.3) * 2.0;
 
     let mouth_x = ratio_x;
-    let mouth_y = remap01(mouth_open / eye_inner_distance, 0.17, 0.5);
+    let raw_mouth_y = remap01(mouth_open / eye_inner_distance, 0.17, 0.5);
+
+    // Compress large openings: sqrt curve dampens wide-open movement
+    let mouth_y = raw_mouth_y.sqrt() * raw_mouth_y.sqrt().sqrt(); // ~pow(0.75)
 
     // KalidoKit vowel shape formulas
     let ratio_i = clamp(
@@ -195,10 +198,13 @@ fn calc_mouth(lm: &[Vec3]) -> MouthShape {
         0.0,
         1.0,
     );
-    let a = mouth_y * 0.4 + mouth_y * (1.0 - ratio_i) * 0.6;
+
+    // Shift toward O when mouth is wide open (rounder, cuter look)
+    let open_factor = remap01(raw_mouth_y, 0.4, 0.8); // how "wide open" the mouth is
+    let a = mouth_y * 0.4 + mouth_y * (1.0 - ratio_i) * 0.6 * (1.0 - open_factor * 0.6);
     let u = mouth_y * remap01(1.0 - ratio_i, 0.0, 0.3) * 0.1;
     let e = remap01(u, 0.2, 1.0) * (1.0 - ratio_i) * 0.3;
-    let o = (1.0 - ratio_i) * remap01(mouth_y, 0.3, 1.0) * 0.4;
+    let o = (1.0 - ratio_i) * remap01(mouth_y, 0.2, 0.8) * (0.4 + open_factor * 0.4);
 
     MouthShape {
         a,
