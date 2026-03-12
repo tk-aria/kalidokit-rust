@@ -1603,13 +1603,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 **ファイル**: `crates/virtual-camera/src/macos.rs`
 
-- [ ] `objc2-core-media-io` で CoreMediaIO デバイス/ストリーム探索
+- [x] `objc2-core-media-io` で CoreMediaIO デバイス/ストリーム探索 <!-- 2026-03-12 15:45 JST -->
   - Mach Service 名でシンクストリームを特定
-- [ ] RGBA → BGRA 変換 (wgpu 出力 → CoreVideo 入力)
-- [ ] `CVPixelBuffer` 作成: `CVPixelBufferCreateWithBytes` (objc2-core-video)
-- [ ] `CMSampleBuffer` 作成: タイムスタンプ付き (`CMTimeMake`)
-- [ ] シンクストリームへのバッファ送信
-- [ ] `VirtualCamera` trait の macOS 実装
+- [x] RGBA → BGRA 変換 (wgpu 出力 → CoreVideo 入力) <!-- 2026-03-12 15:45 JST -->
+- [x] `CVPixelBuffer` 作成: `CVPixelBufferCreateWithBytes` (objc2-core-video) <!-- 2026-03-12 15:45 JST -->
+- [x] `CMSampleBuffer` 作成: タイムスタンプ付き (`CMTimeMake`) <!-- 2026-03-12 15:45 JST -->
+- [x] シンクストリームへのバッファ送信 <!-- 2026-03-12 15:45 JST -->
+- [x] `VirtualCamera` trait の macOS 実装 <!-- 2026-03-12 15:45 JST -->
 
 ### Step 10.4: wgpu フレームキャプチャ統合
 
