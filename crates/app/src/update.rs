@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use nokhwa::pixel_format::RgbFormat;
+use renderer::debug_overlay::OverlayInput;
 use solver::types::{EulerAngles, EyeValues, RiggedHand, Side, VideoInfo};
 use vrm::bone::HumanoidBoneName;
 
@@ -30,6 +31,9 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         .field("width", video.width)
         .field("height", video.height)
         .emit();
+
+    // Store camera frame for debug overlay
+    state.last_camera_frame = Some(frame.clone());
 
     // 1. Send frame to tracker thread (non-blocking; drops frame if tracker is busy)
     state.tracker_thread.send_frame(frame, video.clone());
@@ -252,9 +256,49 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         &camera_uniform,
     );
 
-    // 5. Render
+    // 5. Render: acquire surface → 3D scene → debug overlay → present
     pipeline_logger::render(log::Level::Trace, "submitting draw commands").emit();
-    state.scene.render(&state.render_ctx)?;
+    let output = state.render_ctx.surface.get_current_texture()?;
+    let view = output
+        .texture
+        .create_view(&wgpu::TextureViewDescriptor::default());
+
+    // 5a. Main 3D scene render
+    state.scene.render_to_view(&state.render_ctx, &view);
+
+    // 5b. Debug overlay: camera preview + landmark visualization
+    if let Some(camera_frame) = &state.last_camera_frame {
+        state.debug_overlay.update_camera_frame(
+            &state.render_ctx.device,
+            &state.render_ctx.queue,
+            camera_frame,
+        );
+    }
+
+    let overlay_input = OverlayInput {
+        camera_frame: None, // Already uploaded via update_camera_frame
+        pose_2d: state
+            .last_tracking_result
+            .as_ref()
+            .and_then(|r| r.pose_landmarks_2d.clone()),
+        left_hand: state
+            .last_tracking_result
+            .as_ref()
+            .and_then(|r| r.left_hand_landmarks.clone()),
+        right_hand: state
+            .last_tracking_result
+            .as_ref()
+            .and_then(|r| r.right_hand_landmarks.clone()),
+        face: state
+            .last_tracking_result
+            .as_ref()
+            .and_then(|r| r.face_landmarks.clone()),
+    };
+    state
+        .debug_overlay
+        .render(&state.render_ctx, &view, &overlay_input)?;
+
+    output.present();
 
     Ok(())
 }

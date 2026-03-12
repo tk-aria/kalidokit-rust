@@ -1,5 +1,6 @@
 pub mod camera;
 pub mod context;
+pub mod debug_overlay;
 pub mod depth;
 pub mod mesh;
 pub mod morph;

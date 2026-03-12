@@ -268,11 +268,8 @@ impl Scene {
         }
     }
 
-    pub fn render(&self, ctx: &RenderContext) -> anyhow::Result<()> {
-        let output = ctx.surface.get_current_texture()?;
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+    /// Render the 3D scene to a texture view (does not acquire or present the surface).
+    pub fn render_to_view(&self, ctx: &RenderContext, view: &wgpu::TextureView) {
         let mut encoder = ctx
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -280,7 +277,7 @@ impl Scene {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("render_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -310,6 +307,15 @@ impl Scene {
             }
         }
         ctx.queue.submit(std::iter::once(encoder.finish()));
+    }
+
+    /// Acquire surface, render, and present (convenience wrapper for non-overlay usage).
+    pub fn render(&self, ctx: &RenderContext) -> anyhow::Result<()> {
+        let output = ctx.surface.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        self.render_to_view(ctx, &view);
         output.present();
         Ok(())
     }

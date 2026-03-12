@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use renderer::context::RenderContext;
+use renderer::debug_overlay::DebugOverlay;
 use renderer::scene::Scene;
 use solver::types::{RiggedFace, RiggedHand, RiggedPose};
 use tracker::HolisticResult;
@@ -13,6 +14,7 @@ use crate::tracker_thread::TrackerThread;
 pub struct AppState {
     pub render_ctx: RenderContext,
     pub scene: Scene,
+    pub debug_overlay: DebugOverlay,
     pub vrm_model: VrmModel,
     pub tracker_thread: TrackerThread,
     /// Webcam camera handle (None if camera initialization failed).
@@ -25,6 +27,8 @@ pub struct AppState {
     pub last_tracking_result: Option<HolisticResult>,
     /// Camera distance from the look-at target (controlled by mouse wheel zoom).
     pub camera_distance: f32,
+    /// Latest camera frame for debug overlay display.
+    pub last_camera_frame: Option<image::DynamicImage>,
 }
 
 /// Current rig solver results (face/pose/hand).
