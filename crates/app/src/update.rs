@@ -312,6 +312,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         &joint_matrices,
         &per_mesh_morph_weights,
         &camera_uniform,
+        &state.stage_lighting,
     );
 
     // 5. Render: acquire surface → 3D scene → debug overlay → present
@@ -333,6 +334,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         );
     }
 
+    let hud_lines = build_hud_lines(state);
     let overlay_input = OverlayInput {
         camera_frame: None, // Already uploaded via update_camera_frame
         pose_2d: state
@@ -351,6 +353,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             .last_tracking_result
             .as_ref()
             .and_then(|r| r.face_landmarks.clone()),
+        hud_lines,
     };
     state
         .debug_overlay
@@ -718,6 +721,27 @@ fn apply_hand_bones(
             config.lerp_amount,
         );
     }
+}
+
+/// Build HUD text lines showing current settings and key bindings.
+fn build_hud_lines(state: &AppState) -> Vec<String> {
+    let lighting = &state.stage_lighting;
+    vec![
+        format!("V: Shading ({})", lighting.shading_mode.label()),
+        format!("B: Blink mode ({})", match state.blink_mode {
+            BlinkMode::Tracking => "Tracking",
+            BlinkMode::Auto => "Auto",
+        }),
+        format!("Scroll: Zoom ({:.1})", state.camera_distance),
+        String::new(),
+        format!("1: Key light   ({}) {:.1}", lighting.key.preset.label(), lighting.key.intensity),
+        format!("2: Fill light  ({}) {:.1}", lighting.fill.preset.label(), lighting.fill.intensity),
+        format!("3: Back light  ({}) {:.1}", lighting.back.preset.label(), lighting.back.intensity),
+        String::new(),
+        "Q/W: Key intensity +/-".to_string(),
+        "A/S: Fill intensity +/-".to_string(),
+        "Z/X: Back intensity +/-".to_string(),
+    ]
 }
 
 #[cfg(test)]

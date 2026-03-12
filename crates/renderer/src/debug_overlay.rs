@@ -122,6 +122,8 @@ pub struct OverlayInput {
     pub right_hand: Option<Vec<glam::Vec3>>,
     /// Face landmarks (normalized 0–1), 468–478 points.
     pub face: Option<Vec<glam::Vec3>>,
+    /// HUD text lines to display (top-left corner).
+    pub hud_lines: Vec<String>,
 }
 
 pub struct DebugOverlay {
@@ -291,7 +293,10 @@ impl DebugOverlay {
         // 1. Camera preview quad (textured)
         let cam_vertices = self.build_camera_quad();
 
-        // 2. Landmark dots and connections (solid color)
+        // 2. HUD text (top-left)
+        self.build_hud_text(&mut vertices, &input.hud_lines);
+
+        // 3. Landmark dots and connections (solid color)
         self.build_pose_landmarks(&mut vertices, &input.pose_2d);
         self.build_hand_landmarks(
             &mut vertices,
@@ -407,6 +412,58 @@ impl DebugOverlay {
                 uv: [0.0, 1.0],
             },
         ]
+    }
+
+    /// Render HUD text lines in the top-left corner using bitmap font.
+    fn build_hud_text(&self, verts: &mut Vec<OverlayVertex>, lines: &[String]) {
+        use crate::bitmap_font;
+
+        let start_x: f32 = -0.98;
+        let start_y: f32 = 0.95;
+        let bg_color = [0.0, 0.0, 0.0, 0.5];
+        let text_color = [1.0, 1.0, 1.0, 0.9];
+        let uv = [0.5, 0.5];
+
+        // Draw semi-transparent background
+        if !lines.is_empty() {
+            let max_chars = lines.iter().map(|l| l.len()).max().unwrap_or(0);
+            let bg_w = max_chars as f32 * bitmap_font::CHAR_SPACING + 0.02;
+            let bg_h = lines.len() as f32 * bitmap_font::LINE_HEIGHT + 0.015;
+            let bg_l = start_x - 0.005;
+            let bg_t = start_y + 0.01;
+            let bg_r = bg_l + bg_w;
+            let bg_b = bg_t - bg_h;
+
+            verts.push(OverlayVertex { position: [bg_l, bg_t], color: bg_color, uv });
+            verts.push(OverlayVertex { position: [bg_r, bg_t], color: bg_color, uv });
+            verts.push(OverlayVertex { position: [bg_l, bg_b], color: bg_color, uv });
+            verts.push(OverlayVertex { position: [bg_r, bg_t], color: bg_color, uv });
+            verts.push(OverlayVertex { position: [bg_r, bg_b], color: bg_color, uv });
+            verts.push(OverlayVertex { position: [bg_l, bg_b], color: bg_color, uv });
+        }
+
+        for (line_idx, line) in lines.iter().enumerate() {
+            let y = start_y - line_idx as f32 * bitmap_font::LINE_HEIGHT;
+            for (ch_idx, ch) in line.chars().enumerate() {
+                let Some(glyph) = bitmap_font::glyph(ch) else { continue };
+                let cx = start_x + ch_idx as f32 * bitmap_font::CHAR_SPACING;
+                for row in 0..7 {
+                    for col in 0..5 {
+                        if glyph[row] & (1 << (4 - col)) != 0 {
+                            let px = cx + col as f32 * bitmap_font::PIXEL_SIZE;
+                            let py = y - row as f32 * bitmap_font::PIXEL_SIZE;
+                            let s = bitmap_font::PIXEL_SIZE * 0.45;
+                            verts.push(OverlayVertex { position: [px - s, py + s], color: text_color, uv });
+                            verts.push(OverlayVertex { position: [px + s, py + s], color: text_color, uv });
+                            verts.push(OverlayVertex { position: [px - s, py - s], color: text_color, uv });
+                            verts.push(OverlayVertex { position: [px + s, py + s], color: text_color, uv });
+                            verts.push(OverlayVertex { position: [px + s, py - s], color: text_color, uv });
+                            verts.push(OverlayVertex { position: [px - s, py - s], color: text_color, uv });
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn build_pose_landmarks(&self, verts: &mut Vec<OverlayVertex>, pose_2d: &Option<Vec<glam::Vec2>>) {
