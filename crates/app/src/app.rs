@@ -62,6 +62,8 @@ impl ApplicationHandler for App {
 
         match event {
             WindowEvent::CloseRequested => {
+                save_prefs(state);
+                log::info!("User prefs saved on exit");
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => {
@@ -84,7 +86,6 @@ impl ApplicationHandler for App {
                 // Scroll up (positive y) zooms in (decrease distance),
                 // scroll down (negative y) zooms out (increase distance).
                 state.camera_distance = (state.camera_distance - scroll_y * 0.3).clamp(0.5, 10.0);
-                save_prefs(state);
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {
@@ -96,7 +97,6 @@ impl ApplicationHandler for App {
                                     BlinkMode::Auto => BlinkMode::Tracking,
                                 };
                                 log::info!("Blink mode: {:?}", state.blink_mode);
-                                save_prefs(state);
                             }
                             _ => {}
                         }
