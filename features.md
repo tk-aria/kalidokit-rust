@@ -1566,7 +1566,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 **ファイル**: `crates/virtual-camera/macos-extension/`
 
-- [ ] `main.m`: Extension エントリポイント
+- [x] `main.m`: Extension エントリポイント <!-- 2026-03-12 15:35 JST -->
   ```objc
   #import <Foundation/Foundation.h>
   #import <CoreMediaIO/CoreMediaIO.h>
@@ -1574,30 +1574,30 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   int main(int argc, const char *argv[]) {
       @autoreleasepool {
           ProviderSource *source = [[ProviderSource alloc] initWithClientQueue:nil];
-          [CMIOExtensionProvider startService:source.provider];
+          [CMIOExtensionProvider startServiceWithProvider:source.provider];
           CFRunLoopRun();
       }
       return 0;
   }
   ```
-- [ ] `ProviderSource.h/.m`: `CMIOExtensionProviderSource` プロトコル実装
+- [x] `ProviderSource.h/.m`: `CMIOExtensionProviderSource` プロトコル実装 <!-- 2026-03-12 15:35 JST -->
   - デバイス一覧管理
   - クライアント接続ハンドリング
-- [ ] `DeviceSource.h/.m`: `CMIOExtensionDeviceSource` プロトコル実装
+- [x] `DeviceSource.h/.m`: `CMIOExtensionDeviceSource` プロトコル実装 <!-- 2026-03-12 15:35 JST -->
   - ストリーム管理 (output stream + sink stream)
   - デバイスプロパティ公開
-- [ ] `StreamSource.h/.m`: `CMIOExtensionStreamSource` プロトコル実装
+- [x] `StreamSource.h/.m`: `CMIOExtensionStreamSource` プロトコル実装 <!-- 2026-03-12 15:35 JST -->
   - 出力ストリーム: フォーマット公開 (1280×720 BGRA, 30fps)
   - FaceTime / Zoom 等への映像配信
-- [ ] `SinkStreamSource.h/.m`: Sink ストリーム実装
+- [x] `SinkStreamSource.h/.m`: Sink ストリーム実装 <!-- 2026-03-12 15:35 JST -->
   - Host アプリからのフレーム受信 (`consumeSampleBuffer`)
   - 再帰的サブスクリプションパターン (UniCamEx 方式)
-- [ ] `Info.plist`: Extension 設定
-  - `CMIOExtensionMachServiceName`: `$(TeamIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)`
+- [x] `Info.plist`: Extension 設定 <!-- 2026-03-12 15:35 JST -->
+  - `CMIOExtensionMachServiceName`: `com.kalidokit.rust.camera-extension`
   - `NSExtension.NSExtensionPointIdentifier`: `com.apple.cmio.registerassistantservice`
-- [ ] `Extension.entitlements`:
+- [x] `Extension.entitlements`: <!-- 2026-03-12 15:35 JST -->
   - `com.apple.security.app-sandbox`: true
-  - `com.apple.security.application-groups`: Team ID + bundle ID
+  - `com.apple.security.application-groups`: `com.kalidokit.rust`
 
 ### Step 10.3: Rust → ObjC フレーム送信パイプライン
 

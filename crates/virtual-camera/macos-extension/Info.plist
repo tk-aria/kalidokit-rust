@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.kalidokit.rust.camera-extension</string>
+    <key>CFBundleName</key>
+    <string>KalidoKit Virtual Camera</string>
+    <key>CFBundleDisplayName</key>
+    <string>KalidoKit Virtual Camera</string>
+    <key>CFBundleExecutable</key>
+    <string>kalidokit-camera-extension</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.cmio.registerassistantservice</string>
+    </dict>
+    <key>CMIOExtension</key>
+    <dict>
+        <key>CMIOExtensionMachServiceName</key>
+        <string>com.kalidokit.rust.camera-extension</string>
+    </dict>
+</dict>
+</plist>
