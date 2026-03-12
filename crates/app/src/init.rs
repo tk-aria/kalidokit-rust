@@ -170,6 +170,9 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         )
         .collect();
 
+    let prefs = UserPrefs::load();
+    log::info!("User prefs loaded: {:?}", prefs);
+
     let scene = Scene::new(
         &render_ctx.device,
         &render_ctx.queue,
@@ -178,6 +181,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         &mesh_materials,
         &mesh_morph_targets,
         max_joints,
+        &prefs.stage_lighting,
     );
 
     // 4. Initialize ML tracker on a background thread (face-only mode for debugging)
@@ -208,9 +212,6 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         render_ctx.config.format,
     );
 
-    let prefs = UserPrefs::load();
-    log::info!("User prefs loaded: {:?}", prefs);
-
     Ok(AppState {
         render_ctx,
         scene,
@@ -227,6 +228,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         last_camera_frame: None,
         blink_mode: prefs.blink_mode,
         auto_blink: AutoBlink::new(),
+        stage_lighting: prefs.stage_lighting.clone(),
     })
 }
 

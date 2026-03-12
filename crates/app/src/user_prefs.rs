@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use renderer::light::StageLighting;
+
 use crate::auto_blink::BlinkMode;
 
 const PREFS_FILE: &str = "user_prefs.yml";
@@ -9,6 +11,8 @@ const PREFS_FILE: &str = "user_prefs.yml";
 pub struct UserPrefs {
     pub camera_distance: f32,
     pub blink_mode: BlinkMode,
+    #[serde(default)]
+    pub stage_lighting: StageLighting,
 }
 
 impl Default for UserPrefs {
@@ -16,6 +20,7 @@ impl Default for UserPrefs {
         Self {
             camera_distance: 3.0,
             blink_mode: BlinkMode::Tracking,
+            stage_lighting: StageLighting::default(),
         }
     }
 }
@@ -74,10 +79,12 @@ mod tests {
         let prefs = UserPrefs {
             camera_distance: 5.5,
             blink_mode: BlinkMode::Auto,
+            stage_lighting: StageLighting::default(),
         };
         let yaml = serde_yaml::to_string(&prefs).unwrap();
         let loaded: UserPrefs = serde_yaml::from_str(&yaml).unwrap();
         assert!((loaded.camera_distance - 5.5).abs() < 1e-6);
         assert_eq!(loaded.blink_mode, BlinkMode::Auto);
+        assert!((loaded.stage_lighting.key.intensity - 1.4).abs() < 1e-6);
     }
 }

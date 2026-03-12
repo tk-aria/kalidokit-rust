@@ -98,6 +98,49 @@ impl ApplicationHandler for App {
                                 };
                                 log::info!("Blink mode: {:?}", state.blink_mode);
                             }
+                            // Shading mode toggle
+                            KeyCode::KeyV => {
+                                state.stage_lighting.shading_mode = state.stage_lighting.shading_mode.toggle();
+                                log::info!("Shading mode: {}", state.stage_lighting.shading_mode.label());
+                            }
+                            // Light position cycling: 1=key, 2=fill, 3=back
+                            KeyCode::Digit1 => {
+                                state.stage_lighting.key.next_preset();
+                                log::info!("Key light position: {}", state.stage_lighting.key.preset.label());
+                            }
+                            KeyCode::Digit2 => {
+                                state.stage_lighting.fill.next_preset();
+                                log::info!("Fill light position: {}", state.stage_lighting.fill.preset.label());
+                            }
+                            KeyCode::Digit3 => {
+                                state.stage_lighting.back.next_preset();
+                                log::info!("Back light position: {}", state.stage_lighting.back.preset.label());
+                            }
+                            // Intensity adjustment: Q/W=key, A/S=fill, Z/X=back
+                            KeyCode::KeyQ => {
+                                state.stage_lighting.key.intensity = (state.stage_lighting.key.intensity + 0.2).min(3.0);
+                                log::info!("Key light intensity: {:.1}", state.stage_lighting.key.intensity);
+                            }
+                            KeyCode::KeyW => {
+                                state.stage_lighting.key.intensity = (state.stage_lighting.key.intensity - 0.2).max(0.0);
+                                log::info!("Key light intensity: {:.1}", state.stage_lighting.key.intensity);
+                            }
+                            KeyCode::KeyA => {
+                                state.stage_lighting.fill.intensity = (state.stage_lighting.fill.intensity + 0.2).min(3.0);
+                                log::info!("Fill light intensity: {:.1}", state.stage_lighting.fill.intensity);
+                            }
+                            KeyCode::KeyS => {
+                                state.stage_lighting.fill.intensity = (state.stage_lighting.fill.intensity - 0.2).max(0.0);
+                                log::info!("Fill light intensity: {:.1}", state.stage_lighting.fill.intensity);
+                            }
+                            KeyCode::KeyZ => {
+                                state.stage_lighting.back.intensity = (state.stage_lighting.back.intensity + 0.2).min(3.0);
+                                log::info!("Back light intensity: {:.1}", state.stage_lighting.back.intensity);
+                            }
+                            KeyCode::KeyX => {
+                                state.stage_lighting.back.intensity = (state.stage_lighting.back.intensity - 0.2).max(0.0);
+                                log::info!("Back light intensity: {:.1}", state.stage_lighting.back.intensity);
+                            }
                             _ => {}
                         }
                     }
@@ -112,6 +155,7 @@ fn save_prefs(state: &AppState) {
     UserPrefs {
         camera_distance: state.camera_distance,
         blink_mode: state.blink_mode,
+        stage_lighting: state.stage_lighting.clone(),
     }
     .save();
 }

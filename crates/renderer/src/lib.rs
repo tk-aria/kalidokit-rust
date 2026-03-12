@@ -1,7 +1,9 @@
+pub mod bitmap_font;
 pub mod camera;
 pub mod context;
 pub mod debug_overlay;
 pub mod depth;
+pub mod light;
 pub mod mesh;
 pub mod morph;
 pub mod pipeline;

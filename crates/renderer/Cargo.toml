@@ -11,6 +11,8 @@ bytemuck = { workspace = true }
 image = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }
+serde = { workspace = true }
 
 [dev-dependencies]
 pollster = { workspace = true }
+serde_yaml = { workspace = true }

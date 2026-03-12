@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use renderer::context::RenderContext;
 use renderer::debug_overlay::DebugOverlay;
+use renderer::light::StageLighting;
 use renderer::scene::Scene;
 use solver::types::{RiggedFace, RiggedHand, RiggedPose};
 use tracker::HolisticResult;
@@ -34,6 +35,8 @@ pub struct AppState {
     pub blink_mode: BlinkMode,
     /// Auto blink controller (used when blink_mode == Auto).
     pub auto_blink: AutoBlink,
+    /// Stage lighting configuration (3-point lights).
+    pub stage_lighting: StageLighting,
 }
 
 /// Current rig solver results (face/pose/hand).
