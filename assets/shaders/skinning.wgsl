@@ -8,8 +8,19 @@ struct CameraUniform {
 // Joint matrices (group 1, binding 0) - max 256 bones
 @group(1) @binding(0) var<storage, read> joint_matrices: array<mat4x4<f32>>;
 
-// Morph weights (group 2, binding 0) - max 64 targets
+// Morph weights (group 2, binding 0)
 @group(2) @binding(0) var<storage, read> morph_weights: array<f32>;
+
+// Morph target position deltas (group 2, binding 1)
+// Layout: deltas[target_index * num_vertices + vertex_index].xyz
+@group(2) @binding(1) var<storage, read> morph_deltas: array<vec4<f32>>;
+
+// Morph info (group 2, binding 2)
+struct MorphInfo {
+    num_vertices: u32,
+    num_targets: u32,
+};
+@group(2) @binding(2) var<uniform> morph_info: MorphInfo;
 
 // Material uniform (group 3, binding 0) - includes MToon toon shading parameters
 struct MaterialUniform {
@@ -26,6 +37,7 @@ struct MaterialUniform {
 @group(3) @binding(2) var s_base_color: sampler;
 
 struct VertexInput {
+    @builtin(vertex_index) vertex_index: u32,
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
@@ -44,6 +56,16 @@ struct VertexOutput {
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
+    // Apply morph target displacements to position
+    var pos = in.position;
+    for (var t = 0u; t < morph_info.num_targets; t = t + 1u) {
+        let w = morph_weights[t];
+        if (w > 0.001) {
+            let delta = morph_deltas[t * morph_info.num_vertices + in.vertex_index];
+            pos = pos + delta.xyz * w;
+        }
+    }
+
     let weight_sum = in.joint_weights.x + in.joint_weights.y + in.joint_weights.z + in.joint_weights.w;
 
     var world_pos: vec4<f32>;
@@ -57,7 +79,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
             joint_matrices[in.joint_indices.z] * in.joint_weights.z +
             joint_matrices[in.joint_indices.w] * in.joint_weights.w;
 
-        world_pos = skin_matrix * vec4<f32>(in.position, 1.0);
+        world_pos = skin_matrix * vec4<f32>(pos, 1.0);
         let normal_mat = mat3x3<f32>(
             skin_matrix[0].xyz,
             skin_matrix[1].xyz,
@@ -66,7 +88,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
         world_normal = normalize(normal_mat * in.normal);
     } else {
         // No skinning - use model matrix
-        world_pos = camera.model * vec4<f32>(in.position, 1.0);
+        world_pos = camera.model * vec4<f32>(pos, 1.0);
         let normal_matrix = mat3x3<f32>(
             camera.model[0].xyz,
             camera.model[1].xyz,

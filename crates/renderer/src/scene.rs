@@ -2,7 +2,7 @@ use crate::camera::CameraUniform;
 use crate::context::RenderContext;
 use crate::depth::DepthTexture;
 use crate::mesh::GpuMesh;
-use crate::morph::MorphData;
+use crate::morph::{MorphBindGroupLayout, PerMeshMorph};
 use crate::pipeline::create_render_pipeline;
 use crate::skin::SkinData;
 use crate::texture::GpuTexture;
@@ -31,7 +31,7 @@ pub struct Scene {
     meshes: Vec<GpuMesh>,
     materials: Vec<GpuMaterial>,
     skin: SkinData,
-    morph: MorphData,
+    per_mesh_morphs: Vec<PerMeshMorph>,
     depth: DepthTexture,
     pipeline: wgpu::RenderPipeline,
     camera_buffer: wgpu::Buffer,
@@ -69,14 +69,18 @@ impl Default for MeshMaterialInput {
 }
 
 impl Scene {
+    /// Create a new scene.
+    ///
+    /// `mesh_morph_targets[i]` contains the morph target position deltas for mesh `i`.
+    /// Each inner `Vec<[f32; 3]>` has one `[dx, dy, dz]` per vertex for that morph target.
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         config: &wgpu::SurfaceConfiguration,
         vertices_list: &[(&[Vertex], &[u32])],
         mesh_materials: &[MeshMaterialInput],
+        mesh_morph_targets: &[Vec<Vec<[f32; 3]>>],
         max_joints: usize,
-        max_morph_targets: usize,
     ) -> Self {
         let meshes: Vec<GpuMesh> = vertices_list
             .iter()
@@ -84,8 +88,23 @@ impl Scene {
             .collect();
 
         let skin = SkinData::new(device, max_joints.max(1));
-        let morph = MorphData::new(device, max_morph_targets.max(1));
+        let morph_layout = MorphBindGroupLayout::new(device);
         let depth = DepthTexture::new(device, config.width, config.height);
+
+        // Create per-mesh morph target data
+        let per_mesh_morphs: Vec<PerMeshMorph> = vertices_list
+            .iter()
+            .enumerate()
+            .map(|(i, (verts, _))| {
+                let targets = mesh_morph_targets.get(i);
+                let empty_targets = Vec::new();
+                let target_deltas: &[Vec<[f32; 3]>] = match targets {
+                    Some(t) => t.as_slice(),
+                    None => &empty_targets,
+                };
+                PerMeshMorph::new(device, &morph_layout, verts.len(), target_deltas)
+            })
+            .collect();
 
         // Camera uniform
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -233,7 +252,7 @@ impl Scene {
             &[
                 &camera_bind_group_layout,
                 skin.bind_group_layout(),
-                morph.bind_group_layout(),
+                morph_layout.layout(),
                 &material_bind_group_layout,
             ],
             Some(crate::depth::DEPTH_FORMAT),
@@ -243,7 +262,7 @@ impl Scene {
             meshes,
             materials,
             skin,
-            morph,
+            per_mesh_morphs,
             depth,
             pipeline,
             camera_buffer,
@@ -252,19 +271,24 @@ impl Scene {
         }
     }
 
+    /// Update GPU buffers before rendering.
+    ///
+    /// `per_mesh_morph_weights[i]` contains the morph weights for mesh `i`.
     pub fn prepare(
         &self,
         queue: &wgpu::Queue,
         joint_matrices: &[Mat4],
-        morph_weights: &[f32],
+        per_mesh_morph_weights: &[Vec<f32>],
         camera_uniform: &CameraUniform,
     ) {
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(camera_uniform));
         if !joint_matrices.is_empty() {
             self.skin.update(queue, joint_matrices);
         }
-        if !morph_weights.is_empty() {
-            self.morph.update(queue, morph_weights);
+        for (i, morph) in self.per_mesh_morphs.iter().enumerate() {
+            if let Some(weights) = per_mesh_morph_weights.get(i) {
+                morph.update(queue, weights);
+            }
         }
     }
 
@@ -297,9 +321,12 @@ impl Scene {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.camera_bind_group, &[]);
             pass.set_bind_group(1, self.skin.bind_group(), &[]);
-            pass.set_bind_group(2, self.morph.bind_group(), &[]);
             for (i, mesh) in self.meshes.iter().enumerate() {
-                // Bind per-mesh material (texture + base color)
+                // Per-mesh morph target bind group
+                if let Some(morph) = self.per_mesh_morphs.get(i) {
+                    pass.set_bind_group(2, morph.bind_group(), &[]);
+                }
+                // Per-mesh material (texture + base color)
                 if let Some(mat) = self.materials.get(i) {
                     pass.set_bind_group(3, &mat.bind_group, &[]);
                 }
