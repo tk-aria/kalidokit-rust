@@ -1533,3 +1533,121 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   - macOS: `cargo build` でビルド成功（変更なし）
   - Windows: `cargo build` でビルド成功（変更なし）
   - GitHub Release に 3 プラットフォーム分のアーティファクトがアップロードされる
+
+---
+
+## Phase 10: macOS 仮想カメラ (CoreMediaIO Camera Extension)
+
+**目的**: wgpu でレンダリングしたアバター映像を macOS の仮想カメラとして配信し、Zoom / Google Meet 等から選択可能にする
+
+**参考**: [UniCamEx](https://github.com/creativeIKEP/UniCamEx) — CoreMediaIO Camera Extension による仮想カメラ実装
+
+**技術方針**:
+- Objective-C で Camera Extension を実装 (`swift-bridge` 不要)
+- `objc2-core-media-io` crate で Rust から直接 ObjC ランタイムを呼び出し
+- フレーム転送: wgpu `buffer.map_async` (CPU readback) → CVPixelBuffer → CMSampleBuffer → Mach Service IPC
+
+### Step 10.1: virtual-camera crate 作成
+
+- [x] `crates/virtual-camera/Cargo.toml` 新規作成 <!-- 2026-03-12 15:30 JST -->
+  - dependencies: `objc2`, `objc2-core-media-io`, `objc2-foundation`, `objc2-core-media`, `objc2-core-video`, `anyhow`, `log`
+  - `[target.'cfg(target_os = "macos")'.dependencies]` で macOS 限定
+- [x] `crates/virtual-camera/src/lib.rs`: trait 定義 <!-- 2026-03-12 15:30 JST -->
+  ```rust
+  pub trait VirtualCamera {
+      fn start(&mut self) -> anyhow::Result<()>;
+      fn send_frame(&mut self, rgba: &[u8], width: u32, height: u32) -> anyhow::Result<()>;
+      fn stop(&mut self);
+  }
+  ```
+- [x] ルート `Cargo.toml` の workspace members に `crates/virtual-camera` を追加 <!-- 2026-03-12 15:30 JST -->
+
+### Step 10.2: CoreMediaIO Camera Extension (Objective-C)
+
+**ファイル**: `crates/virtual-camera/macos-extension/`
+
+- [ ] `main.m`: Extension エントリポイント
+  ```objc
+  #import <Foundation/Foundation.h>
+  #import <CoreMediaIO/CoreMediaIO.h>
+  #import "ProviderSource.h"
+  int main(int argc, const char *argv[]) {
+      @autoreleasepool {
+          ProviderSource *source = [[ProviderSource alloc] initWithClientQueue:nil];
+          [CMIOExtensionProvider startService:source.provider];
+          CFRunLoopRun();
+      }
+      return 0;
+  }
+  ```
+- [ ] `ProviderSource.h/.m`: `CMIOExtensionProviderSource` プロトコル実装
+  - デバイス一覧管理
+  - クライアント接続ハンドリング
+- [ ] `DeviceSource.h/.m`: `CMIOExtensionDeviceSource` プロトコル実装
+  - ストリーム管理 (output stream + sink stream)
+  - デバイスプロパティ公開
+- [ ] `StreamSource.h/.m`: `CMIOExtensionStreamSource` プロトコル実装
+  - 出力ストリーム: フォーマット公開 (1280×720 BGRA, 30fps)
+  - FaceTime / Zoom 等への映像配信
+- [ ] `SinkStreamSource.h/.m`: Sink ストリーム実装
+  - Host アプリからのフレーム受信 (`consumeSampleBuffer`)
+  - 再帰的サブスクリプションパターン (UniCamEx 方式)
+- [ ] `Info.plist`: Extension 設定
+  - `CMIOExtensionMachServiceName`: `$(TeamIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)`
+  - `NSExtension.NSExtensionPointIdentifier`: `com.apple.cmio.registerassistantservice`
+- [ ] `Extension.entitlements`:
+  - `com.apple.security.app-sandbox`: true
+  - `com.apple.security.application-groups`: Team ID + bundle ID
+
+### Step 10.3: Rust → ObjC フレーム送信パイプライン
+
+**ファイル**: `crates/virtual-camera/src/macos.rs`
+
+- [ ] `objc2-core-media-io` で CoreMediaIO デバイス/ストリーム探索
+  - Mach Service 名でシンクストリームを特定
+- [ ] RGBA → BGRA 変換 (wgpu 出力 → CoreVideo 入力)
+- [ ] `CVPixelBuffer` 作成: `CVPixelBufferCreateWithBytes` (objc2-core-video)
+- [ ] `CMSampleBuffer` 作成: タイムスタンプ付き (`CMTimeMake`)
+- [ ] シンクストリームへのバッファ送信
+- [ ] `VirtualCamera` trait の macOS 実装
+
+### Step 10.4: wgpu フレームキャプチャ統合
+
+**ファイル**: `crates/app/src/update.rs`, `crates/renderer/src/scene.rs`
+
+- [ ] `Scene` にフレームキャプチャ用ステージングバッファ追加
+  - `wgpu::BufferUsages::COPY_DST | MAP_READ`
+  - レンダーテクスチャからの `copy_texture_to_buffer`
+- [ ] `buffer.map_async()` でフレーム読み出し
+- [ ] `update_frame()` から `VirtualCamera::send_frame()` 呼び出し
+- [ ] 仮想カメラの有効/無効トグル (キーバインド: `C` キー)
+
+### Step 10.5: Extension ビルド & 署名設定
+
+- [ ] `build.rs`: `cc` crate で .m ファイルコンパイル + CoreMediaIO フレームワークリンク
+  ```rust
+  cc::Build::new()
+      .files(&["macos-extension/main.m", ...])
+      .flag("-fobjc-arc")
+      .compile("vcam_extension");
+  println!("cargo:rustc-link-lib=framework=CoreMediaIO");
+  println!("cargo:rustc-link-lib=framework=CoreMedia");
+  println!("cargo:rustc-link-lib=framework=CoreVideo");
+  ```
+- [ ] Xcode プロジェクト or xcodebuild スクリプト: Extension バンドル (.appex) 生成
+  - System Extension は .app バンドル内に埋め込み必須
+- [ ] 開発用: SIP 無効化手順ドキュメント
+- [ ] 配布用: Developer ID 署名 + 公証 (Notarization) 手順ドキュメント
+
+### Step 10.6: Phase 10 検証
+
+- [ ] **ビルド検証**:
+  - `cargo check --workspace` 成功
+  - `cargo clippy --workspace -- -D warnings` 警告 0
+  - Extension バンドル (.appex) が生成される
+- [ ] **動作確認** (macOS 12.3+ 環境):
+  - Extension のインストール・有効化 (`OSSystemExtensionManager`)
+  - アプリ起動後、システム環境設定 > プライバシー > カメラ に仮想カメラが表示
+  - FaceTime / Photo Booth でアバター映像が表示される
+  - フレームレート 30fps 維持
+  - アプリ終了時に仮想カメラが正常停止

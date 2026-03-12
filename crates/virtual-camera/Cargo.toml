@@ -1,0 +1,15 @@
+[package]
+name = "virtual-camera"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+log = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-core-media-io = "0.3"
+objc2-core-media = "0.3"
+objc2-core-video = "0.3"
