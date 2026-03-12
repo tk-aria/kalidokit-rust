@@ -20,6 +20,9 @@ Phase 5 (トラッカー) ← 独立 (Phase 1-3と並行可能)
 Phase 6 (統合) ← Phase 1-5 全てに依存
   ↓
 Phase 7 (仕上げ) ← Phase 6に依存
+  ↓
+Phase 10 (macOS仮想カメラ) ← Phase 6に依存
+Phase 11 (Linux仮想カメラ・オーディオ: PipeWire + v4l2loopback) ← Phase 6に依存 (Phase 10と並行可能)
 ```
 
 ## ライブラリバージョン一覧
@@ -43,6 +46,8 @@ Phase 7 (仕上げ) ← Phase 6に依存
 | `env_logger` | 0.11.6 | ロギング |
 | `log` | 0.4.27 | ログマクロ |
 | `cargo-llvm-cov` | 0.6+ (dev) | テストカバレッジ計測 (`cargo install cargo-llvm-cov`) |
+| `pipewire` | 0.8+ | PipeWire 仮想カメラ・オーディオ (Linux のみ) |
+| `v4l` | 0.14+ | v4l2loopback フォールバック (Linux のみ) |
 
 ---
 
@@ -1646,9 +1651,143 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   - `cargo check --workspace` 成功
   - `cargo clippy --workspace -- -D warnings` Rust エラー 0 (ObjC 未使用引数警告 3 件のみ)
   - Extension バンドル (.appex) が `scripts/build-camera-extension.sh` で生成される
-- [ ] **動作確認** (macOS 12.3+ 環境) — SIP 無効化 + Extension インストールが必要なため未検証:
+- [ ] **動作確認** — SIP **完全無効化** が必要 (現在の部分無効化では不十分):
   - Extension のインストール・有効化 (`OSSystemExtensionManager`)
   - アプリ起動後、システム環境設定 > プライバシー > カメラ に仮想カメラが表示
   - FaceTime / Photo Booth でアバター映像が表示される
   - フレームレート 30fps 維持
   - アプリ終了時に仮想カメラが正常停止
+  - **検証結果 (2026-03-12 16:28 JST)**:
+    - ビルド・署名 (Apple Development 証明書) 成功
+    - `.app` バンドル + embedded `.systemextension` 自動生成スクリプト (`build-app-bundle.sh`) 作成
+    - Extension バイナリ単体: `CMIOExtensionProvider.startServiceWithProvider:` 正常動作確認
+    - `OSSystemExtensionManager` 登録: Code 8 で失敗 (SIP 部分無効化のみ)
+    - `csrutil disable` (完全) or Provisioning Profile + Developer ID が必要
+
+---
+
+## Phase 11: Linux 仮想カメラ・オーディオ (PipeWire / v4l2loopback)
+
+**目的**: Linux 環境でアバター映像・音声を仮想デバイスとして配信し、Google Meet / Zoom 等のビデオ通話アプリから利用可能にする
+
+**背景**: `docs/virtual-camera-audio.md` に設計詳細あり
+
+**実装方式**: PipeWire 仮想カメラノード (主) + v4l2loopback (レガシーフォールバック)
+- PipeWire は Chrome 127+ / Firefox 116+ がカメラソースとして直接認識する。root 不要、サンドボックス対応
+- v4l2loopback は PipeWire 未対応のレガシーアプリ向けフォールバック (root 必要、カーネルモジュール)
+- DMA-BUF zero-copy は不採用: wgpu が外部メモリエクスポート API を公開しておらず、wgpu-hal 内部 API 依存は破壊リスクが高い。pw-capture は LD_PRELOAD 型で統合不可、libfunnel は raw Vulkan 必須
+
+**前提条件**:
+- Linux (Ubuntu 22.04+)
+- PipeWire 0.3+ (仮想カメラ・オーディオ両方で使用)
+- v4l2loopback カーネルモジュール (フォールバック用、任意)
+
+### Step 11.1: PipeWire 仮想カメラノード
+
+**目的**: `pipewire` Rust クレートで仮想カメラノードを作成し、BGRA フレームを PipeWire に push する
+
+- [ ] `crates/virtual-camera/Cargo.toml`: Linux 向け依存関係追加
+  - `pipewire = "0.8+"` (PipeWire Rust バインディング)
+  - `cfg(target_os = "linux")` で条件付きコンパイル
+- [ ] `src/linux.rs`: `LinuxVirtualCamera` 構造体
+  - フィールド: `pipewire::Stream`, `width`, `height`, `running`
+  - `VirtualCamera` trait (`start`, `send_frame`, `stop`) を実装
+- [ ] `src/linux.rs`: PipeWire Stream の初期化
+  - `pw_properties`: `MEDIA_TYPE=Video`, `MEDIA_ROLE=Camera`
+  - SPA フォーマットネゴシエーション: `SPA_PARAM_EnumFormat` で BGRA / YUV420 を提示
+  - `Direction::Output` で仮想カメラソースとして登録
+- [ ] `src/linux.rs`: `send_frame()` 実装
+  - `stream.dequeue_buffer()` → BGRA データを `buffer.datas_mut()[0]` にコピー → `stream.queue_buffer()`
+  - 消費側が YUV420 を要求した場合は BGRA→YUV420 変換を挟む
+- [ ] PipeWire MainLoop を別スレッドで実行 (`std::thread::spawn`)
+- [ ] `src/lib.rs`: `#[cfg(target_os = "linux")] pub mod linux;` + `pub use linux::LinuxVirtualCamera;`
+- [ ] `cargo check --workspace` が Linux / macOS 両方で通ること
+- [ ] `pw-cli list-objects` で "kalidokit-camera" ノードが表示されること
+- [ ] Chrome 127+ / Firefox 116+ のカメラ選択でアバター映像が表示されること
+
+### Step 11.2: v4l2loopback フォールバック
+
+**目的**: PipeWire 未対応のレガシーアプリ向けに v4l2loopback 出力を追加
+
+- [ ] `Cargo.toml`: `v4l = "0.14+"` を Linux 向け依存に追加
+- [ ] `src/linux_v4l2.rs`: `V4l2VirtualCamera` 構造体
+  - `VirtualCamera` trait を実装
+  - v4l2loopback デバイス自動検出: `/dev/video*` 走査、`card_label` で "KalidoKit" を判別
+  - デバイス未検出時は `KALIDOKIT_V4L2_DEVICE` 環境変数にフォールバック
+- [ ] `src/linux_v4l2.rs`: `send_frame()` 実装
+  - BGRA → YUYV 変換 (`docs/virtual-camera-audio.md` の `bgra_to_yuyv()` 参考)
+  - `v4l::Device::write()` で YUYV フレームを出力
+- [ ] デバイス起動時のフォーマット設定: YUYV 1280x720 30fps
+- [ ] `src/linux.rs`: 起動時に PipeWire 接続を試行 → 失敗時は v4l2loopback にフォールバックする切り替えロジック
+
+### Step 11.3: アプリ統合
+
+**目的**: wgpu レンダリング結果を仮想カメラに出力するパイプラインをアプリに統合
+
+- [ ] `crates/app/src/state.rs`: Linux 向け vcam フィールド追加
+  - `#[cfg(target_os = "linux")] pub vcam: Option<virtual_camera::LinuxVirtualCamera>`
+- [ ] `crates/app/src/update.rs`: Linux 向け `vcam_send_frame()` 追加
+  - `#[cfg(target_os = "linux")]` で分岐
+  - `scene.read_frame_capture()` → BGRA データ取得 → `vcam.send_frame()`
+- [ ] `crates/app/src/app.rs`: `KeyCode::KeyC` で Linux vcam も ON/OFF トグル
+- [ ] HUD に PipeWire / v4l2 どちらが有効か表示
+
+### Step 11.4: 仮想オーディオ出力 (PipeWire)
+
+**目的**: PipeWire で仮想マイクノードを作成し、アプリケーション生成音声を配信
+
+- [ ] `crates/virtual-audio/Cargo.toml`: 新規クレート作成
+  - `pipewire = "0.8+"`
+  - `cfg(target_os = "linux")` 限定
+  - ワークスペースの `members` に追加
+- [ ] `src/lib.rs`: `VirtualAudio` trait 定義
+  - `start(&mut self, sample_rate: u32, channels: u32) -> Result<()>`
+  - `write_samples(&self, samples: &[f32]) -> Result<()>`
+  - `stop(&mut self)`
+- [ ] `src/pipewire.rs`: `PipeWireAudioOutput` 実装
+  - PipeWire Stream: `Direction::Output`, `MediaRole::Communication`
+  - フォーマット: F32LE, 48000Hz, 2ch (ステレオ)
+  - `dequeue_buffer()` → `copy_from_slice()` → `queue_buffer()`
+- [ ] PipeWire MainLoop を別スレッドで実行
+- [ ] `pw-cli list-objects` で仮想マイクデバイスが表示されること
+
+### Step 11.5: Docker 環境対応
+
+**目的**: Docker コンテナ内から PipeWire / v4l2loopback を利用可能にする
+
+- [ ] ホスト側セットアップスクリプト (`scripts/setup-linux-vcam.sh`):
+  - `modprobe v4l2loopback video_nr=10 card_label="KalidoKit" exclusive_caps=1`
+  - 永続化: `/etc/modules-load.d/` + `/etc/modprobe.d/`
+- [ ] `Dockerfile` 追加パッケージ:
+  - `pipewire`, `pipewire-audio-client-libraries`, `libpipewire-0.3-dev`, `v4l-utils`
+  - GPU 環境変数: `NVIDIA_VISIBLE_DEVICES=all`, `NVIDIA_DRIVER_CAPABILITIES=graphics,video,compute`
+- [ ] `docker-compose.yml` 追加設定:
+  - `devices: ["/dev/video10:/dev/video10", "/dev/dri:/dev/dri"]`
+  - `volumes: ["/run/user/1000/pipewire-0:/run/user/1000/pipewire-0"]`
+  - `environment: [XDG_RUNTIME_DIR=/run/user/1000]`
+- [ ] コンテナ内で PipeWire ソケット接続が成功すること
+- [ ] コンテナ内で v4l2loopback フォールバックが動作すること
+
+### Step 11.6: Phase 11 検証
+
+- [ ] **ビルド検証**:
+  - `cargo check --workspace` 成功 (Linux)
+  - `cargo check --workspace` 成功 (macOS — Linux モジュールが `#[cfg]` で除外されること)
+  - `cargo clippy --workspace -- -D warnings` 警告 0
+  - `cargo fmt --check` 差分なし
+- [ ] **仮想カメラ動作確認 (PipeWire)** — Linux 環境:
+  - `pw-cli list-objects` に "kalidokit-camera" が表示
+  - Chrome 127+ のカメラ選択でアバター映像が表示される
+  - Firefox 116+ のカメラ選択でアバター映像が表示される (`media.webrtc.camera.allow-pipewire` 有効)
+  - 30fps 維持、レイテンシ <30ms
+- [ ] **仮想カメラ動作確認 (v4l2 フォールバック)** — Linux 環境:
+  - PipeWire 未接続時に v4l2loopback に自動フォールバック
+  - `v4l2-ctl --list-devices` に "KalidoKit" が表示
+  - レガシーアプリでアバター映像が表示される
+- [ ] **仮想オーディオ動作確認** — Linux 環境:
+  - `pw-cli list-objects` に仮想マイクが表示
+  - Chrome のマイク選択で音声が取得できる
+- [ ] **Docker 動作確認**:
+  - `docker compose up` でコンテナ起動
+  - コンテナ内で仮想カメラ・オーディオが使用可能
+  - Google Meet で仮想カメラ映像が配信される
