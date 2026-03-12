@@ -4,21 +4,37 @@
 
 - macOS 12.3+ (Monterey 以降)
 - Xcode 14+ (Command Line Tools)
+- Apple Development 証明書 (推奨) or SIP 完全無効化
 
 ## SIP 無効化 (開発用)
 
-署名なしの System Extension をロードするには SIP (System Integrity Protection) を無効化する必要があります。
+> **重要**: Camera Extension の開発には SIP の **完全無効化** が必要です。
+> `csrutil disable --without kext` 等の部分無効化では System Extension の登録が
+> Code 8 (Invalid code signature) で失敗します。
 
 ### 手順
 
-1. Mac を再起動し、起動時に **Command + R** を長押しして Recovery Mode に入る
+1. Mac を再起動し、Recovery Mode に入る
    - Apple Silicon Mac: 電源ボタンを長押し → Options → Continue
+   - Intel Mac: 起動時に **Command + R** を長押し
 2. メニューバーから **Utilities → Terminal** を選択
 3. 以下のコマンドを実行:
    ```bash
    csrutil disable
    ```
 4. Mac を再起動
+5. Developer Mode を有効化:
+   ```bash
+   systemextensionsctl developer on
+   ```
+
+### SIP の状態確認
+
+```bash
+csrutil status
+# 必要: "System Integrity Protection status: disabled."
+# 不十分: "Custom Configuration" (Kext Signing のみ無効等)
+```
 
 ### SIP を再度有効化する (開発完了後)
 
@@ -27,55 +43,97 @@
 csrutil enable
 ```
 
-### SIP の状態確認
-
-```bash
-csrutil status
-# System Integrity Protection status: disabled.
-```
-
 ## Camera Extension のビルドとインストール
 
-### 1. Extension バンドルをビルド
+### 方法 1: .app バンドル経由 (推奨)
+
+Extension はホストアプリの .app バンドル内に埋め込む必要があります。
+
+```bash
+# ホストアプリ + Extension を含む .app バンドルをビルド
+./scripts/build-app-bundle.sh
+
+# 生成物: target/debug/KalidoKit.app
+# 構造:
+#   KalidoKit.app/
+#     Contents/
+#       MacOS/kalidokit-rust
+#       Library/SystemExtensions/
+#         com.kalidokit.rust.camera-extension.systemextension/
+```
+
+### 方法 2: Extension バンドル単体ビルド
 
 ```bash
 ./scripts/build-camera-extension.sh
+# 生成物: target/camera-extension/KalidoKitCamera.appex
 ```
 
-生成物: `target/camera-extension/KalidoKitCamera.appex`
-
-### 2. Extension を手動でロード (開発用)
-
-SIP 無効化状態では、Extension バンドルを以下のパスに配置してロードできます:
+### 署名
 
 ```bash
-# .appex を Library に配置
-sudo cp -r target/camera-extension/KalidoKitCamera.appex \
-    /Library/SystemExtensions/
+# Apple Development 証明書で署名する場合:
+IDENTITY="Apple Development: your@email.com (XXXXXXXX)"
+codesign --force --sign "$IDENTITY" \
+    --entitlements crates/virtual-camera/macos-extension/Extension.entitlements \
+    target/debug/KalidoKit.app/Contents/Library/SystemExtensions/*.systemextension
+codesign --force --sign "$IDENTITY" target/debug/KalidoKit.app
 
-# systemextensionsd を再起動
-sudo killall -HUP systemextensionsd
+# ad-hoc 署名の場合 (SIP 完全無効化が必須):
+# build-app-bundle.sh が自動で ad-hoc 署名します
 ```
 
-### 3. 動作確認
+### 動作確認
 
 ```bash
-# インストール済み Extension の確認
+# アプリを起動 (Extension のインストールが自動実行される)
+open target/debug/KalidoKit.app
+
+# または直接実行
+target/debug/KalidoKit.app/Contents/MacOS/kalidokit-rust
+
+# Extension が登録されたか確認
 systemextensionsctl list
 
-# FaceTime でカメラ一覧を確認
+# カメラデバイスの確認
+system_profiler SPCameraDataType
 # "KalidoKit Virtual Camera" が表示されるはず
 ```
 
 ## トラブルシューティング
 
+### OSSystemExtensionErrorDomain Code 8 (Invalid code signature)
+
+最も一般的なエラー。原因と対策:
+
+1. **SIP が部分無効化のみ**: `csrutil status` で確認。`Custom Configuration` と表示される場合は完全無効化が必要
+2. **CFBundleExecutable と実際のバイナリ名が不一致**: Info.plist の `CFBundleExecutable` = `kalidokit-camera-extension` とバイナリファイル名が一致しているか確認
+3. **Bundle ID 階層**: Extension ID (`com.kalidokit.rust.camera-extension`) はホスト ID (`com.kalidokit.rust`) の子である必要がある
+
+### OSSystemExtensionErrorDomain Code 4 (Extension not found)
+
+- Extension が `.app/Contents/Library/SystemExtensions/` に正しく配置されているか確認
+- ホストバイナリの `CFBundleExecutable` がホストアプリの実際のバイナリ名と一致しているか確認
+
 ### Extension がカメラ一覧に表示されない
 
-1. SIP が無効化されているか確認: `csrutil status`
-2. Info.plist の `CMIOExtensionMachServiceName` が正しいか確認
-3. コンソール.app で `KalidoKit` を検索してログを確認
+1. `systemextensionsctl list` で Extension が `[activated enabled]` になっているか確認
+2. コンソール.app で `KalidoKit` を検索してログを確認
+3. `CMIOExtensionMachServiceName` が Info.plist で正しく設定されているか確認
 
-### "Operation not permitted" エラー
+### SIGKILL (プロセス即座に終了)
 
-- SIP が有効: Recovery Mode で `csrutil disable` を実行
-- Entitlements 不足: Extension.entitlements に `com.apple.security.app-sandbox` があるか確認
+- `com.apple.developer.system-extension.install` エンタイトルメントを Provisioning Profile なしで使用した場合に発生
+- このエンタイトルメントには Apple Developer Portal で発行した Provisioning Profile が必要
+
+## 代替: Provisioning Profile + Developer ID (SIP 無効化不要)
+
+SIP を無効化せずに開発するには:
+
+1. [Apple Developer Portal](https://developer.apple.com) で App ID を作成
+2. System Extension capability を有効化
+3. Provisioning Profile を作成・ダウンロード
+4. Developer ID Application 証明書で署名
+5. `notarytool` で公証 (Notarization)
+
+詳細は `docs/camera-extension-distribution.md` を参照。

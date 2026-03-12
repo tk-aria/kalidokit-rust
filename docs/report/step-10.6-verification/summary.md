@@ -24,7 +24,26 @@ cargo clippy --workspace -- -D warnings  # Rust エラー 0
 ./scripts/build-camera-extension.sh  # .appex バンドル生成成功
 ```
 
-### 3. 動作確認 (未実施)
-- SIP 無効化 + Extension インストールが必要
-- macOS 12.3+ 環境でのテストが必要
-- features.md に「未検証」注記を追加
+### 3. 動作確認テスト (2026-03-12 16:28 JST)
+
+#### 確認できたこと
+- `systemextensionsctl developer on` 有効
+- Apple Development 証明書 (BL487W744V) で署名可能
+- `.app` バンドル構成: host binary + embedded `.systemextension` の作成・署名成功
+- Camera Extension バイナリ単体起動: `CMIOExtensionProvider.startServiceWithProvider:` 正常動作
+- `scripts/build-app-bundle.sh` 作成: ホストアプリ + Extension の .app バンドル自動ビルド
+
+#### ブロッカー: SIP 設定
+- 現在の SIP: カスタム構成 (Kext Signing のみ無効)
+- `OSSystemExtensionManager` 経由の Extension 登録は **Code 8** (Invalid code signature) で失敗
+- ad-hoc 署名、Apple Development 証明書署名 いずれも同じ結果
+- launchd で直接起動すると Extension プロセスは動くが、CoreMediaIO daemon に登録されず仮想カメラとして認識されない
+
+#### 必要な対応
+Camera Extension の動作確認には以下のいずれかが必要:
+1. **SIP 完全無効化**: Recovery Mode で `csrutil disable` を実行 (現在の部分無効化では不十分)
+2. **Developer ID 証明書 + Provisioning Profile**: Apple Developer Portal で System Extension capability を含む Provisioning Profile を取得
+3. **配布用署名 + 公証 (Notarization)**: Developer ID Application 証明書で署名 + `notarytool` で公証
+
+#### 結論
+コード実装は完了・コンパイル成功済み。動作確認は SIP 完全無効化環境で実施予定。

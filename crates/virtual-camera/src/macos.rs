@@ -8,6 +8,12 @@ use objc2_core_media_io::{
 };
 use objc2_core_video::CVPixelBuffer;
 
+extern "C" {
+    /// Activate the KalidoKit Camera Extension via OSSystemExtensionManager.
+    /// Compiled from macos-extension/ExtensionInstaller.m via build.rs.
+    fn KalidoKitInstallCameraExtension();
+}
+
 /// Pixel format: 32-bit BGRA
 const K_CV_PIXEL_FORMAT_TYPE_32_BGRA: u32 = 0x42475241;
 
@@ -191,6 +197,15 @@ impl MacOsVirtualCamera {
 
         NonNull::new(sample_buffer)
             .ok_or_else(|| anyhow::anyhow!("CMSampleBufferCreateReadyWithImageBuffer returned null"))
+    }
+}
+
+impl MacOsVirtualCamera {
+    /// Request macOS to activate the Camera Extension.
+    /// This is async — the extension may take a moment to appear.
+    pub fn install_extension() {
+        log::info!("[VCam] Requesting Camera Extension activation...");
+        unsafe { KalidoKitInstallCameraExtension() };
     }
 }
 
