@@ -51,3 +51,54 @@ cargo build --release            # リリースビルド (要 ONNX Runtime)
 - wgpu Metal backend: macOS 13.x 互換のため `.cargo/config.toml` で CoreML シンボルを `-U` リンカフラグで許容
 - ORT ビルド (Linux): cargo-zigbuild で glibc 2.17+ ターゲットにクロスビルド。musl ワークアラウンドは不要
 - features.md が実装計画の信頼できる唯一のソース (Single Source of Truth)
+
+## macOS CMIOExtension (仮想カメラ) 運用ルール
+
+### ユーザーに sudo コマンドを振らない
+
+- Extension のデプロイ・更新に必要な sudo 操作は **1つのスクリプトにまとめる**こと
+- `systemextensionsctl reset` → `developer on` → `launchctl bootout` → `open Installer.app` のような複数ステップを個別にユーザーに依頼しない
+- `/tmp/fix_and_install.sh` のように `sudo ./script.sh` 一発で完結させる
+
+### Extension バージョン管理
+
+- `CFBundleVersion` / `CFBundleShortVersionString` を更新しないと macOS は同じ Extension とみなし、新しいバイナリを `terminated_waiting_to_uninstall_on_reboot` にして古い方を使い続ける
+- Extension を更新する際は **必ずバージョンを上げる**こと
+- インストーラーアプリ（ホスト）と Extension 両方の Info.plist のバージョンを合わせる
+
+### `CFBundleExecutable` とバイナリ名
+
+- sysextd/codesign は **バンドル ID と同名のバイナリ** (`com.kalidokit.rust.camera-extension`) を優先的に検証・起動する場合がある
+- `CFBundleExecutable` の値とビルド出力のバイナリ名は必ず一致させること
+- 現在の正しい値: `com.kalidokit.rust.camera-extension`
+
+### launchd stale エントリ問題
+
+- `systemextensionsctl reset` を繰り返すと `user/262` (\_cmiodalassistants) ドメインに stale な launchd ジョブ `CMIOExtension.com.kalidokit.rust.camera-extension` が残る
+- 新規インストール時に `Submit job failed: error = 17: File exists` となり Extension プロセスが起動しない
+- 修正: `sudo launchctl bootout user/262/CMIOExtension.com.kalidokit.rust.camera-extension` の後に再インストール
+- **reset は安易に行わない**。バージョンアップによる上書きインストールを優先する
+
+### CMIOExtension sandbox 制約
+
+- Extension プロセスは `_cmiodalassistants` ユーザーで sandbox 内実行される
+- `/private/tmp/`、`/Library/Caches/` へのファイルアクセスは sandbox でブロックされる（errno=1 EPERM）
+- `temporary-exception.files.absolute-path.read-only` entitlement は ad-hoc 署名で sandbox profile コンパイルエラーを起こしクラッシュする
+- **解決済み**: `com.apple.security.application-groups` entitlement で `com.kalidokit.rust` グループを宣言すると、sandbox が `com.kalidokit.rust/` プレフィックスの POSIX shm を許可する（`ipc-posix*` ルール）
+- 現在の IPC: `shm_open("com.kalidokit.rust/vcam_frame")` で POSIX 共有メモリを使用
+
+### Extension デプロイ手順（正規フロー）
+
+```bash
+# 1. ビルド（バイナリ名 = バンドルID）
+clang -fobjc-arc -fmodules ... -o /tmp/com.kalidokit.rust.camera-extension ...
+
+# 2. インストーラーに配置 + Info.plist バージョン更新 + 署名
+cp バイナリ → Installer.app 内
+cp Info.plist → Installer.app 内
+codesign --force --sign - --entitlements Extension.entitlements <extension bundle>
+codesign --force --sign - --entitlements host.entitlements <installer app>
+
+# 3. インストール（sudo スクリプト1発で実行）
+sudo /tmp/fix_and_install.sh
+```
