@@ -13,6 +13,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithFormats:(NSArray<CMIOExtensionStreamFormat *> *)formats
              outputStreamSource:(StreamSource *)outputStreamSource;
 
+/// Start consuming sample buffers from the given client via the sink stream.
+- (void)subscribeWithClient:(CMIOExtensionClient *)client;
+
 @end
 
 NS_ASSUME_NONNULL_END

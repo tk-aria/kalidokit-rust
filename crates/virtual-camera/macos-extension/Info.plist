@@ -9,20 +9,22 @@
     <key>CFBundleDisplayName</key>
     <string>KalidoKit Virtual Camera</string>
     <key>CFBundleExecutable</key>
-    <string>kalidokit-camera-extension</string>
+    <string>com.kalidokit.rust.camera-extension</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>15.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>15.0</string>
     <key>CFBundlePackageType</key>
-    <string>XPC!</string>
+    <string>SYSX</string>
     <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
+    <string>15.0</string>
     <key>NSExtension</key>
     <dict>
         <key>NSExtensionPointIdentifier</key>
         <string>com.apple.cmio.registerassistantservice</string>
     </dict>
+    <key>NSSystemExtensionUsageDescription</key>
+    <string>KalidoKit uses a virtual camera to stream motion-captured VRM avatars to video conferencing apps.</string>
     <key>CMIOExtension</key>
     <dict>
         <key>CMIOExtensionMachServiceName</key>

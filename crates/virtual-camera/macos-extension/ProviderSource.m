@@ -1,5 +1,6 @@
 #import "ProviderSource.h"
 #import "DeviceSource.h"
+#import "SinkStreamSource.h"
 
 @implementation ProviderSource {
     CMIOExtensionProvider *_provider;
@@ -40,6 +41,8 @@
 
 - (BOOL)connectClient:(CMIOExtensionClient *)client error:(NSError **)outError {
     NSLog(@"[KalidoKit] Client connected: %@", client);
+    // Do NOT subscribe to sink here — subscribe happens in SinkStreamSource's
+    // startStreamAndReturnError: (triggered by CMIODeviceStartStream from host).
     return YES;
 }
 

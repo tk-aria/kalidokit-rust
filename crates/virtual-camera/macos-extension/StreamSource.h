@@ -10,7 +10,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, weak, nullable) CMIOExtensionStream *stream;
 
 - (instancetype)initWithFormats:(NSArray<CMIOExtensionStreamFormat *> *)formats;
-- (void)enqueueBuffer:(CMSampleBufferRef)buffer;
 
 @end
 

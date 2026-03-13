@@ -8,10 +8,11 @@ static NSUUID *kSinkStreamID;
 @implementation DeviceSource {
     NSString *_localizedName;
     StreamSource *_outputStreamSource;
-    SinkStreamSource *_sinkStreamSource;
     CMIOExtensionStream *_outputStream;
     CMIOExtensionStream *_sinkStream;
 }
+
+@synthesize sinkStreamSource = _sinkStreamSource;
 
 + (void)initialize {
     kOutputStreamID = [[NSUUID alloc] initWithUUIDString:@"A8D7B8AA-2001-4001-B001-123456789ABC"];

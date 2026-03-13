@@ -17,6 +17,8 @@
     return self;
 }
 
+/// Consume sample buffers from the connected client via the sink stream.
+/// Following UniCamEx pattern: recursive subscribe + notifyScheduledOutputChanged.
 - (void)subscribeWithClient:(CMIOExtensionClient *)client {
     __weak typeof(self) weakSelf = self;
     CMIOExtensionStream *stream = self.sinkStream;
@@ -31,15 +33,29 @@
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
 
-        if (buffer && !error) {
-            // Forward received buffer to output stream
-            [strongSelf->_outputStreamSource enqueueBuffer:buffer];
+        if (error) {
+            NSLog(@"[KalidoKit] Sink: consumeSampleBuffer error: %@", error);
+            return;
         }
 
-        // Re-subscribe to continue receiving frames (UniCamEx pattern)
+        // Re-subscribe first (defer pattern from UniCamEx)
         dispatch_async(dispatch_get_main_queue(), ^{
             [strongSelf subscribeWithClient:client];
         });
+
+        if (buffer) {
+            // Forward received buffer to output stream
+            // (Only functional with Apple Developer signing — noop with ad-hoc)
+
+            // Notify the framework that the buffer was consumed
+            // (critical for CMIO C API flow — UniCamEx does this)
+            CMTime pts = CMSampleBufferGetPresentationTimeStamp(buffer);
+            uint64_t nanoSec = (uint64_t)(CMTimeGetSeconds(pts) * (double)NSEC_PER_SEC);
+            CMIOExtensionScheduledOutput *output =
+                [[CMIOExtensionScheduledOutput alloc] initWithSequenceNumber:sequenceNumber
+                                                      hostTimeInNanoseconds:nanoSec];
+            [strongSelf.sinkStream notifyScheduledOutputChanged:output];
+        }
     }];
 }
 
@@ -93,6 +109,8 @@
     return YES;
 }
 
+/// Called when host does CMIODeviceStartStream on the sink stream.
+/// This is where we start subscribing (UniCamEx pattern).
 - (BOOL)startStreamAndReturnError:(NSError **)outError {
     NSLog(@"[KalidoKit] Sink stream started, subscribing for buffers");
     if (_connectedClient) {
