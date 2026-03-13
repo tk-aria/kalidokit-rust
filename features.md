@@ -21,7 +21,8 @@ Phase 6 (統合) ← Phase 1-5 全てに依存
   ↓
 Phase 7 (仕上げ) ← Phase 6に依存
   ↓
-Phase 10 (macOS仮想カメラ) ← Phase 6に依存
+Phase 10 (macOS仮想カメラ: CMIOExtension) ← Phase 6に依存
+Phase 10.5 (macOS仮想カメラ: CMIO DAL Plugin — ブラウザ互換) ← Phase 10に依存
 Phase 11 (Linux仮想カメラ・オーディオ: PipeWire + v4l2loopback) ← Phase 6に依存 (Phase 10と並行可能)
 ```
 
@@ -1549,13 +1550,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 **技術方針**:
 - Objective-C で Camera Extension を実装 (`swift-bridge` 不要)
-- `objc2-core-media-io` crate で Rust から直接 ObjC ランタイムを呼び出し
-- フレーム転送: wgpu `buffer.map_async` (CPU readback) → CVPixelBuffer → CMSampleBuffer → Mach Service IPC
+- フレーム転送: wgpu `buffer.map_async` (CPU readback) → RGBA→BGRA 変換 + 1280x720 ダウンスケール → TCP localhost:19876 → Extension 側で CVPixelBuffer → CMSampleBuffer
+- IPC: TCP localhost (ホスト=サーバー、Extension=クライアント) — sandbox 制約を回避
 
 ### Step 10.1: virtual-camera crate 作成
 
 - [x] `crates/virtual-camera/Cargo.toml` 新規作成 <!-- 2026-03-12 15:30 JST -->
-  - dependencies: `objc2`, `objc2-core-media-io`, `objc2-foundation`, `objc2-core-media`, `objc2-core-video`, `anyhow`, `log`
+  - dependencies: `anyhow`, `log`, `libc` (macOS)
   - `[target.'cfg(target_os = "macos")'.dependencies]` で macOS 限定
 - [x] `crates/virtual-camera/src/lib.rs`: trait 定義 <!-- 2026-03-12 15:30 JST -->
   ```rust
@@ -1591,30 +1592,38 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 - [x] `DeviceSource.h/.m`: `CMIOExtensionDeviceSource` プロトコル実装 <!-- 2026-03-12 15:35 JST -->
   - ストリーム管理 (output stream + sink stream)
   - デバイスプロパティ公開
-- [x] `StreamSource.h/.m`: `CMIOExtensionStreamSource` プロトコル実装 <!-- 2026-03-12 15:35 JST -->
+- [x] `StreamSource.h/.m`: `CMIOExtensionStreamSource` プロトコル実装 — TCP クライアント方式に書き換え <!-- 2026-03-14 01:55 JST -->
   - 出力ストリーム: フォーマット公開 (1280×720 BGRA, 30fps)
-  - FaceTime / Zoom 等への映像配信
+  - TCP クライアント (localhost:19876) でホストからフレーム受信
+  - `initWithFormats:` で即座に TCP 接続 + フレームタイマー開始 (proxy プロセスで `startStreamAndReturnError:` が呼ばれない問題を回避)
+  - 64KB read バッファ (GCD 512KB スタック制限に対応、1MB → 64KB で stack overflow 修正)
+  - dispatch_source ベースの非同期 read + 1秒間隔の再接続タイマー
 - [x] `SinkStreamSource.h/.m`: Sink ストリーム実装 <!-- 2026-03-12 15:35 JST -->
   - Host アプリからのフレーム受信 (`consumeSampleBuffer`)
   - 再帰的サブスクリプションパターン (UniCamEx 方式)
-- [x] `Info.plist`: Extension 設定 <!-- 2026-03-12 15:35 JST -->
+  - `notifyScheduledOutputChanged` 追加 (CMIO C API フロー対応)
+- [x] `Info.plist`: Extension 設定 <!-- 2026-03-14 01:55 JST -->
+  - `CFBundleExecutable`: `com.kalidokit.rust.camera-extension` (バンドルIDと一致必須)
+  - `CFBundlePackageType`: `SYSX` (System Extension)
   - `CMIOExtensionMachServiceName`: `com.kalidokit.rust.camera-extension`
-  - `NSExtension.NSExtensionPointIdentifier`: `com.apple.cmio.registerassistantservice`
-- [x] `Extension.entitlements`: <!-- 2026-03-12 15:35 JST -->
+  - `NSSystemExtensionUsageDescription` 追加
+- [x] `Extension.entitlements`: <!-- 2026-03-13 23:28 JST -->
   - `com.apple.security.app-sandbox`: true
   - `com.apple.security.application-groups`: `com.kalidokit.rust`
+  - `com.apple.security.network.server` / `client`: true (TCP 接続用)
 
-### Step 10.3: Rust → ObjC フレーム送信パイプライン
+### Step 10.3: Rust ホスト側 TCP フレーム送信パイプライン
 
 **ファイル**: `crates/virtual-camera/src/macos.rs`
 
-- [x] `objc2-core-media-io` で CoreMediaIO デバイス/ストリーム探索 <!-- 2026-03-12 15:45 JST -->
-  - Mach Service 名でシンクストリームを特定
-- [x] RGBA → BGRA 変換 (wgpu 出力 → CoreVideo 入力) <!-- 2026-03-12 15:45 JST -->
-- [x] `CVPixelBuffer` 作成: `CVPixelBufferCreateWithBytes` (objc2-core-video) <!-- 2026-03-12 15:45 JST -->
-- [x] `CMSampleBuffer` 作成: タイムスタンプ付き (`CMTimeMake`) <!-- 2026-03-12 15:45 JST -->
-- [x] シンクストリームへのバッファ送信 <!-- 2026-03-12 15:45 JST -->
-- [x] `VirtualCamera` trait の macOS 実装 <!-- 2026-03-12 15:45 JST -->
+- [x] TCP サーバー (localhost:19876) でフレーム配信 <!-- 2026-03-13 18:07 JST -->
+  - `TcpListener::bind` + accept ループ (non-blocking listener, blocking stream)
+  - 最新クライアントのみ保持 (`Arc<Mutex<Option<TcpStream>>>`)
+- [x] RGBA → BGRA 変換 (wgpu 出力 → Extension 入力) <!-- 2026-03-13 18:07 JST -->
+- [x] 1280x720 ダウンスケール (nearest-neighbor) — TCP 帯域削減 <!-- 2026-03-14 01:00 JST -->
+- [x] フレームフォーマット: `[width: u32 LE][height: u32 LE][BGRA pixel data]` <!-- 2026-03-13 18:07 JST -->
+- [x] `VirtualCamera` trait の macOS 実装 <!-- 2026-03-13 18:07 JST -->
+- [x] `stream.set_nonblocking(false)` — listener の non-blocking が accept された stream に継承される問題を修正 <!-- 2026-03-14 02:04 JST -->
 
 ### Step 10.4: wgpu フレームキャプチャ統合
 
@@ -1630,20 +1639,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 ### Step 10.5: Extension ビルド & 署名設定
 
 - [x] `build.rs`: `cc` crate で .m ファイルコンパイル + CoreMediaIO フレームワークリンク <!-- 2026-03-12 15:50 JST -->
-  ```rust
-  cc::Build::new()
-      .files(&["macos-extension/ProviderSource.m", ...])
-      .flag("-fobjc-arc")
-      .compile("vcam_extension");
-  println!("cargo:rustc-link-lib=framework=CoreMediaIO");
-  println!("cargo:rustc-link-lib=framework=CoreMedia");
-  println!("cargo:rustc-link-lib=framework=CoreVideo");
-  ```
 - [x] `scripts/build-camera-extension.sh`: Extension バンドル (.appex) 生成スクリプト <!-- 2026-03-12 15:50 JST -->
   - clang で ObjC ソースをコンパイル → .appex バンドル構造を作成
-  - `--sign IDENTITY` オプションで Developer ID 署名対応
+  - バイナリ出力名を `com.kalidokit.rust.camera-extension` に修正 <!-- 2026-03-13 23:28 JST -->
+- [x] `scripts/build-app-bundle.sh`: .app バンドル生成 + Extension 埋め込み + installer バイナリ統合 <!-- 2026-03-14 01:56 JST -->
+  - installer binary (`install-extension.m`) をホスト実行ファイルとして配置
+  - `host.entitlements` (`com.apple.developer.system-extension.install`) で署名
+  - ホスト・Extension 両方の Info.plist バージョン同期
+- [x] `crates/virtual-camera/macos-extension/host.entitlements` 新規作成 <!-- 2026-03-14 01:55 JST -->
 - [x] 開発用: SIP 無効化手順ドキュメント (`docs/camera-extension-dev-setup.md`) <!-- 2026-03-12 15:50 JST -->
 - [x] 配布用: Developer ID 署名 + 公証 (Notarization) 手順ドキュメント (`docs/camera-extension-distribution.md`) <!-- 2026-03-12 15:50 JST -->
+- [x] ad-hoc 署名調査レポート (`docs/macos-virtual-camera-adhoc-signing-report.md`) <!-- 2026-03-13 20:47 JST -->
 
 ### Step 10.6: Phase 10 検証
 
@@ -1651,18 +1657,59 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   - `cargo check --workspace` 成功
   - `cargo clippy --workspace -- -D warnings` Rust エラー 0 (ObjC 未使用引数警告 3 件のみ)
   - Extension バンドル (.appex) が `scripts/build-camera-extension.sh` で生成される
-- [ ] **動作確認** — SIP **完全無効化** が必要 (現在の部分無効化では不十分):
-  - Extension のインストール・有効化 (`OSSystemExtensionManager`)
-  - アプリ起動後、システム環境設定 > プライバシー > カメラ に仮想カメラが表示
-  - FaceTime / Photo Booth でアバター映像が表示される
-  - フレームレート 30fps 維持
-  - アプリ終了時に仮想カメラが正常停止
-  - **検証結果 (2026-03-12 16:28 JST)**:
-    - ビルド・署名 (Apple Development 証明書) 成功
-    - `.app` バンドル + embedded `.systemextension` 自動生成スクリプト (`build-app-bundle.sh`) 作成
-    - Extension バイナリ単体: `CMIOExtensionProvider.startServiceWithProvider:` 正常動作確認
-    - `OSSystemExtensionManager` 登録: Code 8 で失敗 (SIP 部分無効化のみ)
-    - `csrutil disable` (完全) or Provisioning Profile + Developer ID が必要
+- [x] **動作確認** — SIP 完全無効化 + ad-hoc 署名で動作確認済み <!-- 2026-03-14 02:07 JST -->
+  - [x] Extension のインストール・有効化 (`OSSystemExtensionManager`) — v15.0 `[activated enabled]`
+  - [x] アプリ起動後、カメラデバイス一覧に「KalidoKit Virtual Camera」が表示
+  - [x] QuickTime Player (新規ムービー収録) でアバター映像が表示される
+  - [x] TCP フレーム配信 30fps 安定 (Extension ログ: `TCP frame N (1280x720)` 毎秒出力)
+  - [ ] Google Meet / Zoom でカメラデバイスが表示される — **未達**: ad-hoc 署名 (TeamIdentifier なし) のため Chrome 等の sandboxed アプリからは CMIOExtension が列挙されない → Phase 10.5 (DAL Plugin) または Apple Developer Program 署名で対応
+  - **検証経緯**:
+    - (2026-03-12 16:28) ビルド・署名成功、Code 8 で登録失敗 (SIP 部分無効化のみ)
+    - (2026-03-13 20:47) ad-hoc 署名調査 — SIP 完全無効化で解決
+    - (2026-03-14 01:00) CMIO C API → TCP IPC に書き換え、Extension を TCP クライアントに変更
+    - (2026-03-14 01:51) Extension stack overflow 修正 (1MB → 64KB read buffer)
+    - (2026-03-14 02:04) ホスト側 WouldBlock 修正 (`set_nonblocking(false)`)
+    - (2026-03-14 02:07) QuickTime Player でエンドツーエンド動作確認完了
+
+---
+
+## Phase 10.5: macOS 仮想カメラ — CMIO DAL Plugin 対応 (ブラウザ互換)
+
+**目的**: Google Meet / Zoom 等のブラウザベースのビデオ通話で仮想カメラを使用可能にする
+
+**背景**: 現行の CMIOExtension (Phase 10) は ad-hoc 署名のため、Chrome 等の sandboxed アプリからカメラデバイスが列挙されない。CMIO DAL Plugin (旧API) は `/Library/CoreMediaIO/Plug-Ins/DAL/` に配置する方式で署名要件が緩く、ブラウザからも認識される。ただし macOS 14 (Sonoma) 以降で非推奨。
+
+**制約**:
+- macOS 14+ で非推奨 (将来の macOS で削除される可能性あり)
+- Apple Developer Program 登録 ($99/年) で CMIOExtension を正規署名すれば DAL Plugin なしでブラウザ対応可能
+
+### Step 10.5.1: DAL Plugin バンドル作成
+
+- [ ] `crates/virtual-camera/macos-dal/` ディレクトリ新規作成
+- [ ] DAL Plugin の `Info.plist` 作成 (`CFPlugInTypes` に CMIO DAL Plugin UUID を設定)
+- [ ] `CMIODPASampleServer` プロトコル実装 (Objective-C)
+  - デバイス・ストリーム登録
+  - フレームバッファ供給 (`CMSampleBufferRef`)
+- [ ] Plugin バンドル構造: `KalidoKitCamera.plugin/Contents/{MacOS,Info.plist}`
+
+### Step 10.5.2: ホスト → DAL Plugin IPC
+
+- [ ] 既存の TCP localhost IPC (port 19876) を DAL Plugin からも接続可能にする
+  - CMIOExtension と DAL Plugin で IPC レイヤーを共有
+- [ ] DAL Plugin 側で TCP クライアント接続 → フレーム受信 → `CMSampleBuffer` 変換
+
+### Step 10.5.3: ビルド・デプロイスクリプト
+
+- [ ] `scripts/build-dal-plugin.sh`: DAL Plugin のビルド + ad-hoc 署名
+- [ ] デプロイ先: `/Library/CoreMediaIO/Plug-Ins/DAL/KalidoKitCamera.plugin`
+- [ ] `scripts/build-app-bundle.sh` に DAL Plugin ビルド統合 (オプション)
+
+### Step 10.5.4: 検証
+
+- [ ] QuickTime Player で DAL Plugin 仮想カメラの映像表示確認
+- [ ] Google Chrome (Google Meet) でカメラデバイス一覧に表示されること
+- [ ] Safari でもカメラデバイスが認識されること
+- [ ] CMIOExtension (Phase 10) と DAL Plugin が共存できること (デバイス重複なし)
 
 ---
 
