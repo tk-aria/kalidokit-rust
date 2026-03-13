@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.kalidokit.rust.dal-camera</string>
+    <key>CFBundleName</key>
+    <string>KalidoKit Virtual Camera (DAL)</string>
+    <key>CFBundleExecutable</key>
+    <string>KalidoKitCamera</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>BNDL</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFPlugInFactories</key>
+    <dict>
+        <key>3F8E656F-ECB4-4D4A-BDEE-CA6A4410B6C8</key>
+        <string>KalidoKitDALPlugInMain</string>
+    </dict>
+    <key>CFPlugInTypes</key>
+    <dict>
+        <!-- kCMIOHardwarePlugInTypeID -->
+        <key>30010C1C-93BF-11D8-8B5B-000A95AF9C6A</key>
+        <array>
+            <string>3F8E656F-ECB4-4D4A-BDEE-CA6A4410B6C8</string>
+        </array>
+    </dict>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.3</string>
+</dict>
+</plist>
