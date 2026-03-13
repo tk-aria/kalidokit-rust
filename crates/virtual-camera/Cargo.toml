@@ -8,21 +8,10 @@ anyhow = { workspace = true }
 log = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6"
-objc2-foundation = "0.3"
-objc2-core-media-io = { version = "0.3", features = [
-    "CMIOHardwareSystem", "CMIOHardwareObject", "CMIOHardwareDevice", "CMIOHardwareStream",
-] }
-objc2-core-media = { version = "0.3", features = [
-    "CMSampleBuffer", "CMFormatDescription", "CMTime", "CMSimpleQueue",
-    "objc2-core-video",
-] }
-objc2-core-video = { version = "0.3", features = [
-    "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn",
-] }
-objc2-core-foundation = { version = "0.3", features = [
-    "CFString", "CFCGTypes",
-] }
+libc = "0.2"
+
+[dev-dependencies]
+env_logger = "0.11"
 
 [target.'cfg(target_os = "macos")'.build-dependencies]
 cc = "1"

@@ -231,7 +231,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         stage_lighting: prefs.stage_lighting.clone(),
         #[cfg(target_os = "macos")]
         vcam: None,
-        vcam_enabled: false,
+        vcam_enabled: true,
     })
 }
 
