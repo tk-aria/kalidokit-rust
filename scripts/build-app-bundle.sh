@@ -46,7 +46,7 @@ clang -fobjc-arc -fmodules \
     -framework CoreVideo \
     -framework Foundation \
     -I "$EXT_SRC" \
-    -o "$EXT_CONTENTS/MacOS/kalidokit-camera-extension" \
+    -o "$EXT_CONTENTS/MacOS/com.kalidokit.rust.camera-extension" \
     "$EXT_SRC/main.m" \
     "$EXT_SRC/ProviderSource.m" \
     "$EXT_SRC/DeviceSource.m" \
@@ -55,11 +55,20 @@ clang -fobjc-arc -fmodules \
 
 cp "$EXT_SRC/Info.plist" "$EXT_CONTENTS/Info.plist"
 
-# 3. Create .app bundle
+# 3. Build installer binary (replaces host binary for Extension activation)
+echo "Building installer binary..."
+clang -fobjc-arc -fmodules \
+    -framework SystemExtensions \
+    -framework Foundation \
+    -o "$PROJECT_ROOT/target/$PROFILE/install-extension" \
+    "$SCRIPT_DIR/install-extension.m"
+
+# 4. Create .app bundle
 echo "Creating .app bundle..."
 mkdir -p "$MACOS"
 
-cp "$PROJECT_ROOT/target/$PROFILE/kalidokit-rust" "$MACOS/kalidokit-rust"
+# Use installer as the main executable (for Extension activation via open)
+cp "$PROJECT_ROOT/target/$PROFILE/install-extension" "$MACOS/kalidokit-rust"
 
 # Create host Info.plist
 cat > "$CONTENTS/Info.plist" << 'PLIST'
@@ -75,9 +84,9 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <key>CFBundleExecutable</key>
     <string>kalidokit-rust</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>15.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>15.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
@@ -93,7 +102,12 @@ codesign --force --sign - \
     "$EXT_BUNDLE"
 
 echo "Signing host app..."
+HOST_ENT="$PROJECT_ROOT/crates/virtual-camera/macos-extension/host.entitlements"
+if [[ ! -f "$HOST_ENT" ]]; then
+    HOST_ENT="/tmp/host.entitlements"
+fi
 codesign --force --sign - \
+    --entitlements "$HOST_ENT" \
     "$APP_DIR"
 
 echo ""

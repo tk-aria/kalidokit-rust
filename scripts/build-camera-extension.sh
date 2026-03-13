@@ -48,7 +48,7 @@ clang -fobjc-arc -fmodules \
     -framework CoreVideo \
     -framework Foundation \
     -I "$EXT_SRC" \
-    -o "$APPEX_DIR/MacOS/kalidokit-camera-extension" \
+    -o "$APPEX_DIR/MacOS/com.kalidokit.rust.camera-extension" \
     "$EXT_SRC/main.m" \
     "$EXT_SRC/ProviderSource.m" \
     "$EXT_SRC/DeviceSource.m" \
