@@ -1713,6 +1713,117 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ---
 
+## Phase 10.6: 仮想カメラ パフォーマンス最適化
+
+**目的**: 仮想カメラ有効時のフレームレート低下を解消する。現状、VCam パスが 8-26 ms/フレーム を追加しており、実効フレームレートが 20-35 fps に低下している。
+
+**背景**: 仮想カメラパイプラインは以下の経路でフレームを転送する:
+```
+wgpu render → GPU readback (map_async) → CPU 変換 (RGBA↔BGRA + downscale) → TCP write_all (3.7MB) → Extension
+```
+このパイプライン全体がレンダースレッド上で同期実行されており、複数のボトルネックが累積してフレームレートを大幅に低下させている。
+
+**参考**: [UniCamEx](https://github.com/creativeIKEP/UniCamEx) では MTLTexture → CIImage → CVPixelBuffer の変換を GPU 上で完結させ、CMIOExtension の sink stream (フレームワーク内蔵 IPC) でフレームを転送するため、CPU 側のオーバーヘッドが最小限。
+
+### Step 10.6.1: 二重レンダリングの廃止 (推定削減: 3-8 ms/frame)
+
+**問題**: `vcam_send_frame()` (`crates/app/src/update.rs`) が `scene.render_to_view()` を **もう一度呼んでいる**。メインのレンダーパスで既に surface テクスチャに描画済みにもかかわらず、キャプチャ用テクスチャに対して全メッシュ・全シェーダーを再実行している。GPU 描画が毎フレーム2回走るため、GPU 負荷が2倍になる。
+
+**修正方針**:
+- `vcam_send_frame()` 内の `render_to_view()` 呼び出しを削除する
+- 代わりに、メインのレンダーパスで描画済みの surface テクスチャからキャプチャ用ステージングバッファへ `copy_texture_to_buffer` でコピーする
+- または、レンダーターゲットをキャプチャ用テクスチャに統一し、そこから surface へ blit + ステージングバッファへコピーする
+
+**対象ファイル**: `crates/app/src/update.rs` (`vcam_send_frame` 関数)、`crates/renderer/src/scene.rs`
+
+- [ ] `vcam_send_frame()` から二重の `render_to_view()` 呼び出しを除去し、surface テクスチャからのコピーに変更 — キャプチャ解像度 (1280x720) とウィンドウ解像度が異なるため、GPU blit (フルスクリーンクアッド) が必要。10.6.2 で 1280x720 固定化済みのため GPU 負荷は大幅に軽減されている
+- [ ] `copy_texture_to_buffer` を `output.present()` の前に実行し、パイプラインバブルを回避
+
+### Step 10.6.2: キャプチャ解像度を 1280x720 に固定 (推定削減: 1-3 ms/frame + readback 75% 削減)
+
+**問題**: `ensure_frame_capture()` (`crates/renderer/src/scene.rs`) がウィンドウ解像度 (例: 2560x1440 = 14.7 MB) でキャプチャテクスチャを作成している。GPU readback のデータ量が不要に大きく、さらに `send_frame()` (`crates/virtual-camera/src/macos.rs`) で CPU nearest-neighbor ダウンスケール (2560x1440 → 1280x720) を行うためキャッシュ効率が悪い。
+
+**修正方針**:
+- `ensure_frame_capture()` のテクスチャサイズを 1280x720 固定にする
+- GPU 側で surface テクスチャ → 1280x720 キャプチャテクスチャへの縮小コピーを行う (render pass blit または compute shader)
+- `send_frame()` 内の CPU ダウンスケールループを削除する
+
+**対象ファイル**: `crates/renderer/src/scene.rs` (`ensure_frame_capture`)、`crates/virtual-camera/src/macos.rs` (`send_frame`)
+
+- [x] `ensure_frame_capture()` のテクスチャサイズを 1280x720 に固定 — `vcam_send_frame()` で `VCAM_W=1280, VCAM_H=720` として `ensure_frame_capture` に渡す。専用 depth buffer (`frame_capture_depth`) を追加し解像度不一致を解決
+- [ ] GPU blit による縮小コピーを実装 (surface texture → capture texture) — 現状は 1280x720 で独立レンダリング。フルスクリーンクアッドでの GPU リサイズは将来の最適化
+- [x] `send_frame()` 内の CPU ダウンスケールコードを削除 — nearest-neighbor ダウンスケールループおよび `rgba_to_bgra()` を削除
+
+### Step 10.6.3: TCP 送信の非同期化 (推定削減: 1-5 ms/frame)
+
+**問題**: `send_frame()` (`crates/virtual-camera/src/macos.rs`) がレンダースレッド上で `write_all()` をブロッキング実行している。1280x720 BGRA = 3,686,408 bytes の TCP 書き込みは、カーネルバッファ (通常 128-256 KB) を超えるため複数回のシステムコールでブロックする。Extension の read 速度に依存するため遅延が不安定。
+
+**修正方針**:
+- 専用の送信スレッドを追加する
+- レンダースレッド → 送信スレッド間を single-slot channel (最新フレームのみ保持) で接続
+- レンダースレッドは channel に書き込むだけで即座に return する (ブロックなし)
+- 送信スレッドがブロッキング `write_all()` を独立して実行
+- Extension が追いつけない場合はフレームをドロップ (最新のみ送信)
+
+**対象ファイル**: `crates/virtual-camera/src/macos.rs` (`MacOsVirtualCamera` 構造体、`send_frame`)
+
+- [x] `MacOsVirtualCamera` に送信スレッド + channel を追加 — `vcam-tcp-writer` スレッド + `mpsc::sync_channel(1)` (bounded capacity 1)
+- [x] `send_frame()` を非ブロッキング化 (channel 書き込みのみ) — `try_send` で即座に return、送信スレッドがビジーならフレームをドロップ
+- [x] 送信スレッドで `write_all()` を実行、エラー時はクライアント切断
+
+### Step 10.6.4: BGRA 二重変換の削除 (推定削減: 1-2 ms/frame)
+
+**問題**: wgpu の surface format は `Bgra8UnormSrgb` (`crates/renderer/src/scene.rs:414`) で readback データは BGRA。`vcam_send_frame()` (`crates/app/src/update.rs:773`) で BGRA→RGBA に変換し、`send_frame()` (`crates/virtual-camera/src/macos.rs:106`) で RGBA→BGRA に戻している。往復変換は完全に無意味で、3,686,400 ピクセルに対する swap 操作が2回走る。
+
+**修正方針**:
+- `vcam_send_frame()` の BGRA→RGBA 変換を削除する
+- `send_frame()` の `rgba_to_bgra()` 呼び出しを削除する
+- `VirtualCamera` trait の `send_frame` シグネチャのドキュメントを「BGRA 入力」に更新する
+
+**対象ファイル**: `crates/app/src/update.rs` (`vcam_send_frame`)、`crates/virtual-camera/src/macos.rs` (`send_frame`、`rgba_to_bgra`)
+
+- [x] `update.rs` の BGRA→RGBA 変換コード (chunk.swap) を削除
+- [x] `macos.rs` の `rgba_to_bgra()` 関数を削除
+- [x] `VirtualCamera::send_frame` のコメントを BGRA 入力に更新
+
+### Step 10.6.5: VCam 30fps スロットル (推定削減: 全コスト半減)
+
+**問題**: `vcam_send_frame()` がレンダーループの毎フレーム (最大 60fps) で呼び出されている (`crates/app/src/update.rs:365`)。仮想カメラは 30fps で十分であり、60fps で送信すると TCP 帯域 (~222 MB/s) と全 CPU 処理コストが不要に2倍になる。
+
+**修正方針**:
+- フレームカウンタまたはタイムスタンプで 30fps にスロットルする
+- 例: `Instant::now()` との差分が 33ms 未満ならスキップ
+- または `frame_count % 2 == 0` のときだけ送信 (60fps レンダー前提)
+
+**対象ファイル**: `crates/app/src/update.rs` (`update_frame` 内の vcam 呼び出し部分)、`crates/app/src/state.rs` (タイムスタンプフィールド追加)
+
+- [x] `AppState` に `vcam_last_send: Instant` フィールドを追加
+- [x] `vcam_send_frame()` 呼び出し前に経過時間チェック (33ms 以上のときのみ実行)
+
+### Step 10.6.6: GPU readback の非同期化 (推定削減: 2-8 ms/frame)
+
+**問題**: `read_frame_capture()` (`crates/renderer/src/scene.rs`) が `buffer.slice(..).map_async()` + `device.poll(Maintain::Wait)` を呼んでおり、GPU → CPU 転送完了をレンダースレッドが同期的にスピン待ちする。GPU は次フレームのレンダリングを開始できず、CPU/GPU パイプラインが完全にシリアライズされる。
+
+**修正方針**:
+- ダブルバッファまたはトリプルバッファ方式にする
+- フレーム N では `map_async` を発行し、フレーム N+1 でフレーム N-1 のバッファを読み出す (1フレーム遅延を許容)
+- `poll(Maintain::Poll)` で非ブロッキングチェック + 準備完了時のみ読み出し
+
+**対象ファイル**: `crates/renderer/src/scene.rs` (`read_frame_capture`、ステージングバッファ管理)
+
+- [x] ステージングバッファを2面 (ダブルバッファ) に拡張 — `frame_capture_buffers: [Option<wgpu::Buffer>; 2]` + `frame_capture_buf_idx` で交互に使用
+- [x] `map_async` 発行と結果読み出しを1フレーム分離する — `capture_frame_async()` が現フレームをバッファ[idx] にコピーしつつ、前フレームのバッファ[1-idx] を読み出す
+- [x] 旧 `read_frame_capture` (同期 `poll(Wait)`) を `capture_frame_async` に置換 — `poll(Poll)` + `Arc<AtomicBool>` で完全非ブロッキング化。1フレーム遅延を許容し GPU/CPU パイプラインの並行動作を実現。実測 readback 1.4-10.7ms → 0.1-0.6ms
+
+### Step 10.6.7: Phase 10.6 検証
+
+- [ ] VCam ON/OFF 切替時のフレームレート比較 (改善前後)
+- [ ] TCP フレーム配信が 30fps 安定であること (Extension ログで確認)
+- [ ] QuickTime Player で映像品質に劣化がないこと
+- [ ] メモリ使用量が増加していないこと (バッファ再利用の確認)
+
+---
+
 ## Phase 11: Linux 仮想カメラ・オーディオ (PipeWire / v4l2loopback)
 
 **目的**: Linux 環境でアバター映像・音声を仮想デバイスとして配信し、Google Meet / Zoom 等のビデオ通話アプリから利用可能にする
