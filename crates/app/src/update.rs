@@ -361,9 +361,13 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
 
     output.present();
 
-    // 6. Virtual camera: capture and send frame
+    // 6. Virtual camera: capture and send frame (throttled to 30fps)
     if state.vcam_enabled {
-        vcam_send_frame(state);
+        let now = Instant::now();
+        if now.duration_since(state.vcam_last_send).as_millis() >= 33 {
+            vcam_send_frame(state);
+            state.vcam_last_send = now;
+        }
     }
 
     Ok(())
@@ -730,52 +734,44 @@ fn apply_hand_bones(
 
 /// Capture the rendered frame and send it to the virtual camera.
 fn vcam_send_frame(state: &mut AppState) {
-    let width = state.render_ctx.config.width;
-    let height = state.render_ctx.config.height;
+    // Fixed capture resolution — avoids CPU downscale in send_frame
+    const VCAM_W: u32 = 1280;
+    const VCAM_H: u32 = 720;
 
     // Ensure staging resources exist
-    state.scene.ensure_frame_capture(&state.render_ctx.device, width, height);
+    state.scene.ensure_frame_capture(&state.render_ctx.device, VCAM_W, VCAM_H);
 
-    // Render the scene to the capture texture
-    if let Some(view) = state.scene.frame_capture_view() {
-        state.scene.render_to_view(&state.render_ctx, &view);
+    // Render the scene to the capture texture (uses its own depth buffer at VCAM resolution)
+    state.scene.render_to_capture(&state.render_ctx);
 
-        // Copy texture to staging buffer
-        let mut encoder = state.render_ctx.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor { label: Some("vcam_copy") },
-        );
-        state.scene.copy_frame_to_buffer(&mut encoder);
-        state.render_ctx.queue.submit(std::iter::once(encoder.finish()));
+    // Async double-buffered readback: copies current frame to GPU buffer,
+    // returns previous frame's data (one frame latency, non-blocking pipeline).
+    let prev_frame = state.scene.capture_frame_async(
+        &state.render_ctx.device,
+        &state.render_ctx.queue,
+    );
 
-        // Read back and send
-        if let Some(bgra_data) = state.scene.read_frame_capture(&state.render_ctx.device) {
-            #[cfg(target_os = "macos")]
-            {
-                // Initialize virtual camera on first frame
-                use virtual_camera::VirtualCamera;
-                if state.vcam.is_none() {
-                    let mut vcam = virtual_camera::MacOsVirtualCamera::new();
-                    match vcam.start() {
-                        Ok(()) => {
-                            state.vcam = Some(vcam);
-                        }
-                        Err(e) => {
-                            log::error!("[VCam] Failed to start: {e}");
-                            state.vcam_enabled = false;
-                            return;
-                        }
+    if let Some(bgra_data) = prev_frame {
+        #[cfg(target_os = "macos")]
+        {
+            // Initialize virtual camera on first frame
+            use virtual_camera::VirtualCamera;
+            if state.vcam.is_none() {
+                let mut vcam = virtual_camera::MacOsVirtualCamera::new();
+                match vcam.start() {
+                    Ok(()) => {
+                        state.vcam = Some(vcam);
+                    }
+                    Err(e) => {
+                        log::error!("[VCam] Failed to start: {e}");
+                        state.vcam_enabled = false;
+                        return;
                     }
                 }
-                if let Some(vcam) = &mut state.vcam {
-                    // BGRA from wgpu, but our VirtualCamera trait expects RGBA
-                    // The macOS impl converts RGBA->BGRA internally, so convert here
-                    let mut rgba = bgra_data;
-                    for chunk in rgba.chunks_exact_mut(4) {
-                        chunk.swap(0, 2); // B <-> R
-                    }
-                    if let Err(e) = vcam.send_frame(&rgba, width, height) {
-                        log::warn!("[VCam] send_frame error: {e}");
-                    }
+            }
+            if let Some(vcam) = &mut state.vcam {
+                if let Err(e) = vcam.send_frame(&bgra_data, VCAM_W, VCAM_H) {
+                    log::warn!("[VCam] send_frame error: {e}");
                 }
             }
         }

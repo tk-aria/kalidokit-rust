@@ -232,6 +232,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         #[cfg(target_os = "macos")]
         vcam: None,
         vcam_enabled: true,
+        vcam_last_send: Instant::now(),
     })
 }
 

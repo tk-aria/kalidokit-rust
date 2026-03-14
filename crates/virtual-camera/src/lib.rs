@@ -6,8 +6,8 @@ pub trait VirtualCamera {
     /// Start the virtual camera device.
     fn start(&mut self) -> anyhow::Result<()>;
 
-    /// Send a single RGBA frame to the virtual camera.
-    fn send_frame(&mut self, rgba: &[u8], width: u32, height: u32) -> anyhow::Result<()>;
+    /// Send a single BGRA frame to the virtual camera.
+    fn send_frame(&mut self, bgra: &[u8], width: u32, height: u32) -> anyhow::Result<()>;
 
     /// Stop the virtual camera device.
     fn stop(&mut self);

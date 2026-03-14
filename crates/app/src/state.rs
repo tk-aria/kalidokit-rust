@@ -42,6 +42,8 @@ pub struct AppState {
     pub vcam: Option<virtual_camera::MacOsVirtualCamera>,
     /// Whether virtual camera streaming is enabled.
     pub vcam_enabled: bool,
+    /// Last time a frame was sent to the virtual camera (for 30fps throttle).
+    pub vcam_last_send: Instant,
 }
 
 /// Current rig solver results (face/pose/hand).

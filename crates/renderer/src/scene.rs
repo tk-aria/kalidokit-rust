@@ -41,9 +41,17 @@ pub struct Scene {
     // Kept alive for potential future dynamic material creation.
     #[allow(dead_code)]
     material_bind_group_layout: wgpu::BindGroupLayout,
-    /// Staging buffer for reading back rendered frames (virtual camera).
-    frame_capture_buffer: Option<wgpu::Buffer>,
+    /// Staging resources for reading back rendered frames (virtual camera).
     frame_capture_texture: Option<wgpu::Texture>,
+    frame_capture_depth: Option<DepthTexture>,
+    /// Double-buffered staging buffers for async GPU readback.
+    /// Index alternates each frame to overlap copy and readback.
+    frame_capture_buffers: [Option<wgpu::Buffer>; 2],
+    frame_capture_buf_idx: usize,
+    /// Signals that the previous buffer's map_async callback has fired.
+    frame_capture_map_ready: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Whether the previous buffer has a pending readback.
+    frame_capture_pending: bool,
     frame_capture_width: u32,
     frame_capture_height: u32,
 }
@@ -304,8 +312,12 @@ impl Scene {
             lights_buffer,
             camera_bind_group,
             material_bind_group_layout,
-            frame_capture_buffer: None,
             frame_capture_texture: None,
+            frame_capture_depth: None,
+            frame_capture_buffers: [None, None],
+            frame_capture_buf_idx: 0,
+            frame_capture_map_ready: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            frame_capture_pending: false,
             frame_capture_width: 0,
             frame_capture_height: 0,
         }
@@ -337,6 +349,11 @@ impl Scene {
 
     /// Render the 3D scene to a texture view (does not acquire or present the surface).
     pub fn render_to_view(&self, ctx: &RenderContext, view: &wgpu::TextureView) {
+        self.render_to_view_with_depth(ctx, view, &self.depth.view);
+    }
+
+    /// Render the 3D scene to a texture view with a specified depth buffer.
+    fn render_to_view_with_depth(&self, ctx: &RenderContext, view: &wgpu::TextureView, depth_view: &wgpu::TextureView) {
         let mut encoder = ctx
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -357,7 +374,7 @@ impl Scene {
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth.view,
+                    view: depth_view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Store,
@@ -384,6 +401,13 @@ impl Scene {
         ctx.queue.submit(std::iter::once(encoder.finish()));
     }
 
+    /// Render the 3D scene to the frame capture texture (uses its own depth buffer).
+    pub fn render_to_capture(&self, ctx: &RenderContext) {
+        if let (Some(view), Some(depth)) = (self.frame_capture_view(), &self.frame_capture_depth) {
+            self.render_to_view_with_depth(ctx, &view, &depth.view);
+        }
+    }
+
     /// Acquire surface, render, and present (convenience wrapper for non-overlay usage).
     pub fn render(&self, ctx: &RenderContext) -> anyhow::Result<()> {
         let output = ctx.surface.get_current_texture()?;
@@ -399,7 +423,7 @@ impl Scene {
         self.depth.resize(device, width, height);
     }
 
-    /// Ensure the frame capture buffer/texture exist and match the given dimensions.
+    /// Ensure the frame capture texture and double staging buffers exist at the given dimensions.
     pub fn ensure_frame_capture(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         if self.frame_capture_width == width && self.frame_capture_height == height && self.frame_capture_texture.is_some() {
             return;
@@ -418,15 +442,22 @@ impl Scene {
 
         // Bytes per row must be aligned to 256 (wgpu requirement)
         let bytes_per_row = (width * 4 + 255) & !255;
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("frame_capture_buffer"),
-            size: (bytes_per_row * height) as u64,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
+        let buf_size = (bytes_per_row * height) as u64;
+        let make_buffer = |label| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: buf_size,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            })
+        };
 
         self.frame_capture_texture = Some(texture);
-        self.frame_capture_buffer = Some(buffer);
+        self.frame_capture_buffers = [Some(make_buffer("frame_capture_buf_0")), Some(make_buffer("frame_capture_buf_1"))];
+        self.frame_capture_buf_idx = 0;
+        self.frame_capture_map_ready.store(false, std::sync::atomic::Ordering::Release);
+        self.frame_capture_pending = false;
+        self.frame_capture_depth = Some(DepthTexture::new(device, width, height));
         self.frame_capture_width = width;
         self.frame_capture_height = height;
     }
@@ -436,10 +467,50 @@ impl Scene {
         self.frame_capture_texture.as_ref().map(|t| t.create_view(&wgpu::TextureViewDescriptor::default()))
     }
 
-    /// Copy the rendered frame capture texture into the staging buffer.
-    pub fn copy_frame_to_buffer(&self, encoder: &mut wgpu::CommandEncoder) {
-        if let (Some(texture), Some(_buffer)) = (&self.frame_capture_texture, &self.frame_capture_buffer) {
-            let bytes_per_row = (self.frame_capture_width * 4 + 255) & !255;
+    /// Copy the rendered frame capture texture into the current staging buffer
+    /// and initiate an async map request. Returns the previous frame's BGRA data if available.
+    ///
+    /// Double-buffer flow: copy into buffer[idx], read back buffer[1-idx] from previous frame.
+    /// Uses non-blocking poll — if the previous frame's mapping isn't ready, skips the readback.
+    pub fn capture_frame_async(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Vec<u8>> {
+        let texture = self.frame_capture_texture.as_ref()?;
+        let width = self.frame_capture_width;
+        let height = self.frame_capture_height;
+        let aligned_bpr = (width * 4 + 255) & !255;
+        let cur = self.frame_capture_buf_idx;
+        let prev = 1 - cur;
+
+        // 1. Non-blocking poll to process GPU callbacks (map_async completion)
+        device.poll(wgpu::Maintain::Poll);
+
+        // 2. Try to read back the previous buffer if mapping is complete
+        let result = if self.frame_capture_pending
+            && self.frame_capture_map_ready.load(std::sync::atomic::Ordering::Acquire)
+        {
+            if let Some(buf) = &self.frame_capture_buffers[prev] {
+                let data = buf.slice(..).get_mapped_range();
+                let mut pixels = Vec::with_capacity((width * height * 4) as usize);
+                for row in 0..height {
+                    let start = (row * aligned_bpr) as usize;
+                    let end = start + (width * 4) as usize;
+                    pixels.extend_from_slice(&data[start..end]);
+                }
+                drop(data);
+                buf.unmap();
+                self.frame_capture_map_ready.store(false, std::sync::atomic::Ordering::Release);
+                Some(pixels)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // 3. Copy texture → current staging buffer
+        if let Some(buf) = &self.frame_capture_buffers[cur] {
+            let mut encoder = device.create_command_encoder(
+                &wgpu::CommandEncoderDescriptor { label: Some("vcam_copy") },
+            );
             encoder.copy_texture_to_buffer(
                 wgpu::TexelCopyTextureInfo {
                     texture,
@@ -448,51 +519,28 @@ impl Scene {
                     aspect: wgpu::TextureAspect::All,
                 },
                 wgpu::TexelCopyBufferInfo {
-                    buffer: self.frame_capture_buffer.as_ref().unwrap(),
+                    buffer: buf,
                     layout: wgpu::TexelCopyBufferLayout {
                         offset: 0,
-                        bytes_per_row: Some(bytes_per_row),
-                        rows_per_image: Some(self.frame_capture_height),
+                        bytes_per_row: Some(aligned_bpr),
+                        rows_per_image: Some(height),
                     },
                 },
-                wgpu::Extent3d {
-                    width: self.frame_capture_width,
-                    height: self.frame_capture_height,
-                    depth_or_array_layers: 1,
-                },
+                wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
             );
-        }
-    }
+            queue.submit(std::iter::once(encoder.finish()));
 
-    /// Read back the frame capture buffer. Returns BGRA pixels (or None).
-    pub fn read_frame_capture(&self, device: &wgpu::Device) -> Option<Vec<u8>> {
-        let buffer = self.frame_capture_buffer.as_ref()?;
-        let width = self.frame_capture_width;
-        let height = self.frame_capture_height;
-        let aligned_bpr = (width * 4 + 255) & !255;
-
-        let buffer_slice = buffer.slice(..);
-        let (tx, rx) = std::sync::mpsc::channel();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = tx.send(result);
-        });
-        device.poll(wgpu::Maintain::Wait);
-
-        if rx.recv().ok()?.is_err() {
-            return None;
+            // 4. Start async map on the current buffer with completion signal
+            let ready = self.frame_capture_map_ready.clone();
+            buf.slice(..).map_async(wgpu::MapMode::Read, move |_| {
+                ready.store(true, std::sync::atomic::Ordering::Release);
+            });
         }
 
-        let data = buffer_slice.get_mapped_range();
-        // Strip row padding
-        let mut rgba = Vec::with_capacity((width * height * 4) as usize);
-        for row in 0..height {
-            let start = (row * aligned_bpr) as usize;
-            let end = start + (width * 4) as usize;
-            rgba.extend_from_slice(&data[start..end]);
-        }
-        drop(data);
-        buffer.unmap();
+        // 5. Swap buffers
+        self.frame_capture_buf_idx = prev;
+        self.frame_capture_pending = true;
 
-        Some(rgba)
+        result
     }
 }
