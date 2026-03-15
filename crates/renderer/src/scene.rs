@@ -507,39 +507,47 @@ impl Scene {
         };
 
         // 3. Copy texture → current staging buffer
-        if let Some(buf) = &self.frame_capture_buffers[cur] {
-            let mut encoder = device.create_command_encoder(
-                &wgpu::CommandEncoderDescriptor { label: Some("vcam_copy") },
-            );
-            encoder.copy_texture_to_buffer(
-                wgpu::TexelCopyTextureInfo {
-                    texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::TexelCopyBufferInfo {
-                    buffer: buf,
-                    layout: wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(aligned_bpr),
-                        rows_per_image: Some(height),
+        // Only issue a new copy+map if the previous mapping has been consumed (or first frame).
+        // If the previous buffer is still mapped, skip this frame to avoid wgpu validation error.
+        let can_copy = !self.frame_capture_pending
+            || self.frame_capture_map_ready.load(std::sync::atomic::Ordering::Acquire)
+            || result.is_some(); // result.is_some() means we just consumed the previous mapping
+
+        if can_copy {
+            if let Some(buf) = &self.frame_capture_buffers[cur] {
+                let mut encoder = device.create_command_encoder(
+                    &wgpu::CommandEncoderDescriptor { label: Some("vcam_copy") },
+                );
+                encoder.copy_texture_to_buffer(
+                    wgpu::TexelCopyTextureInfo {
+                        texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
                     },
-                },
-                wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
-            );
-            queue.submit(std::iter::once(encoder.finish()));
+                    wgpu::TexelCopyBufferInfo {
+                        buffer: buf,
+                        layout: wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(aligned_bpr),
+                            rows_per_image: Some(height),
+                        },
+                    },
+                    wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                );
+                queue.submit(std::iter::once(encoder.finish()));
 
-            // 4. Start async map on the current buffer with completion signal
-            let ready = self.frame_capture_map_ready.clone();
-            buf.slice(..).map_async(wgpu::MapMode::Read, move |_| {
-                ready.store(true, std::sync::atomic::Ordering::Release);
-            });
+                // 4. Start async map on the current buffer with completion signal
+                let ready = self.frame_capture_map_ready.clone();
+                buf.slice(..).map_async(wgpu::MapMode::Read, move |_| {
+                    ready.store(true, std::sync::atomic::Ordering::Release);
+                });
+
+                // 5. Swap buffers
+                self.frame_capture_buf_idx = prev;
+                self.frame_capture_pending = true;
+            }
         }
-
-        // 5. Swap buffers
-        self.frame_capture_buf_idx = prev;
-        self.frame_capture_pending = true;
 
         result
     }
