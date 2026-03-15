@@ -25,7 +25,7 @@ const DEFAULT_VRM_PATH: &str = "assets/models/default_avatar.vrm";
 const FACE_MODEL_PATH: &str = "assets/models/face_landmark.onnx";
 const POSE_MODEL_PATH: &str = "assets/models/pose_landmark.onnx";
 const HAND_MODEL_PATH: &str = "assets/models/hand_landmark.onnx";
-const IDLE_ANIMATION_PATH: &str = "assets/animations/idle.glb";
+const DEFAULT_ANIMATION_PATH: &str = "assets/animations/idle.glb";
 
 /// Check that all required model files exist and return a helpful error if not.
 fn check_model_files() -> Result<()> {
@@ -213,7 +213,8 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         render_ctx.config.format,
     );
 
-    let idle_animation = load_idle_animation(&vrm_model);
+    let anim_path = prefs.animation_path.as_deref().unwrap_or(DEFAULT_ANIMATION_PATH);
+    let idle_animation = load_idle_animation(&vrm_model, anim_path);
 
     Ok(AppState {
         render_ctx,
@@ -238,6 +239,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         vcam_last_send: Instant::now(),
         idle_animation,
         tracking_enabled: true,
+        animation_path: prefs.animation_path,
     })
 }
 
@@ -245,16 +247,16 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
 ///
 /// Extracts the VRM bind pose rotations and passes them to the animation player
 /// so delta rotations from Mixamo can be correctly applied.
-fn load_idle_animation(vrm_model: &vrm::model::VrmModel) -> Option<vrm::animation_player::AnimationPlayer> {
+fn load_idle_animation(vrm_model: &vrm::model::VrmModel, path: &str) -> Option<vrm::animation_player::AnimationPlayer> {
     use std::collections::HashMap;
     use std::path::Path;
     use vrm::bone::HumanoidBoneName;
 
-    if !Path::new(IDLE_ANIMATION_PATH).exists() {
-        log::info!("No idle animation found at {IDLE_ANIMATION_PATH}, skipping");
+    if !Path::new(path).exists() {
+        log::info!("No animation found at {path}, skipping");
         return None;
     }
-    match vrm::animation::AnimationClip::load(IDLE_ANIMATION_PATH) {
+    match vrm::animation::AnimationClip::load(path) {
         Ok(clip) => {
             log::info!(
                 "Idle animation loaded: '{}' ({:.2}s, {} channels)",

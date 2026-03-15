@@ -182,6 +182,7 @@ fn save_prefs(state: &AppState) {
         camera_distance: state.camera_distance,
         blink_mode: state.blink_mode,
         stage_lighting: state.stage_lighting.clone(),
+        animation_path: state.animation_path.clone(),
     }
     .save();
 }

@@ -13,6 +13,10 @@ pub struct UserPrefs {
     pub blink_mode: BlinkMode,
     #[serde(default)]
     pub stage_lighting: StageLighting,
+    /// Path to the idle/default animation file (GLB format).
+    /// Supports both relative and absolute paths.
+    #[serde(default)]
+    pub animation_path: Option<String>,
 }
 
 impl Default for UserPrefs {
@@ -21,6 +25,7 @@ impl Default for UserPrefs {
             camera_distance: 3.0,
             blink_mode: BlinkMode::Tracking,
             stage_lighting: StageLighting::default(),
+            animation_path: None,
         }
     }
 }

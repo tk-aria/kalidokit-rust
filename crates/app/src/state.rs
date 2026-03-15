@@ -49,6 +49,8 @@ pub struct AppState {
     pub idle_animation: Option<AnimationPlayer>,
     /// Whether tracking is enabled (T key to toggle).
     pub tracking_enabled: bool,
+    /// Animation path from config (preserved for save).
+    pub animation_path: Option<String>,
 }
 
 /// Current rig solver results (face/pose/hand).
