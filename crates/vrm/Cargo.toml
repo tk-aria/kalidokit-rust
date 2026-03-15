@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 renderer = { path = "../renderer" }
 gltf = { workspace = true }
+fbxcel = { workspace = true }
 glam = { workspace = true }
 bytemuck = { workspace = true }
 serde = { workspace = true }
