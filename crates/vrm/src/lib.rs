@@ -1,3 +1,5 @@
+pub mod animation;
+pub mod animation_player;
 pub mod blendshape;
 pub mod bone;
 pub mod error;
