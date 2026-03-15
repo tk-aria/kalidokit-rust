@@ -11,6 +11,7 @@ use vrm::model::VrmModel;
 use crate::auto_blink::{AutoBlink, BlinkMode};
 use crate::rig_config::RigConfig;
 use crate::tracker_thread::TrackerThread;
+use vrm::animation_player::AnimationPlayer;
 
 /// All application resources: renderer, tracker, solver results, VRM model.
 pub struct AppState {
@@ -44,6 +45,10 @@ pub struct AppState {
     pub vcam_enabled: bool,
     /// Last time a frame was sent to the virtual camera (for 30fps throttle).
     pub vcam_last_send: Instant,
+    /// Idle animation player for blending with tracking.
+    pub idle_animation: Option<AnimationPlayer>,
+    /// Whether tracking is enabled (T key to toggle).
+    pub tracking_enabled: bool,
 }
 
 /// Current rig solver results (face/pose/hand).

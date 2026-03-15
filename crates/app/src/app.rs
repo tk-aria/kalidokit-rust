@@ -145,6 +145,28 @@ impl ApplicationHandler for App {
                                 state.vcam_enabled = !state.vcam_enabled;
                                 log::info!("Virtual camera: {}", if state.vcam_enabled { "ON" } else { "OFF" });
                             }
+                            KeyCode::KeyT => {
+                                state.tracking_enabled = !state.tracking_enabled;
+                                if !state.tracking_enabled {
+                                    state.rig = crate::state::RigState::default();
+                                    let node_transforms = &state.vrm_model.node_transforms;
+                                    state.vrm_model.humanoid_bones.reset_to_bind_pose(node_transforms);
+                                    state.rig_dirty = true;
+                                }
+                                log::info!("Tracking: {}", if state.tracking_enabled { "ON" } else { "OFF" });
+                            }
+                            KeyCode::KeyI => {
+                                if let Some(anim) = &mut state.idle_animation {
+                                    anim.enabled = !anim.enabled;
+                                    if !anim.enabled {
+                                        // Reset bones to bind pose when disabling idle animation
+                                        let node_transforms = &state.vrm_model.node_transforms;
+                                        state.vrm_model.humanoid_bones.reset_to_bind_pose(node_transforms);
+                                    }
+                                    log::info!("Idle animation: {}", if anim.enabled { "ON" } else { "OFF" });
+                                    state.rig_dirty = true;
+                                }
+                            }
                             _ => {}
                         }
                     }

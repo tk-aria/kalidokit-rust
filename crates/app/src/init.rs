@@ -25,6 +25,7 @@ const DEFAULT_VRM_PATH: &str = "assets/models/default_avatar.vrm";
 const FACE_MODEL_PATH: &str = "assets/models/face_landmark.onnx";
 const POSE_MODEL_PATH: &str = "assets/models/pose_landmark.onnx";
 const HAND_MODEL_PATH: &str = "assets/models/hand_landmark.onnx";
+const IDLE_ANIMATION_PATH: &str = "assets/animations/idle.glb";
 
 /// Check that all required model files exist and return a helpful error if not.
 fn check_model_files() -> Result<()> {
@@ -212,6 +213,8 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         render_ctx.config.format,
     );
 
+    let idle_animation = load_idle_animation(&vrm_model);
+
     Ok(AppState {
         render_ctx,
         scene,
@@ -233,7 +236,64 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         vcam: None,
         vcam_enabled: true,
         vcam_last_send: Instant::now(),
+        idle_animation,
+        tracking_enabled: true,
     })
+}
+
+/// Try to load the idle animation clip. Returns None if the file is missing.
+///
+/// Extracts the VRM bind pose rotations and passes them to the animation player
+/// so delta rotations from Mixamo can be correctly applied.
+fn load_idle_animation(vrm_model: &vrm::model::VrmModel) -> Option<vrm::animation_player::AnimationPlayer> {
+    use std::collections::HashMap;
+    use std::path::Path;
+    use vrm::bone::HumanoidBoneName;
+
+    if !Path::new(IDLE_ANIMATION_PATH).exists() {
+        log::info!("No idle animation found at {IDLE_ANIMATION_PATH}, skipping");
+        return None;
+    }
+    match vrm::animation::AnimationClip::load(IDLE_ANIMATION_PATH) {
+        Ok(clip) => {
+            log::info!(
+                "Idle animation loaded: '{}' ({:.2}s, {} channels)",
+                clip.name,
+                clip.duration,
+                clip.channels.len()
+            );
+            let mut player = vrm::animation_player::AnimationPlayer::new(clip);
+
+            // Extract VRM bind pose: bone name → bind rotation from node_transforms
+            let mut bind_pose = HashMap::new();
+            let all_bones = [
+                HumanoidBoneName::Hips, HumanoidBoneName::Spine, HumanoidBoneName::Chest,
+                HumanoidBoneName::UpperChest, HumanoidBoneName::Neck, HumanoidBoneName::Head,
+                HumanoidBoneName::LeftShoulder, HumanoidBoneName::LeftUpperArm,
+                HumanoidBoneName::LeftLowerArm, HumanoidBoneName::LeftHand,
+                HumanoidBoneName::RightShoulder, HumanoidBoneName::RightUpperArm,
+                HumanoidBoneName::RightLowerArm, HumanoidBoneName::RightHand,
+                HumanoidBoneName::LeftUpperLeg, HumanoidBoneName::LeftLowerLeg,
+                HumanoidBoneName::LeftFoot, HumanoidBoneName::LeftToes,
+                HumanoidBoneName::RightUpperLeg, HumanoidBoneName::RightLowerLeg,
+                HumanoidBoneName::RightFoot, HumanoidBoneName::RightToes,
+            ];
+            for bone_name in &all_bones {
+                if let Some(bone) = vrm_model.humanoid_bones.get(*bone_name) {
+                    if let Some(nt) = vrm_model.node_transforms.get(bone.node_index) {
+                        bind_pose.insert(*bone_name, nt.rotation);
+                    }
+                }
+            }
+            player.set_vrm_bind_pose(bind_pose);
+
+            Some(player)
+        }
+        Err(e) => {
+            log::warn!("Failed to load idle animation: {e}");
+            None
+        }
+    }
 }
 
 /// Try to initialize the default webcam (index 0) at 640x480.

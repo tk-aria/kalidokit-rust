@@ -38,10 +38,12 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     state.last_camera_frame = Some(frame.clone());
 
     // 1. Send frame to tracker thread (non-blocking; drops frame if tracker is busy)
-    state.tracker_thread.send_frame(frame, video.clone());
+    if state.tracking_enabled {
+        state.tracker_thread.send_frame(frame, video.clone());
+    }
 
     // 2. Try to receive a new tracking result (non-blocking)
-    if let Some(result) = state.tracker_thread.try_recv_result() {
+    if let Some(result) = state.tracker_thread.try_recv_result().filter(|_| state.tracking_enabled) {
         pipeline_logger::tracker(log::Level::Debug, "result received")
             .field(
                 "face",
@@ -168,8 +170,14 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         rig_changed = true;
     }
 
-    // 4. Apply rig to VRM model (only if rig changed or first frame)
-    if rig_changed || state.rig_dirty {
+    // 3.5a. Advance idle animation
+    let has_idle = state.idle_animation.is_some();
+    if let Some(anim) = &mut state.idle_animation {
+        anim.update(elapsed.as_secs_f32());
+    }
+
+    // 4. Apply rig to VRM model (if rig changed, first frame, or idle animation is playing)
+    if rig_changed || state.rig_dirty || has_idle {
         pipeline_logger::bone(log::Level::Debug, "applying rig to model")
             .field("rig_changed", rig_changed)
             .field("rig_dirty", state.rig_dirty)
@@ -411,15 +419,55 @@ fn capture_frame(camera: &mut Option<nokhwa::Camera>) -> (image::DynamicImage, V
 }
 
 /// Apply solver results to VRM model bones and blend shapes.
+///
+/// When an idle animation is active, bone rotations are blended:
+/// - Bones with tracking: `idle_quat.slerp(tracking_quat, tracking_weight)`
+/// - Bones without tracking: idle animation rotation directly
 fn apply_rig_to_model(state: &mut AppState) {
     let cfg = &state.rig_config;
+
+    // Sample idle animation pose (if active)
+    let idle_pose = state
+        .idle_animation
+        .as_ref()
+        .and_then(|anim| {
+            if anim.enabled {
+                Some(anim.sample())
+            } else {
+                None
+            }
+        });
+
+    // Apply idle animation to bones that are NOT driven by tracking.
+    // This sets a base pose that tracking will override/blend with.
+    if let Some(ref idle) = idle_pose {
+        // Collect bones that tracking will set (we'll skip those here)
+        let tracking_bones = collect_tracked_bones(state);
+
+        for (&bone, &rot) in idle {
+            if !tracking_bones.contains(&bone) {
+                // No tracking for this bone: apply idle animation directly.
+                // No additional interpolation — keyframes are already slerp-interpolated.
+                state
+                    .vrm_model
+                    .humanoid_bones
+                    .set_rotation(bone, rot);
+            }
+        }
+    }
 
     // Apply face rig
     if let Some(face) = &state.rig.face {
         // Head rotation: rigRotation("Neck", head, 0.7)
+        let neck_quat = blend_with_idle(
+            face.head.to_quat_dampened(cfg.neck.dampener),
+            HumanoidBoneName::Neck,
+            &idle_pose,
+            &state.idle_animation,
+        );
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
             vrm::bone::HumanoidBoneName::Neck,
-            face.head.to_quat_dampened(cfg.neck.dampener),
+            neck_quat,
             cfg.neck.lerp_amount,
         );
 
@@ -529,71 +577,59 @@ fn apply_rig_to_model(state: &mut AppState) {
         );
 
         // Hips: rigRotation("Hips", rotation, 0.7)
+        let hips_quat = blend_with_idle(
+            pose.hips.rotation.to_quat_dampened(cfg.hips_rotation.dampener),
+            HumanoidBoneName::Hips, &idle_pose, &state.idle_animation,
+        );
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            vrm::bone::HumanoidBoneName::Hips,
-            pose.hips
-                .rotation
-                .to_quat_dampened(cfg.hips_rotation.dampener),
-            cfg.hips_rotation.lerp_amount,
+            HumanoidBoneName::Hips, hips_quat, cfg.hips_rotation.lerp_amount,
         );
 
         // Spine: rigRotation("Spine", Spine, 0.45, 0.3)
-        state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            vrm::bone::HumanoidBoneName::Spine,
+        let spine_quat = blend_with_idle(
             pose.spine.to_quat_dampened(cfg.spine.dampener),
-            cfg.spine.lerp_amount,
+            HumanoidBoneName::Spine, &idle_pose, &state.idle_animation,
+        );
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
+            HumanoidBoneName::Spine, spine_quat, cfg.spine.lerp_amount,
         );
 
         // Chest: rigRotation("Chest", Spine, 0.25, 0.3)
-        state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            vrm::bone::HumanoidBoneName::Chest,
+        let chest_quat = blend_with_idle(
             pose.chest.to_quat_dampened(cfg.chest.dampener),
-            cfg.chest.lerp_amount,
+            HumanoidBoneName::Chest, &idle_pose, &state.idle_animation,
+        );
+        state.vrm_model.humanoid_bones.set_rotation_interpolated(
+            HumanoidBoneName::Chest, chest_quat, cfg.chest.lerp_amount,
         );
 
         // Arms: rigRotation(name, rotation, 1, 0.3)
-        state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            vrm::bone::HumanoidBoneName::RightUpperArm,
-            pose.right_upper_arm.to_quat_dampened(cfg.limbs.dampener),
-            cfg.limbs.lerp_amount,
-        );
-        state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            vrm::bone::HumanoidBoneName::RightLowerArm,
-            pose.right_lower_arm.to_quat_dampened(cfg.limbs.dampener),
-            cfg.limbs.lerp_amount,
-        );
-        state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            vrm::bone::HumanoidBoneName::LeftUpperArm,
-            pose.left_upper_arm.to_quat_dampened(cfg.limbs.dampener),
-            cfg.limbs.lerp_amount,
-        );
-        state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            vrm::bone::HumanoidBoneName::LeftLowerArm,
-            pose.left_lower_arm.to_quat_dampened(cfg.limbs.dampener),
-            cfg.limbs.lerp_amount,
-        );
+        for (bone, euler) in [
+            (HumanoidBoneName::RightUpperArm, &pose.right_upper_arm),
+            (HumanoidBoneName::RightLowerArm, &pose.right_lower_arm),
+            (HumanoidBoneName::LeftUpperArm, &pose.left_upper_arm),
+            (HumanoidBoneName::LeftLowerArm, &pose.left_lower_arm),
+        ] {
+            let q = blend_with_idle(
+                euler.to_quat_dampened(cfg.limbs.dampener),
+                bone, &idle_pose, &state.idle_animation,
+            );
+            state.vrm_model.humanoid_bones.set_rotation_interpolated(bone, q, cfg.limbs.lerp_amount);
+        }
 
         // Legs: rigRotation(name, rotation, 1, 0.3)
-        state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            vrm::bone::HumanoidBoneName::RightUpperLeg,
-            pose.right_upper_leg.to_quat_dampened(cfg.limbs.dampener),
-            cfg.limbs.lerp_amount,
-        );
-        state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            vrm::bone::HumanoidBoneName::RightLowerLeg,
-            pose.right_lower_leg.to_quat_dampened(cfg.limbs.dampener),
-            cfg.limbs.lerp_amount,
-        );
-        state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            vrm::bone::HumanoidBoneName::LeftUpperLeg,
-            pose.left_upper_leg.to_quat_dampened(cfg.limbs.dampener),
-            cfg.limbs.lerp_amount,
-        );
-        state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            vrm::bone::HumanoidBoneName::LeftLowerLeg,
-            pose.left_lower_leg.to_quat_dampened(cfg.limbs.dampener),
-            cfg.limbs.lerp_amount,
-        );
+        for (bone, euler) in [
+            (HumanoidBoneName::RightUpperLeg, &pose.right_upper_leg),
+            (HumanoidBoneName::RightLowerLeg, &pose.right_lower_leg),
+            (HumanoidBoneName::LeftUpperLeg, &pose.left_upper_leg),
+            (HumanoidBoneName::LeftLowerLeg, &pose.left_lower_leg),
+        ] {
+            let q = blend_with_idle(
+                euler.to_quat_dampened(cfg.limbs.dampener),
+                bone, &idle_pose, &state.idle_animation,
+            );
+            state.vrm_model.humanoid_bones.set_rotation_interpolated(bone, q, cfg.limbs.lerp_amount);
+        }
 
         // Hip position: rigPosition("Hips", pos, 1, 0.07)
         state.vrm_model.humanoid_bones.set_position_interpolated(
@@ -620,6 +656,8 @@ fn apply_rig_to_model(state: &mut AppState) {
             &wrist_combined,
             Side::Left,
             &cfg.limbs,
+            &idle_pose,
+            &state.idle_animation,
         );
     }
 
@@ -638,8 +676,72 @@ fn apply_rig_to_model(state: &mut AppState) {
             &wrist_combined,
             Side::Right,
             &cfg.limbs,
+            &idle_pose,
+            &state.idle_animation,
         );
     }
+}
+
+/// Blend a tracking quaternion with the idle animation pose for a given bone.
+///
+/// Returns `tracking_quat` if no idle animation is active.
+/// Otherwise returns `idle_quat.slerp(tracking_quat, tracking_weight)`.
+fn blend_with_idle(
+    tracking_quat: glam::Quat,
+    bone: HumanoidBoneName,
+    idle_pose: &Option<std::collections::HashMap<HumanoidBoneName, glam::Quat>>,
+    anim: &Option<vrm::animation_player::AnimationPlayer>,
+) -> glam::Quat {
+    let (Some(idle), Some(anim)) = (idle_pose, anim) else {
+        return tracking_quat;
+    };
+    let Some(&idle_quat) = idle.get(&bone) else {
+        return tracking_quat;
+    };
+    let tw = anim.tracking_weight(bone);
+    idle_quat.slerp(tracking_quat, tw)
+}
+
+/// Collect the set of bones that are currently driven by tracking data.
+fn collect_tracked_bones(state: &AppState) -> std::collections::HashSet<HumanoidBoneName> {
+    use HumanoidBoneName::*;
+    let mut set = std::collections::HashSet::new();
+
+    if state.rig.face.is_some() {
+        set.extend([Neck, LeftEye, RightEye]);
+    }
+
+    if state.rig.pose.is_some() {
+        set.extend([
+            Hips, Spine, Chest,
+            RightUpperArm, RightLowerArm, LeftUpperArm, LeftLowerArm,
+            RightUpperLeg, RightLowerLeg, LeftUpperLeg, LeftLowerLeg,
+        ]);
+    }
+
+    if state.rig.left_hand.is_some() {
+        set.extend([
+            LeftHand,
+            LeftThumbProximal, LeftThumbIntermediate, LeftThumbDistal,
+            LeftIndexProximal, LeftIndexIntermediate, LeftIndexDistal,
+            LeftMiddleProximal, LeftMiddleIntermediate, LeftMiddleDistal,
+            LeftRingProximal, LeftRingIntermediate, LeftRingDistal,
+            LeftLittleProximal, LeftLittleIntermediate, LeftLittleDistal,
+        ]);
+    }
+
+    if state.rig.right_hand.is_some() {
+        set.extend([
+            RightHand,
+            RightThumbProximal, RightThumbIntermediate, RightThumbDistal,
+            RightIndexProximal, RightIndexIntermediate, RightIndexDistal,
+            RightMiddleProximal, RightMiddleIntermediate, RightMiddleDistal,
+            RightRingProximal, RightRingIntermediate, RightRingDistal,
+            RightLittleProximal, RightLittleIntermediate, RightLittleDistal,
+        ]);
+    }
+
+    set
 }
 
 /// Apply hand solver results (wrist + 15 finger joints) to humanoid bones.
@@ -652,6 +754,8 @@ fn apply_hand_bones(
     wrist_combined: &EulerAngles,
     side: Side,
     config: &BoneConfig,
+    idle_pose: &Option<std::collections::HashMap<HumanoidBoneName, glam::Quat>>,
+    anim: &Option<vrm::animation_player::AnimationPlayer>,
 ) {
     // Build array of (bone_name, euler_angles) pairs for all 16 bones per hand.
     let mappings: [(HumanoidBoneName, &EulerAngles); 16] = match side {
@@ -724,11 +828,13 @@ fn apply_hand_bones(
     };
 
     for (bone_name, euler) in &mappings {
-        bones.set_rotation_interpolated(
-            *bone_name,
+        let q = blend_with_idle(
             euler.to_quat_dampened(config.dampener),
-            config.lerp_amount,
+            *bone_name,
+            idle_pose,
+            anim,
         );
+        bones.set_rotation_interpolated(*bone_name, q, config.lerp_amount);
     }
 }
 
@@ -796,6 +902,8 @@ fn build_hud_lines(state: &AppState) -> Vec<String> {
         "Q/W: Key intensity +/-".to_string(),
         "A/S: Fill intensity +/-".to_string(),
         "Z/X: Back intensity +/-".to_string(),
+        format!("T: Tracking ({})", if state.tracking_enabled { "ON" } else { "OFF" }),
+        format!("I: Idle anim ({})", state.idle_animation.as_ref().map_or("N/A", |a| if a.enabled { "ON" } else { "OFF" })),
         format!("C: VCam ({})", if state.vcam_enabled { "ON" } else { "OFF" }),
     ]
 }
@@ -876,7 +984,7 @@ mod tests {
             lerp_amount: 0.3,
         };
 
-        apply_hand_bones(&mut bones, &hand, &wrist_combined, Side::Left, &config);
+        apply_hand_bones(&mut bones, &hand, &wrist_combined, Side::Left, &config, &None, &None);
 
         // All 16 left-hand bones should now have non-identity rotations
         let check_bones = [
