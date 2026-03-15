@@ -217,6 +217,19 @@ impl HumanoidBones {
         self.bones.get(&name)
     }
 
+    /// Reset all bone rotations and positions to their bind pose values,
+    /// clearing interpolation state so the skeleton returns to T-pose.
+    pub fn reset_to_bind_pose(&mut self, node_transforms: &[crate::model::NodeTransform]) {
+        for (name, bone) in &mut self.bones {
+            if let Some(nt) = node_transforms.get(bone.node_index) {
+                bone.local_rotation = nt.rotation;
+                bone.local_position = nt.translation;
+                self.prev_rotations.insert(*name, nt.rotation);
+                self.prev_positions.insert(*name, nt.translation);
+            }
+        }
+    }
+
     pub fn set_rotation(&mut self, name: HumanoidBoneName, rotation: Quat) {
         if let Some(bone) = self.bones.get_mut(&name) {
             bone.local_rotation = rotation;
