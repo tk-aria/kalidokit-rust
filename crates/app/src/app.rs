@@ -183,6 +183,7 @@ fn save_prefs(state: &AppState) {
         blink_mode: state.blink_mode,
         stage_lighting: state.stage_lighting.clone(),
         animation_path: state.animation_path.clone(),
+        background: state.background.clone(),
     }
     .save();
 }

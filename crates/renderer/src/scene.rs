@@ -41,6 +41,10 @@ pub struct Scene {
     // Kept alive for potential future dynamic material creation.
     #[allow(dead_code)]
     material_bind_group_layout: wgpu::BindGroupLayout,
+    /// Background clear color (configurable).
+    clear_color: wgpu::Color,
+    /// Background image rendering resources (fullscreen quad).
+    bg_image: Option<BgImage>,
     /// Staging resources for reading back rendered frames (virtual camera).
     frame_capture_texture: Option<wgpu::Texture>,
     frame_capture_depth: Option<DepthTexture>,
@@ -54,6 +58,27 @@ pub struct Scene {
     frame_capture_pending: bool,
     frame_capture_width: u32,
     frame_capture_height: u32,
+}
+
+/// GPU resources for rendering a fullscreen background image (static or animated GIF).
+struct BgImage {
+    bind_group: wgpu::BindGroup,
+    pipeline: wgpu::RenderPipeline,
+    texture: wgpu::Texture,
+    tex_width: u32,
+    tex_height: u32,
+    /// Animation frames (RGBA bytes) and per-frame delay. Empty for static images.
+    frames: Vec<BgFrame>,
+    /// Current animation frame index.
+    current_frame: usize,
+    /// Accumulated time since last frame switch.
+    frame_elapsed: std::time::Duration,
+}
+
+/// A single frame of an animated background.
+struct BgFrame {
+    rgba: Vec<u8>,
+    delay: std::time::Duration,
 }
 
 /// Input data for one mesh's material (base color + MToon params + optional texture image).
@@ -312,6 +337,13 @@ impl Scene {
             lights_buffer,
             camera_bind_group,
             material_bind_group_layout,
+            clear_color: wgpu::Color {
+                r: 0.12,
+                g: 0.12,
+                b: 0.15,
+                a: 1.0,
+            },
+            bg_image: None,
             frame_capture_texture: None,
             frame_capture_depth: None,
             frame_capture_buffers: [None, None],
@@ -357,19 +389,39 @@ impl Scene {
         let mut encoder = ctx
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        // Background image pass (fullscreen quad, no depth)
+        if let Some(bg) = &self.bg_image {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("bg_image_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(self.clear_color),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                ..Default::default()
+            });
+            pass.set_pipeline(&bg.pipeline);
+            pass.set_bind_group(0, &bg.bind_group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        // Main 3D scene pass
         {
+            let clear_or_load = if self.bg_image.is_some() {
+                wgpu::LoadOp::Load // preserve background image
+            } else {
+                wgpu::LoadOp::Clear(self.clear_color)
+            };
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("render_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.12,
-                            g: 0.12,
-                            b: 0.15,
-                            a: 1.0,
-                        }),
+                        load: clear_or_load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -387,11 +439,9 @@ impl Scene {
             pass.set_bind_group(0, &self.camera_bind_group, &[]);
             pass.set_bind_group(1, self.skin.bind_group(), &[]);
             for (i, mesh) in self.meshes.iter().enumerate() {
-                // Per-mesh morph target bind group
                 if let Some(morph) = self.per_mesh_morphs.get(i) {
                     pass.set_bind_group(2, morph.bind_group(), &[]);
                 }
-                // Per-mesh material (texture + base color)
                 if let Some(mat) = self.materials.get(i) {
                     pass.set_bind_group(3, &mat.bind_group, &[]);
                 }
@@ -421,6 +471,41 @@ impl Scene {
 
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         self.depth.resize(device, width, height);
+    }
+
+    /// Set the background clear color.
+    pub fn set_clear_color(&mut self, color: wgpu::Color) {
+        self.clear_color = color;
+    }
+
+    /// Set a background from an image file path.
+    /// Supports static images (PNG/JPEG) and animated GIFs.
+    /// Pass None to remove the background image.
+    pub fn set_background_image_from_path(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        surface_format: wgpu::TextureFormat,
+        path: Option<&str>,
+    ) -> anyhow::Result<()> {
+        match path {
+            Some(p) => {
+                self.bg_image = Some(BgImage::load(device, queue, surface_format, p)?);
+                Ok(())
+            }
+            None => {
+                self.bg_image = None;
+                Ok(())
+            }
+        }
+    }
+
+    /// Advance the background animation by the given delta time.
+    /// Call this every frame. No-op for static images.
+    pub fn tick_background(&mut self, queue: &wgpu::Queue, dt: std::time::Duration) {
+        if let Some(bg) = &mut self.bg_image {
+            bg.tick(queue, dt);
+        }
     }
 
     /// Ensure the frame capture texture and double staging buffers exist at the given dimensions.
@@ -552,3 +637,252 @@ impl Scene {
         result
     }
 }
+
+impl BgImage {
+    /// Load a background image from a file path.
+    /// Detects GIF by extension and decodes all frames for animation.
+    fn load(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        surface_format: wgpu::TextureFormat,
+        path: &str,
+    ) -> anyhow::Result<Self> {
+        use std::path::Path;
+        let ext = Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .unwrap_or_default();
+
+        let (first_rgba, w, h, frames) = if ext == "gif" {
+            Self::decode_gif(path)?
+        } else {
+            let img = image::open(path)?;
+            let rgba = img.to_rgba8();
+            let (w, h) = rgba.dimensions();
+            (rgba.into_raw(), w, h, Vec::new())
+        };
+
+        let texture = device.create_texture_with_data(
+            queue,
+            &wgpu::TextureDescriptor {
+                label: Some("bg_image_texture"),
+                size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            },
+            wgpu::util::TextureDataOrder::LayerMajor,
+            &first_rgba,
+        );
+
+        let (bind_group, pipeline) = Self::create_gpu_resources(device, &texture, surface_format);
+
+        Ok(Self {
+            bind_group,
+            pipeline,
+            texture,
+            tex_width: w,
+            tex_height: h,
+            frames,
+            current_frame: 0,
+            frame_elapsed: std::time::Duration::ZERO,
+        })
+    }
+
+    /// Decode an animated GIF into frames. Returns (first_frame_rgba, w, h, frames).
+    fn decode_gif(path: &str) -> anyhow::Result<(Vec<u8>, u32, u32, Vec<BgFrame>)> {
+        use image::codecs::gif::GifDecoder;
+        use image::AnimationDecoder;
+        use std::io::BufReader;
+
+        let file = std::fs::File::open(path)?;
+        let decoder = GifDecoder::new(BufReader::new(file))?;
+        let raw_frames: Vec<image::Frame> = decoder.into_frames().collect::<Result<Vec<_>, _>>()?;
+
+        if raw_frames.is_empty() {
+            anyhow::bail!("GIF has no frames: {path}");
+        }
+
+        let first = &raw_frames[0];
+        let w = first.buffer().width();
+        let h = first.buffer().height();
+
+        let frames: Vec<BgFrame> = raw_frames
+            .iter()
+            .map(|f| {
+                let (numer, denom) = f.delay().numer_denom_ms();
+                let delay_ms = if denom == 0 { numer } else { numer / denom };
+                // GIF frames with 0 or very short delay default to ~100ms
+                let delay = std::time::Duration::from_millis(delay_ms.max(20) as u64);
+                BgFrame {
+                    rgba: f.buffer().as_raw().clone(),
+                    delay,
+                }
+            })
+            .collect();
+
+        let first_rgba = frames[0].rgba.clone();
+        log::info!("GIF decoded: {}x{}, {} frames", w, h, frames.len());
+
+        Ok((first_rgba, w, h, frames))
+    }
+
+    /// Create bind group and pipeline for the background texture.
+    fn create_gpu_resources(
+        device: &wgpu::Device,
+        texture: &wgpu::Texture,
+        surface_format: wgpu::TextureFormat,
+    ) -> (wgpu::BindGroup, wgpu::RenderPipeline) {
+        let tex_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("bg_image_bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("bg_image_bg"),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&tex_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("bg_image_shader"),
+            source: wgpu::ShaderSource::Wgsl(BG_IMAGE_WGSL.into()),
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("bg_image_pipeline_layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("bg_image_pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        (bind_group, pipeline)
+    }
+
+    /// Advance animation by dt. Uploads the next frame's pixel data to the GPU texture.
+    fn tick(&mut self, queue: &wgpu::Queue, dt: std::time::Duration) {
+        if self.frames.len() <= 1 {
+            return;
+        }
+        self.frame_elapsed += dt;
+        let delay = self.frames[self.current_frame].delay;
+        if self.frame_elapsed >= delay {
+            self.frame_elapsed -= delay;
+            self.current_frame = (self.current_frame + 1) % self.frames.len();
+            // Upload new frame to GPU
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &self.frames[self.current_frame].rgba,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(self.tex_width * 4),
+                    rows_per_image: Some(self.tex_height),
+                },
+                wgpu::Extent3d {
+                    width: self.tex_width,
+                    height: self.tex_height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+    }
+}
+
+/// Fullscreen triangle shader for background image rendering.
+/// Uses vertex_index to generate a fullscreen triangle without a vertex buffer.
+const BG_IMAGE_WGSL: &str = r#"
+@group(0) @binding(0) var bg_tex: texture_2d<f32>;
+@group(0) @binding(1) var bg_sampler: sampler;
+
+struct VsOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) idx: u32) -> VsOutput {
+    // Fullscreen triangle: 3 vertices cover the entire screen
+    let x = f32(i32(idx & 1u)) * 4.0 - 1.0;
+    let y = f32(i32(idx >> 1u)) * 4.0 - 1.0;
+    var out: VsOutput;
+    out.position = vec4<f32>(x, y, 0.0, 1.0);
+    // UV: flip Y for texture coordinates
+    out.uv = vec2<f32>((x + 1.0) * 0.5, (1.0 - y) * 0.5);
+    return out;
+}
+
+@fragment
+fn fs_main(in: VsOutput) -> @location(0) vec4<f32> {
+    return textureSample(bg_tex, bg_sampler, in.uv);
+}
+"#;

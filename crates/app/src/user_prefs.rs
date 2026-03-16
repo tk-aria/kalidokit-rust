@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use renderer::light::StageLighting;
+use renderer::light::{BackgroundConfig, StageLighting};
 
 use crate::auto_blink::BlinkMode;
 
@@ -13,10 +13,13 @@ pub struct UserPrefs {
     pub blink_mode: BlinkMode,
     #[serde(default)]
     pub stage_lighting: StageLighting,
-    /// Path to the idle/default animation file (GLB format).
+    /// Path to the idle/default animation file (GLB/FBX format).
     /// Supports both relative and absolute paths.
     #[serde(default)]
     pub animation_path: Option<String>,
+    /// Background configuration (color and optional image).
+    #[serde(default)]
+    pub background: BackgroundConfig,
 }
 
 impl Default for UserPrefs {
@@ -26,6 +29,7 @@ impl Default for UserPrefs {
             blink_mode: BlinkMode::Tracking,
             stage_lighting: StageLighting::default(),
             animation_path: None,
+            background: BackgroundConfig::default(),
         }
     }
 }
@@ -85,6 +89,8 @@ mod tests {
             camera_distance: 5.5,
             blink_mode: BlinkMode::Auto,
             stage_lighting: StageLighting::default(),
+            animation_path: None,
+            background: BackgroundConfig::default(),
         };
         let yaml = serde_yaml::to_string(&prefs).unwrap();
         let loaded: UserPrefs = serde_yaml::from_str(&yaml).unwrap();

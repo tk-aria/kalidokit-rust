@@ -201,6 +201,43 @@ impl StageLighting {
     }
 }
 
+/// Background configuration: clear color and optional background image.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BackgroundConfig {
+    /// Background color as [R, G, B] in 0.0..1.0 range.
+    #[serde(default = "BackgroundConfig::default_color")]
+    pub color: [f32; 3],
+    /// Optional path to a background image file (PNG/JPEG).
+    /// Supports relative and absolute paths.
+    #[serde(default)]
+    pub image_path: Option<String>,
+}
+
+impl Default for BackgroundConfig {
+    fn default() -> Self {
+        Self {
+            color: Self::default_color(),
+            image_path: None,
+        }
+    }
+}
+
+impl BackgroundConfig {
+    fn default_color() -> [f32; 3] {
+        [0.12, 0.12, 0.15]
+    }
+
+    /// Convert color to wgpu::Color.
+    pub fn to_wgpu_color(&self) -> wgpu::Color {
+        wgpu::Color {
+            r: self.color[0] as f64,
+            g: self.color[1] as f64,
+            b: self.color[2] as f64,
+            a: 1.0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

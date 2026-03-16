@@ -174,7 +174,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
     let prefs = UserPrefs::load();
     log::info!("User prefs loaded: {:?}", prefs);
 
-    let scene = Scene::new(
+    let mut scene = Scene::new(
         &render_ctx.device,
         &render_ctx.queue,
         &render_ctx.config,
@@ -184,6 +184,20 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         max_joints,
         &prefs.stage_lighting,
     );
+
+    // Apply background config
+    scene.set_clear_color(prefs.background.to_wgpu_color());
+    if let Some(bg_path) = &prefs.background.image_path {
+        match scene.set_background_image_from_path(
+            &render_ctx.device,
+            &render_ctx.queue,
+            render_ctx.config.format,
+            Some(bg_path),
+        ) {
+            Ok(()) => log::info!("Background image loaded: {bg_path}"),
+            Err(e) => log::warn!("Failed to load background image '{bg_path}': {e}"),
+        }
+    }
 
     // 4. Initialize ML tracker on a background thread (face-only mode for debugging)
     let tracker = HolisticTracker::new(FACE_MODEL_PATH, POSE_MODEL_PATH, HAND_MODEL_PATH)
@@ -240,6 +254,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         idle_animation,
         tracking_enabled: true,
         animation_path: prefs.animation_path,
+        background: prefs.background,
     })
 }
 

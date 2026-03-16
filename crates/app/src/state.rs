@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use renderer::context::RenderContext;
 use renderer::debug_overlay::DebugOverlay;
-use renderer::light::StageLighting;
+use renderer::light::{BackgroundConfig, StageLighting};
 use renderer::scene::Scene;
 use solver::types::{RiggedFace, RiggedHand, RiggedPose};
 use tracker::HolisticResult;
@@ -51,6 +51,8 @@ pub struct AppState {
     pub tracking_enabled: bool,
     /// Animation path from config (preserved for save).
     pub animation_path: Option<String>,
+    /// Background config (preserved for save).
+    pub background: BackgroundConfig,
 }
 
 /// Current rig solver results (face/pose/hand).

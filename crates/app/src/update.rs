@@ -330,7 +330,10 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         .texture
         .create_view(&wgpu::TextureViewDescriptor::default());
 
-    // 5a. Main 3D scene render
+    // 5a. Advance background animation (no-op for static images)
+    state.scene.tick_background(&state.render_ctx.queue, elapsed);
+
+    // 5b. Main 3D scene render
     state.scene.render_to_view(&state.render_ctx, &view);
 
     // 5b. Debug overlay: camera preview + landmark visualization
