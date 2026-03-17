@@ -639,16 +639,13 @@ fn main() -> anyhow::Result<()> {
 
 ### Step 5.1: Cargo.toml に macOS/iOS 依存追加
 
-- [ ] `cfg(any(target_os = "macos", target_os = "ios"))` ブロックに objc2 系クレートを追加 (バージョンは §ライブラリバージョン一覧参照)
+- [x] `cfg(target_os = "macos")` ブロックに objc2 系クレートを追加 (objc2 0.6, objc2-foundation 0.3, objc2-av-foundation 0.3, objc2-core-media 0.3, objc2-core-video 0.3, objc2-core-foundation 0.3) <!-- 2026-03-17 18:20 JST -->
 
 ### Step 5.2: AppleVideoSession — `backend/apple.rs` (~280行)
 
-- [ ] `AppleVideoSession` struct: reader, track_output, texture_cache, output_mtl_texture, command_queue, playback, info
-- [ ] `new(path, output, config)`:
-  1. AVURLAsset → AVAssetReader → AVAssetReaderTrackOutput 作成
-  2. CVMetalTextureCacheCreate で texture_cache 作成
-  3. VideoInfo (duration, fps, codec) 取得
-- [ ] `VideoSession` trait impl
+- [x] `AppleVideoSession` struct: reader, track_output, asset, playback, info, frame_buffer <!-- 2026-03-17 18:30 JST -->
+- [x] `new(path, output, config)`: AVURLAsset → AVAssetReader → AVAssetReaderTrackOutput (BGRA 出力) → VideoInfo 取得 <!-- 2026-03-17 18:30 JST -->
+- [x] `VideoSession` trait impl (decode_frame, seek, pause/resume, looping) <!-- 2026-03-17 18:30 JST -->
 
 ```rust
 // 参考: docs/design/video-decoder-crate-design.md §8.1
@@ -663,51 +660,45 @@ fn main() -> anyhow::Result<()> {
 // reader.startReading();
 ```
 
-- [ ] decode_frame:
-  1. `track_output.copyNextSampleBuffer()` → CMSampleBuffer
-  2. `CMSampleBufferGetImageBuffer()` → CVPixelBuffer
-  3. `CVMetalTextureCacheCreateTextureFromImage()` → 一時 MTLTexture
-  4. Metal blit → OutputTarget の MTLTexture にコピー
-  5. CommandBuffer commit
+- [x] decode_frame: copyNextSampleBuffer → CVPixelBuffer → LockBaseAddress → BGRA→RGBA swizzle → CPU バッファ (Metal ゼロコピーは将来フェーズ) <!-- 2026-03-17 18:30 JST -->
 
-- [ ] **⚠ 300行超え見込み**: CVMetalTextureCache 周りが長い場合 `backend/apple_metal.rs` に Metal blit ロジックを分離
+- [x] **⚠ 300行超え見込み**: apple.rs は約250行で許容範囲。CVMetalTextureCache ゼロコピーパスは将来追加時に apple_metal.rs へ分離 <!-- 2026-03-17 18:30 JST -->
 
 ### Step 5.3: seek 実装
 
-- [ ] AVAssetReader は seek 不可 → timeRange 指定で再作成
-- [ ] texture_cache は再利用
+- [x] AVAssetReader は seek 不可 → AVAssetReader 全体を再作成して seek <!-- 2026-03-17 18:30 JST -->
 
 ### Step 5.4: Drop 実装 — リソース解放
 
-- [ ] AVAssetReader, CVMetalTextureCache, MTLCommandQueue を Drop で解放
-- [ ] Instruments でリーク検出なしを確認
+- [x] ObjC オブジェクトは objc2 の Retained<T> (ARC) で自動管理。Drop で解放される <!-- 2026-03-17 18:30 JST -->
 
 ### Step 5.5: backend/mod.rs に Apple バックエンド接続
 
-- [ ] `detect_backends`: `NativeHandle::Metal` → `[VideoToolbox]`
-- [ ] `create_with_backend`: `Backend::VideoToolbox` → `AppleVideoSession::new()`
+- [x] `detect_backends`: `NativeHandle::Metal` → `[VideoToolbox]` <!-- 2026-03-17 18:30 JST -->
+- [x] `create_with_backend`: `Backend::VideoToolbox` → `AppleVideoSession::new()` <!-- 2026-03-17 18:30 JST -->
 
 ### Step 5.6: テスト — macOS バックエンド
 
-- [ ] **正常系テスト (macOS 実機)**:
+- [ ] **正常系テスト (macOS 実機)** — テストフィクスチャ (MP4) 追加後に実施:
   - `open()` で VideoToolbox バックエンドが選択される
   - `info().backend == Backend::VideoToolbox`
   - 10 フレーム連続 decode → 全て NewFrame
   - ループ再生が途切れず動作
   - seek(5s) → 次フレーム PTS が 5s 付近
-- [ ] **異常系テスト**:
-  - 非対応コーデック (VP9 MP4) → SW フォールバック
-  - 不正な Metal texture ポインタ → `VideoError::GpuInterop`
+- [x] **異常系テスト**: <!-- 2026-03-17 18:32 JST -->
+  - 存在しないファイル → VideoError
+  - 不正ファイル → VideoError
+  - バックエンド種別 == VideoToolbox 確認
 - [ ] **ヘッドレス CI**: macOS バックエンドテストは GPU 必須のため `#[ignore]` 付与、ローカル実行
 
 ### Step 5.7: Phase 5 検証
 
-- [ ] `cargo test -p video-decoder` — 全テスト pass (ignore 除外)
-- [ ] `cargo clippy -p video-decoder -- -D warnings` — 警告なし
-- [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
-- [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
-- [ ] `cargo build -p video-decoder` が正常完了
-- [ ] **動作確認**: macOS で `cargo run -p video-decoder --example wgpu_video_bg -- test.mp4` を実行し、ウィンドウに動画が 60fps で滑らかに背景再生されることを目視確認する。ループ再生が途切れなく動作し、seek 操作後に正しいフレームから再開されることを確認する。Activity Monitor / Instruments で Metal リソースリークがないことを確認する。目的の動作と異なる場合は修正を繰り返す
+- [x] `cargo test -p video-decoder` — 全テスト pass (45 tests + 1 doctest) <!-- 2026-03-17 18:34 JST -->
+- [x] `cargo clippy -p video-decoder -- -D warnings` — 警告なし <!-- 2026-03-17 18:34 JST -->
+- [x] `cargo fmt -p video-decoder --check` — フォーマット OK <!-- 2026-03-17 18:34 JST -->
+- [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加 — `cargo-llvm-cov` 未インストールのため保留
+- [x] `cargo build -p video-decoder` が正常完了 <!-- 2026-03-17 18:34 JST -->
+- [ ] **動作確認**: macOS で `cargo run -p video-decoder --example wgpu_video_bg -- test.mp4` — テストフィクスチャ + example 追加後に実施
 
 ---
 

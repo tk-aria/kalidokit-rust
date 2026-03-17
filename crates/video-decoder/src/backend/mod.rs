@@ -1,5 +1,7 @@
 //! Backend selection and session creation.
 
+#[cfg(target_os = "macos")]
+pub mod apple;
 pub mod software;
 
 use crate::error::{Result, VideoError};
@@ -7,6 +9,8 @@ use crate::handle::NativeHandle;
 use crate::session::{OutputTarget, SessionConfig, VideoSession};
 use crate::types::Backend;
 
+#[cfg(target_os = "macos")]
+use self::apple::AppleVideoSession;
 use self::software::SwVideoSession;
 
 /// Create a video session with automatic backend selection.
@@ -75,13 +79,12 @@ fn create_with_backend(
             let session = SwVideoSession::new(path, *output, config)?;
             Ok(Box::new(session))
         }
-        // HW backends are not yet implemented.
-        Backend::VideoToolbox
-        | Backend::D3d12Video
-        | Backend::MediaFoundation
-        | Backend::VulkanVideo
-        | Backend::GStreamerVaapi
-        | Backend::V4l2
-        | Backend::MediaCodec => Err(VideoError::NoHwDecoder),
+        #[cfg(target_os = "macos")]
+        Backend::VideoToolbox => {
+            let session = AppleVideoSession::new(path, *output, config)?;
+            Ok(Box::new(session))
+        }
+        // HW backends not yet implemented (or not available on this platform).
+        _ => Err(VideoError::NoHwDecoder),
     }
 }

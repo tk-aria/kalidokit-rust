@@ -13,6 +13,14 @@ mp4parse = "0.17"
 h264-reader = "0.7"
 openh264 = "0.6"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-av-foundation = { version = "0.3", features = ["objc2-core-media"] }
+objc2-core-media = "0.3"
+objc2-core-video = "0.3"
+objc2-core-foundation = "0.3"
+
 [dev-dependencies]
 pollster = { workspace = true }
 env_logger = { workspace = true }
