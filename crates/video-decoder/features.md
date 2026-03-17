@@ -64,8 +64,8 @@ Phase 9 (E2E テスト・サンプル・ドキュメント・CI) ← Phase 4 以
 
 ### Step 1.1: Cargo.toml + ワークスペース追加
 
-- [ ] **ルート Cargo.toml**: `members` に `"crates/video-decoder"` を追加
-- [ ] **crates/video-decoder/Cargo.toml** を作成
+- [x] **ルート Cargo.toml**: `members` に `"crates/video-decoder"` を追加 <!-- 2026-03-17 12:12 JST -->
+- [x] **crates/video-decoder/Cargo.toml** を作成 <!-- 2026-03-17 12:12 JST -->
 
 ```toml
 [package]
@@ -85,7 +85,7 @@ env_logger = "0.11"
 image = "0.25"
 ```
 
-- [ ] `cargo check -p video-decoder` が通ることを確認
+- [x] `cargo check -p video-decoder` が通ることを確認 <!-- 2026-03-17 12:13 JST -->
 
 ### Step 1.2: モジュール構造の scaffold
 

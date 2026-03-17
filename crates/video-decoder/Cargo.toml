@@ -1,0 +1,16 @@
+[package]
+name = "video-decoder"
+version = "0.1.0"
+edition = "2021"
+description = "Platform-native HW video decoder with zero-copy GPU texture output"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+wgpu = { workspace = true }
+
+[dev-dependencies]
+pollster = { workspace = true }
+env_logger = { workspace = true }
+image = { workspace = true }
