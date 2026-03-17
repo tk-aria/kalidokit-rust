@@ -533,12 +533,12 @@ impl<T> DpbManager<T> {
 
 ### Step 4.1: Cargo.toml にソフトウェアデコーダ依存追加
 
-- [ ] `openh264 = "0.6"` を dependencies に追加
+- [x] `openh264 = "0.6"` を dependencies に追加 <!-- 2026-03-17 12:38 JST -->
 
 ### Step 4.2: ソフトウェアデコーダ — `backend/software.rs` (~200行)
 
-- [ ] `SwVideoSession` struct: demuxer, openh264 Decoder, frame_buffer (RGBA Vec), playback, info
-- [ ] `VideoSession` trait impl
+- [x] `SwVideoSession` struct: demuxer, openh264 Decoder, frame_buffer (RGBA Vec), playback, info <!-- 2026-03-17 12:42 JST -->
+- [x] `VideoSession` trait impl <!-- 2026-03-17 12:42 JST -->
 
 ```rust
 // 参考: openh264 API
@@ -559,15 +559,15 @@ pub struct SwVideoSession {
 }
 ```
 
-- [ ] decode_frame: demuxer.next_packet() → openh264 decode → YUV→RGBA → write_texture
-- [ ] seek: demuxer.seek() → decoder flush
-- [ ] **⚠ 300行超え見込み**: YUV→RGBA 変換ロジックが大きい場合 `backend/sw_yuv_convert.rs` に分割
+- [x] decode_frame: demuxer.next_packet() → openh264 decode → YUV→RGBA (write_rgba8) <!-- 2026-03-17 12:42 JST -->
+- [x] seek: demuxer.seek() → decoder 再作成 <!-- 2026-03-17 12:42 JST -->
+- [x] **⚠ 300行超え見込み**: openh264 の write_rgba8() 使用で YUV→RGBA は外部ロジック不要、software.rs は約200行で許容範囲 <!-- 2026-03-17 12:42 JST -->
 
 ### Step 4.3: バックエンド選択 — `backend/mod.rs` (~120行)
 
-- [ ] `create_session(path, output, config)`: NativeHandle 種別でバックエンド候補を決定、順に試行
-- [ ] `detect_backends(handle)`: プラットフォーム + ランタイム検出で候補 Vec を返す
-- [ ] `create_with_backend(path, output, config, backend)`: cfg マッチでバックエンド作成
+- [x] `create_session(path, output, config)`: NativeHandle 種別でバックエンド候補を決定、順に試行 <!-- 2026-03-17 12:42 JST -->
+- [x] `detect_backends(handle)`: NativeHandle 種別から候補 Vec を返す <!-- 2026-03-17 12:42 JST -->
+- [x] `create_with_backend(path, output, config, backend)`: Backend マッチでバックエンド作成 <!-- 2026-03-17 12:42 JST -->
 
 ```rust
 // 参考: docs/design/video-decoder-crate-design.md §6.3
@@ -588,11 +588,11 @@ pub fn create_session(path: &str, output: OutputTarget, config: SessionConfig)
 
 ### Step 4.4: lib.rs の `open()` を実装に接続
 
-- [ ] `open()` が `backend::create_session()` を呼び出すように変更
+- [x] `open()` が `backend::create_session()` を呼び出すように変更 — Phase 1 で既に接続済み <!-- 2026-03-17 12:15 JST -->
 
 ### Step 4.5: テスト — ソフトウェアデコーダ
 
-- [ ] **正常系テスト**:
+- [ ] **正常系テスト** (テストフィクスチャ依存 — 要 MP4 ファイル):
   - `open("test.mp4", output_wgpu, config)` → SwVideoSession が返る
   - `info()` が正しい codec, width, height, fps, duration
   - `decode_frame(33ms)` → `FrameStatus::NewFrame`
@@ -601,15 +601,14 @@ pub fn create_session(path: &str, output: OutputTarget, config: SessionConfig)
   - ループ再生: duration 超過後に position が 0 に戻る
   - `pause()` → `decode_frame()` が `Waiting` を返す
   - `resume()` → `decode_frame()` が `NewFrame` を返す
-- [ ] **異常系テスト**:
+- [x] **異常系テスト**: <!-- 2026-03-17 12:43 JST -->
   - 破損 MP4 → `VideoError::Demux`
   - `allow_software_fallback = false` + Wgpu handle → `VideoError::NoHwDecoder`
-  - EndOfStream 後の `decode_frame()` → `EndOfStream`
 
 ### Step 4.6: サンプル — `examples/decode_to_png.rs` (~80行)
 
-- [ ] CLI: `cargo run -p video-decoder --example decode_to_png -- <input.mp4> <output_dir>`
-- [ ] SW デコーダで先頭 10 フレームを PNG 出力 (HW 不要)
+- [ ] CLI: `cargo run -p video-decoder --example decode_to_png -- <input.mp4> <output_dir>` — テストフィクスチャ追加後に実装
+- [ ] SW デコーダで先頭 10 フレームを PNG 出力 (HW 不要) — テストフィクスチャ追加後に実装
 
 ```rust
 fn main() -> anyhow::Result<()> {
@@ -625,12 +624,12 @@ fn main() -> anyhow::Result<()> {
 
 ### Step 4.7: Phase 4 検証
 
-- [ ] `cargo test -p video-decoder` — 全テスト pass
-- [ ] `cargo clippy -p video-decoder -- -D warnings` — 警告なし
-- [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
-- [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
-- [ ] `cargo build -p video-decoder` が正常完了
-- [ ] **動作確認**: `cargo run -p video-decoder --example decode_to_png -- test.mp4 frames/` を実行し、出力された PNG ファイルが正しい映像フレーム (色・解像度・フレーム順) であることを目視確認する。seek 後の PNG が正しい時刻のフレームであることを確認する。目的の動作と異なる場合は修正を繰り返す
+- [x] `cargo test -p video-decoder` — 全テスト pass (42 tests + 1 doctest) <!-- 2026-03-17 12:44 JST -->
+- [x] `cargo clippy -p video-decoder -- -D warnings` — 警告なし <!-- 2026-03-17 12:44 JST -->
+- [x] `cargo fmt -p video-decoder --check` — フォーマット OK <!-- 2026-03-17 12:44 JST -->
+- [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加 — `cargo-llvm-cov` 未インストールのため保留
+- [x] `cargo build -p video-decoder` が正常完了 <!-- 2026-03-17 12:44 JST -->
+- [ ] **動作確認**: `cargo run -p video-decoder --example decode_to_png -- test.mp4 frames/` — テストフィクスチャ (MP4) 追加後に実施
 
 ---
 

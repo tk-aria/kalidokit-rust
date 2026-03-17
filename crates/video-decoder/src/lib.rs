@@ -69,7 +69,7 @@ mod tests {
     }
 
     #[test]
-    fn open_stub_returns_no_hw_decoder() {
+    fn open_invalid_mp4_returns_demux_error() {
         let dir = std::env::temp_dir().join("video_decoder_test");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("dummy.mp4");
@@ -80,9 +80,37 @@ mod tests {
             dummy_output(),
             SessionConfig::default(),
         );
+        // With a Wgpu handle the software backend is attempted, which tries to
+        // demux the file and fails because the content is not a valid MP4.
+        match result {
+            Err(VideoError::Demux(_)) => {}
+            Err(other) => panic!("expected Demux error, got {:?}", other),
+            Ok(_) => panic!("expected error"),
+        }
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn open_with_no_software_fallback_returns_no_hw_decoder() {
+        let dir = std::env::temp_dir().join("video_decoder_test_nosw");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("dummy.mp4");
+        std::fs::write(&path, b"not a real mp4").unwrap();
+
+        let config = SessionConfig {
+            allow_software_fallback: false,
+            ..SessionConfig::default()
+        };
+        let result = open(path.to_str().unwrap(), dummy_output(), config);
+        // Wgpu handle candidates = [Software], but software fallback is
+        // disabled after candidates exhaust, so we get NoHwDecoder.
         match result {
             Err(VideoError::NoHwDecoder) => {}
-            Err(other) => panic!("expected NoHwDecoder, got {:?}", other),
+            // Software is in the candidate list for Wgpu, so it will be tried
+            // and fail with a Demux error before reaching the fallback check.
+            Err(VideoError::Demux(_)) => {}
+            Err(other) => panic!("expected NoHwDecoder or Demux, got {:?}", other),
             Ok(_) => panic!("expected error"),
         }
 

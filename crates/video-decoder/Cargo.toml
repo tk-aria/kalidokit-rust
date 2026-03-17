@@ -11,6 +11,7 @@ log = { workspace = true }
 wgpu = { workspace = true }
 mp4parse = "0.17"
 h264-reader = "0.7"
+openh264 = "0.6"
 
 [dev-dependencies]
 pollster = { workspace = true }
