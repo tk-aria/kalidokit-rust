@@ -1,7 +1,7 @@
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
-use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::event_loop::ActiveEventLoop;
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 use std::sync::Arc;
@@ -100,60 +100,117 @@ impl ApplicationHandler for App {
                             }
                             // Shading mode toggle
                             KeyCode::KeyV => {
-                                state.stage_lighting.shading_mode = state.stage_lighting.shading_mode.toggle();
-                                log::info!("Shading mode: {}", state.stage_lighting.shading_mode.label());
+                                state.stage_lighting.shading_mode =
+                                    state.stage_lighting.shading_mode.toggle();
+                                log::info!(
+                                    "Shading mode: {}",
+                                    state.stage_lighting.shading_mode.label()
+                                );
                             }
                             // Light position cycling: 1=key, 2=fill, 3=back
                             KeyCode::Digit1 => {
                                 state.stage_lighting.key.next_preset();
-                                log::info!("Key light position: {}", state.stage_lighting.key.preset.label());
+                                log::info!(
+                                    "Key light position: {}",
+                                    state.stage_lighting.key.preset.label()
+                                );
                             }
                             KeyCode::Digit2 => {
                                 state.stage_lighting.fill.next_preset();
-                                log::info!("Fill light position: {}", state.stage_lighting.fill.preset.label());
+                                log::info!(
+                                    "Fill light position: {}",
+                                    state.stage_lighting.fill.preset.label()
+                                );
                             }
                             KeyCode::Digit3 => {
                                 state.stage_lighting.back.next_preset();
-                                log::info!("Back light position: {}", state.stage_lighting.back.preset.label());
+                                log::info!(
+                                    "Back light position: {}",
+                                    state.stage_lighting.back.preset.label()
+                                );
                             }
                             // Intensity adjustment: Q/W=key, A/S=fill, Z/X=back
                             KeyCode::KeyQ => {
-                                state.stage_lighting.key.intensity = (state.stage_lighting.key.intensity + 0.2).min(3.0);
-                                log::info!("Key light intensity: {:.1}", state.stage_lighting.key.intensity);
+                                state.stage_lighting.key.intensity =
+                                    (state.stage_lighting.key.intensity + 0.2).min(3.0);
+                                log::info!(
+                                    "Key light intensity: {:.1}",
+                                    state.stage_lighting.key.intensity
+                                );
                             }
                             KeyCode::KeyW => {
-                                state.stage_lighting.key.intensity = (state.stage_lighting.key.intensity - 0.2).max(0.0);
-                                log::info!("Key light intensity: {:.1}", state.stage_lighting.key.intensity);
+                                state.stage_lighting.key.intensity =
+                                    (state.stage_lighting.key.intensity - 0.2).max(0.0);
+                                log::info!(
+                                    "Key light intensity: {:.1}",
+                                    state.stage_lighting.key.intensity
+                                );
                             }
                             KeyCode::KeyA => {
-                                state.stage_lighting.fill.intensity = (state.stage_lighting.fill.intensity + 0.2).min(3.0);
-                                log::info!("Fill light intensity: {:.1}", state.stage_lighting.fill.intensity);
+                                state.stage_lighting.fill.intensity =
+                                    (state.stage_lighting.fill.intensity + 0.2).min(3.0);
+                                log::info!(
+                                    "Fill light intensity: {:.1}",
+                                    state.stage_lighting.fill.intensity
+                                );
                             }
                             KeyCode::KeyS => {
-                                state.stage_lighting.fill.intensity = (state.stage_lighting.fill.intensity - 0.2).max(0.0);
-                                log::info!("Fill light intensity: {:.1}", state.stage_lighting.fill.intensity);
+                                state.stage_lighting.fill.intensity =
+                                    (state.stage_lighting.fill.intensity - 0.2).max(0.0);
+                                log::info!(
+                                    "Fill light intensity: {:.1}",
+                                    state.stage_lighting.fill.intensity
+                                );
                             }
                             KeyCode::KeyZ => {
-                                state.stage_lighting.back.intensity = (state.stage_lighting.back.intensity + 0.2).min(3.0);
-                                log::info!("Back light intensity: {:.1}", state.stage_lighting.back.intensity);
+                                state.stage_lighting.back.intensity =
+                                    (state.stage_lighting.back.intensity + 0.2).min(3.0);
+                                log::info!(
+                                    "Back light intensity: {:.1}",
+                                    state.stage_lighting.back.intensity
+                                );
                             }
                             KeyCode::KeyX => {
-                                state.stage_lighting.back.intensity = (state.stage_lighting.back.intensity - 0.2).max(0.0);
-                                log::info!("Back light intensity: {:.1}", state.stage_lighting.back.intensity);
+                                state.stage_lighting.back.intensity =
+                                    (state.stage_lighting.back.intensity - 0.2).max(0.0);
+                                log::info!(
+                                    "Back light intensity: {:.1}",
+                                    state.stage_lighting.back.intensity
+                                );
                             }
                             KeyCode::KeyC => {
                                 state.vcam_enabled = !state.vcam_enabled;
-                                log::info!("Virtual camera: {}", if state.vcam_enabled { "ON" } else { "OFF" });
+                                log::info!(
+                                    "Virtual camera: {}",
+                                    if state.vcam_enabled { "ON" } else { "OFF" }
+                                );
                             }
                             KeyCode::KeyT => {
                                 state.tracking_enabled = !state.tracking_enabled;
                                 if !state.tracking_enabled {
                                     state.rig = crate::state::RigState::default();
                                     let node_transforms = &state.vrm_model.node_transforms;
-                                    state.vrm_model.humanoid_bones.reset_to_bind_pose(node_transforms);
+                                    state
+                                        .vrm_model
+                                        .humanoid_bones
+                                        .reset_to_bind_pose(node_transforms);
                                     state.rig_dirty = true;
                                 }
-                                log::info!("Tracking: {}", if state.tracking_enabled { "ON" } else { "OFF" });
+                                log::info!(
+                                    "Tracking: {}",
+                                    if state.tracking_enabled { "ON" } else { "OFF" }
+                                );
+                            }
+                            KeyCode::KeyP => {
+                                if let Some(session) = &mut state.video_session {
+                                    if session.is_paused() {
+                                        session.resume();
+                                        log::info!("Video background: resumed");
+                                    } else {
+                                        session.pause();
+                                        log::info!("Video background: paused");
+                                    }
+                                }
                             }
                             KeyCode::KeyI => {
                                 if let Some(anim) = &mut state.idle_animation {
@@ -161,9 +218,15 @@ impl ApplicationHandler for App {
                                     if !anim.enabled {
                                         // Reset bones to bind pose when disabling idle animation
                                         let node_transforms = &state.vrm_model.node_transforms;
-                                        state.vrm_model.humanoid_bones.reset_to_bind_pose(node_transforms);
+                                        state
+                                            .vrm_model
+                                            .humanoid_bones
+                                            .reset_to_bind_pose(node_transforms);
                                     }
-                                    log::info!("Idle animation: {}", if anim.enabled { "ON" } else { "OFF" });
+                                    log::info!(
+                                        "Idle animation: {}",
+                                        if anim.enabled { "ON" } else { "OFF" }
+                                    );
                                     state.rig_dirty = true;
                                 }
                             }

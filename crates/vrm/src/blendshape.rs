@@ -154,8 +154,7 @@ impl BlendShapeGroup {
         for (preset, &value) in &self.current_weights {
             if let Some(bindings) = self.groups.get(preset) {
                 for binding in bindings {
-                    if binding.mesh_index == mesh_index
-                        && binding.morph_target_index < num_targets
+                    if binding.mesh_index == mesh_index && binding.morph_target_index < num_targets
                     {
                         weights[binding.morph_target_index] += value * binding.weight;
                     }

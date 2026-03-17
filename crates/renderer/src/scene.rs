@@ -45,6 +45,8 @@ pub struct Scene {
     clear_color: wgpu::Color,
     /// Background image rendering resources (fullscreen quad).
     bg_image: Option<BgImage>,
+    /// Video background rendering resources (decoded video frames).
+    bg_video: Option<BgVideo>,
     /// Staging resources for reading back rendered frames (virtual camera).
     frame_capture_texture: Option<wgpu::Texture>,
     frame_capture_depth: Option<DepthTexture>,
@@ -79,6 +81,16 @@ struct BgImage {
 struct BgFrame {
     rgba: Vec<u8>,
     delay: std::time::Duration,
+}
+
+/// GPU resources for rendering a decoded video frame as a fullscreen background.
+#[allow(dead_code)]
+struct BgVideo {
+    bind_group: wgpu::BindGroup,
+    pipeline: wgpu::RenderPipeline,
+    texture: wgpu::Texture,
+    width: u32,
+    height: u32,
 }
 
 /// Input data for one mesh's material (base color + MToon params + optional texture image).
@@ -344,6 +356,7 @@ impl Scene {
                 a: 1.0,
             },
             bg_image: None,
+            bg_video: None,
             frame_capture_texture: None,
             frame_capture_depth: None,
             frame_capture_buffers: [None, None],
@@ -385,12 +398,35 @@ impl Scene {
     }
 
     /// Render the 3D scene to a texture view with a specified depth buffer.
-    fn render_to_view_with_depth(&self, ctx: &RenderContext, view: &wgpu::TextureView, depth_view: &wgpu::TextureView) {
+    fn render_to_view_with_depth(
+        &self,
+        ctx: &RenderContext,
+        view: &wgpu::TextureView,
+        depth_view: &wgpu::TextureView,
+    ) {
         let mut encoder = ctx
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        // Background image pass (fullscreen quad, no depth)
-        if let Some(bg) = &self.bg_image {
+        // Background: video takes priority over static image
+        let has_background = if let Some(bg_video) = &self.bg_video {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("bg_video_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(self.clear_color),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                ..Default::default()
+            });
+            pass.set_pipeline(&bg_video.pipeline);
+            pass.set_bind_group(0, &bg_video.bind_group, &[]);
+            pass.draw(0..3, 0..1);
+            true
+        } else if let Some(bg) = &self.bg_image {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("bg_image_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -407,10 +443,13 @@ impl Scene {
             pass.set_pipeline(&bg.pipeline);
             pass.set_bind_group(0, &bg.bind_group, &[]);
             pass.draw(0..3, 0..1);
-        }
+            true
+        } else {
+            false
+        };
         // Main 3D scene pass
         {
-            let clear_or_load = if self.bg_image.is_some() {
+            let clear_or_load = if has_background {
                 wgpu::LoadOp::Load // preserve background image
             } else {
                 wgpu::LoadOp::Clear(self.clear_color)
@@ -508,15 +547,87 @@ impl Scene {
         }
     }
 
+    /// Create a video background texture for receiving decoded frames.
+    pub fn set_background_video(
+        &mut self,
+        device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        surface_format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
+    ) -> anyhow::Result<()> {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("bg_video_texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let (bind_group, pipeline) =
+            BgImage::create_gpu_resources(device, &texture, surface_format);
+        self.bg_video = Some(BgVideo {
+            bind_group,
+            pipeline,
+            texture,
+            width,
+            height,
+        });
+        Ok(())
+    }
+
+    /// Remove the video background.
+    pub fn remove_background_video(&mut self) {
+        self.bg_video = None;
+    }
+
+    /// Update the video background texture with new RGBA frame data.
+    pub fn update_video_frame(&self, queue: &wgpu::Queue, rgba: &[u8], width: u32, height: u32) {
+        if let Some(bg) = &self.bg_video {
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &bg.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                rgba,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(width * 4),
+                    rows_per_image: Some(height),
+                },
+                wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+    }
+
     /// Ensure the frame capture texture and double staging buffers exist at the given dimensions.
     pub fn ensure_frame_capture(&mut self, device: &wgpu::Device, width: u32, height: u32) {
-        if self.frame_capture_width == width && self.frame_capture_height == height && self.frame_capture_texture.is_some() {
+        if self.frame_capture_width == width
+            && self.frame_capture_height == height
+            && self.frame_capture_texture.is_some()
+        {
             return;
         }
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("frame_capture_texture"),
-            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -538,9 +649,13 @@ impl Scene {
         };
 
         self.frame_capture_texture = Some(texture);
-        self.frame_capture_buffers = [Some(make_buffer("frame_capture_buf_0")), Some(make_buffer("frame_capture_buf_1"))];
+        self.frame_capture_buffers = [
+            Some(make_buffer("frame_capture_buf_0")),
+            Some(make_buffer("frame_capture_buf_1")),
+        ];
         self.frame_capture_buf_idx = 0;
-        self.frame_capture_map_ready.store(false, std::sync::atomic::Ordering::Release);
+        self.frame_capture_map_ready
+            .store(false, std::sync::atomic::Ordering::Release);
         self.frame_capture_pending = false;
         self.frame_capture_depth = Some(DepthTexture::new(device, width, height));
         self.frame_capture_width = width;
@@ -549,7 +664,9 @@ impl Scene {
 
     /// Get the frame capture texture view for rendering.
     pub fn frame_capture_view(&self) -> Option<wgpu::TextureView> {
-        self.frame_capture_texture.as_ref().map(|t| t.create_view(&wgpu::TextureViewDescriptor::default()))
+        self.frame_capture_texture
+            .as_ref()
+            .map(|t| t.create_view(&wgpu::TextureViewDescriptor::default()))
     }
 
     /// Copy the rendered frame capture texture into the current staging buffer
@@ -557,7 +674,11 @@ impl Scene {
     ///
     /// Double-buffer flow: copy into buffer[idx], read back buffer[1-idx] from previous frame.
     /// Uses non-blocking poll — if the previous frame's mapping isn't ready, skips the readback.
-    pub fn capture_frame_async(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Vec<u8>> {
+    pub fn capture_frame_async(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Option<Vec<u8>> {
         let texture = self.frame_capture_texture.as_ref()?;
         let width = self.frame_capture_width;
         let height = self.frame_capture_height;
@@ -570,7 +691,9 @@ impl Scene {
 
         // 2. Try to read back the previous buffer if mapping is complete
         let result = if self.frame_capture_pending
-            && self.frame_capture_map_ready.load(std::sync::atomic::Ordering::Acquire)
+            && self
+                .frame_capture_map_ready
+                .load(std::sync::atomic::Ordering::Acquire)
         {
             if let Some(buf) = &self.frame_capture_buffers[prev] {
                 let data = buf.slice(..).get_mapped_range();
@@ -582,7 +705,8 @@ impl Scene {
                 }
                 drop(data);
                 buf.unmap();
-                self.frame_capture_map_ready.store(false, std::sync::atomic::Ordering::Release);
+                self.frame_capture_map_ready
+                    .store(false, std::sync::atomic::Ordering::Release);
                 Some(pixels)
             } else {
                 None
@@ -595,14 +719,16 @@ impl Scene {
         // Only issue a new copy+map if the previous mapping has been consumed (or first frame).
         // If the previous buffer is still mapped, skip this frame to avoid wgpu validation error.
         let can_copy = !self.frame_capture_pending
-            || self.frame_capture_map_ready.load(std::sync::atomic::Ordering::Acquire)
+            || self
+                .frame_capture_map_ready
+                .load(std::sync::atomic::Ordering::Acquire)
             || result.is_some(); // result.is_some() means we just consumed the previous mapping
 
         if can_copy {
             if let Some(buf) = &self.frame_capture_buffers[cur] {
-                let mut encoder = device.create_command_encoder(
-                    &wgpu::CommandEncoderDescriptor { label: Some("vcam_copy") },
-                );
+                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("vcam_copy"),
+                });
                 encoder.copy_texture_to_buffer(
                     wgpu::TexelCopyTextureInfo {
                         texture,
@@ -618,7 +744,11 @@ impl Scene {
                             rows_per_image: Some(height),
                         },
                     },
-                    wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                    wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
                 );
                 queue.submit(std::iter::once(encoder.finish()));
 
@@ -667,7 +797,11 @@ impl BgImage {
             queue,
             &wgpu::TextureDescriptor {
                 label: Some("bg_image_texture"),
-                size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width: w,
+                    height: h,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -732,7 +866,7 @@ impl BgImage {
     }
 
     /// Create bind group and pipeline for the background texture.
-    fn create_gpu_resources(
+    pub(crate) fn create_gpu_resources(
         device: &wgpu::Device,
         texture: &wgpu::Texture,
         surface_format: wgpu::TextureFormat,

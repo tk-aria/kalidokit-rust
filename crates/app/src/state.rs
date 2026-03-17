@@ -53,6 +53,8 @@ pub struct AppState {
     pub animation_path: Option<String>,
     /// Background config (preserved for save).
     pub background: BackgroundConfig,
+    /// Video background decode session (None if not using video background).
+    pub video_session: Option<Box<dyn video_decoder::VideoSession>>,
 }
 
 /// Current rig solver results (face/pose/hand).

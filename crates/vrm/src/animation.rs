@@ -36,7 +36,11 @@ impl AnimationClip {
     /// Both paths produce world-space delta rotations retargeted for VRM.
     pub fn load(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let path = path.as_ref();
-        match path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()) {
+        match path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+        {
             Some(ext) if ext == "fbx" => load_fbx(path),
             Some(ext) if ext == "glb" || ext == "gltf" => load_glb(path),
             Some(ext) => anyhow::bail!("Unsupported animation format: .{ext}"),
@@ -273,7 +277,9 @@ fn load_fbx(path: &Path) -> anyhow::Result<AnimationClip> {
                 // Object-Property connection
                 if curve_nodes.contains_key(&child_id) && model_nodes.contains_key(&parent_id) {
                     curve_node_to_model.insert(child_id, (parent_id, label));
-                } else if anim_curves.contains_key(&child_id) && curve_nodes.contains_key(&parent_id) {
+                } else if anim_curves.contains_key(&child_id)
+                    && curve_nodes.contains_key(&parent_id)
+                {
                     curve_to_curve_node.insert(child_id, (parent_id, label));
                 }
             }
@@ -281,7 +287,9 @@ fn load_fbx(path: &Path) -> anyhow::Result<AnimationClip> {
                 // Object-Object connection
                 if anim_curves.contains_key(&child_id) && curve_nodes.contains_key(&parent_id) {
                     curve_to_curve_node.insert(child_id, (parent_id, label));
-                } else if model_nodes.contains_key(&child_id) && model_nodes.contains_key(&parent_id) {
+                } else if model_nodes.contains_key(&child_id)
+                    && model_nodes.contains_key(&parent_id)
+                {
                     model_parent.insert(child_id, parent_id);
                 }
             }
@@ -759,19 +767,40 @@ mod tests {
 
     #[test]
     fn mixamo_mapping_covers_major_bones() {
-        assert_eq!(mixamo_to_vrm("mixamorig:Hips"), Some(HumanoidBoneName::Hips));
-        assert_eq!(mixamo_to_vrm("mixamorig:Spine1"), Some(HumanoidBoneName::Chest));
-        assert_eq!(mixamo_to_vrm("mixamorig:LeftArm"), Some(HumanoidBoneName::LeftUpperArm));
-        assert_eq!(mixamo_to_vrm("mixamorig:RightForeArm"), Some(HumanoidBoneName::RightLowerArm));
-        assert_eq!(mixamo_to_vrm("mixamorig:LeftUpLeg"), Some(HumanoidBoneName::LeftUpperLeg));
+        assert_eq!(
+            mixamo_to_vrm("mixamorig:Hips"),
+            Some(HumanoidBoneName::Hips)
+        );
+        assert_eq!(
+            mixamo_to_vrm("mixamorig:Spine1"),
+            Some(HumanoidBoneName::Chest)
+        );
+        assert_eq!(
+            mixamo_to_vrm("mixamorig:LeftArm"),
+            Some(HumanoidBoneName::LeftUpperArm)
+        );
+        assert_eq!(
+            mixamo_to_vrm("mixamorig:RightForeArm"),
+            Some(HumanoidBoneName::RightLowerArm)
+        );
+        assert_eq!(
+            mixamo_to_vrm("mixamorig:LeftUpLeg"),
+            Some(HumanoidBoneName::LeftUpperLeg)
+        );
         assert_eq!(mixamo_to_vrm("mixamorig:HeadTop_End"), None);
         assert_eq!(mixamo_to_vrm("mixamorig:LeftHandThumb4"), None);
     }
 
     #[test]
     fn mixamo_mapping_finger_bones() {
-        assert_eq!(mixamo_to_vrm("mixamorig:LeftHandThumb1"), Some(HumanoidBoneName::LeftThumbProximal));
-        assert_eq!(mixamo_to_vrm("mixamorig:RightHandPinky3"), Some(HumanoidBoneName::RightLittleDistal));
+        assert_eq!(
+            mixamo_to_vrm("mixamorig:LeftHandThumb1"),
+            Some(HumanoidBoneName::LeftThumbProximal)
+        );
+        assert_eq!(
+            mixamo_to_vrm("mixamorig:RightHandPinky3"),
+            Some(HumanoidBoneName::RightLittleDistal)
+        );
     }
 
     #[test]
@@ -844,7 +873,10 @@ mod tests {
         ];
 
         eprintln!("\n=== GLB vs FBX frame0 delta comparison ===");
-        eprintln!("{:<20} {:>8} {:>40} {:>40}", "Bone", "dot", "GLB (x,y,z,w)", "FBX (x,y,z,w)");
+        eprintln!(
+            "{:<20} {:>8} {:>40} {:>40}",
+            "Bone", "dot", "GLB (x,y,z,w)", "FBX (x,y,z,w)"
+        );
         let mut max_diff = 0.0f32;
         for bone in &key_bones {
             let glb_q = glb_map.get(bone);
@@ -853,7 +885,9 @@ mod tests {
                 (Some(g), Some(f)) => {
                     let dot = g.dot(*f).abs();
                     let diff = 1.0 - dot;
-                    if diff > max_diff { max_diff = diff; }
+                    if diff > max_diff {
+                        max_diff = diff;
+                    }
                     let mark = if diff > 0.01 { " <<<" } else { "" };
                     eprintln!(
                         "{:<20} {:>8.5} ({:>8.5},{:>8.5},{:>8.5},{:>8.5}) ({:>8.5},{:>8.5},{:>8.5},{:>8.5}){}",

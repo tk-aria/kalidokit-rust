@@ -9,6 +9,7 @@ vrm = { path = "../vrm" }
 solver = { path = "../solver" }
 tracker = { path = "../tracker" }
 virtual-camera = { path = "../virtual-camera" }
+video-decoder = { path = "../video-decoder" }
 pipeline-logger = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }

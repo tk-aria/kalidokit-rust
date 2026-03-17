@@ -386,6 +386,10 @@ impl VideoSession for AppleVideoSession {
     fn backend(&self) -> Backend {
         Backend::VideoToolbox
     }
+
+    fn frame_rgba(&self) -> Option<&[u8]> {
+        Some(&self.frame_buffer)
+    }
 }
 
 #[cfg(test)]

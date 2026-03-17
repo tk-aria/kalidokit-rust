@@ -29,16 +29,36 @@ impl BoneGroup {
             Spine | Chest | UpperChest => BoneGroup::Torso,
             LeftShoulder | RightShoulder | LeftUpperArm | RightUpperArm | LeftLowerArm
             | RightLowerArm | LeftHand | RightHand => BoneGroup::Arms,
-            LeftThumbProximal | LeftThumbIntermediate | LeftThumbDistal | LeftIndexProximal
-            | LeftIndexIntermediate | LeftIndexDistal | LeftMiddleProximal
-            | LeftMiddleIntermediate | LeftMiddleDistal | LeftRingProximal
-            | LeftRingIntermediate | LeftRingDistal | LeftLittleProximal
-            | LeftLittleIntermediate | LeftLittleDistal | RightThumbProximal
-            | RightThumbIntermediate | RightThumbDistal | RightIndexProximal
-            | RightIndexIntermediate | RightIndexDistal | RightMiddleProximal
-            | RightMiddleIntermediate | RightMiddleDistal | RightRingProximal
-            | RightRingIntermediate | RightRingDistal | RightLittleProximal
-            | RightLittleIntermediate | RightLittleDistal => BoneGroup::Fingers,
+            LeftThumbProximal
+            | LeftThumbIntermediate
+            | LeftThumbDistal
+            | LeftIndexProximal
+            | LeftIndexIntermediate
+            | LeftIndexDistal
+            | LeftMiddleProximal
+            | LeftMiddleIntermediate
+            | LeftMiddleDistal
+            | LeftRingProximal
+            | LeftRingIntermediate
+            | LeftRingDistal
+            | LeftLittleProximal
+            | LeftLittleIntermediate
+            | LeftLittleDistal
+            | RightThumbProximal
+            | RightThumbIntermediate
+            | RightThumbDistal
+            | RightIndexProximal
+            | RightIndexIntermediate
+            | RightIndexDistal
+            | RightMiddleProximal
+            | RightMiddleIntermediate
+            | RightMiddleDistal
+            | RightRingProximal
+            | RightRingIntermediate
+            | RightRingDistal
+            | RightLittleProximal
+            | RightLittleIntermediate
+            | RightLittleDistal => BoneGroup::Fingers,
             Hips | LeftUpperLeg | RightUpperLeg | LeftLowerLeg | RightLowerLeg | LeftFoot
             | RightFoot | LeftToes | RightToes => BoneGroup::LowerBody,
         }
@@ -211,10 +231,19 @@ mod tests {
     fn bone_group_classification() {
         assert_eq!(BoneGroup::of(HumanoidBoneName::Head), BoneGroup::Head);
         assert_eq!(BoneGroup::of(HumanoidBoneName::Spine), BoneGroup::Torso);
-        assert_eq!(BoneGroup::of(HumanoidBoneName::LeftUpperArm), BoneGroup::Arms);
-        assert_eq!(BoneGroup::of(HumanoidBoneName::LeftThumbProximal), BoneGroup::Fingers);
+        assert_eq!(
+            BoneGroup::of(HumanoidBoneName::LeftUpperArm),
+            BoneGroup::Arms
+        );
+        assert_eq!(
+            BoneGroup::of(HumanoidBoneName::LeftThumbProximal),
+            BoneGroup::Fingers
+        );
         assert_eq!(BoneGroup::of(HumanoidBoneName::Hips), BoneGroup::LowerBody);
-        assert_eq!(BoneGroup::of(HumanoidBoneName::LeftFoot), BoneGroup::LowerBody);
+        assert_eq!(
+            BoneGroup::of(HumanoidBoneName::LeftFoot),
+            BoneGroup::LowerBody
+        );
     }
 
     #[test]

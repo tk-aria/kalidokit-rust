@@ -98,16 +98,11 @@ const HAND_CONNECTIONS: &[(usize, usize)] = &[
 #[allow(dead_code)]
 const FACE_KEY_INDICES: &[usize] = &[
     // Left eye
-    33, 133, 160, 159, 158, 144, 145, 153,
-    // Right eye
-    362, 263, 387, 386, 385, 373, 374, 380,
-    // Nose
-    1, 2, 98, 327,
-    // Mouth outer
-    61, 291, 0, 17, 78, 308, 13, 14,
-    // Eyebrows
-    70, 63, 105, 66, 107, 300, 293, 334, 296, 336,
-    // Iris
+    33, 133, 160, 159, 158, 144, 145, 153, // Right eye
+    362, 263, 387, 386, 385, 373, 374, 380, // Nose
+    1, 2, 98, 327, // Mouth outer
+    61, 291, 0, 17, 78, 308, 13, 14, // Eyebrows
+    70, 63, 105, 66, 107, 300, 293, 334, 296, 336, // Iris
     468, 473,
 ];
 
@@ -147,28 +142,27 @@ impl DebugOverlay {
             source: wgpu::ShaderSource::Wgsl(shader_src.into()),
         });
 
-        let bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("overlay_bind_group_layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("overlay_bind_group_layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("overlay_pipeline_layout"),
@@ -343,13 +337,13 @@ impl DebugOverlay {
                     .as_ref()
                     .unwrap_or(&self.white_bind_group);
                 pass.set_bind_group(0, cam_bg, &[]);
-                let cam_buffer =
-                    ctx.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("overlay_cam_vb"),
-                            contents: bytemuck::cast_slice(&cam_vertices),
-                            usage: wgpu::BufferUsages::VERTEX,
-                        });
+                let cam_buffer = ctx
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("overlay_cam_vb"),
+                        contents: bytemuck::cast_slice(&cam_vertices),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
                 pass.set_vertex_buffer(0, cam_buffer.slice(..));
                 pass.draw(0..cam_vertices.len() as u32, 0..1);
             }
@@ -357,13 +351,13 @@ impl DebugOverlay {
             // Draw landmark dots/lines (with white texture → vertex color only)
             if !vertices.is_empty() {
                 pass.set_bind_group(0, &self.white_bind_group, &[]);
-                let lm_buffer =
-                    ctx.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("overlay_lm_vb"),
-                            contents: bytemuck::cast_slice(&vertices),
-                            usage: wgpu::BufferUsages::VERTEX,
-                        });
+                let lm_buffer = ctx
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("overlay_lm_vb"),
+                        contents: bytemuck::cast_slice(&vertices),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
                 pass.set_vertex_buffer(0, lm_buffer.slice(..));
                 pass.draw(0..vertices.len() as u32, 0..1);
             }
@@ -435,18 +429,44 @@ impl DebugOverlay {
             let bg_r = bg_l + bg_w;
             let bg_b = bg_t - bg_h;
 
-            verts.push(OverlayVertex { position: [bg_l, bg_t], color: bg_color, uv });
-            verts.push(OverlayVertex { position: [bg_r, bg_t], color: bg_color, uv });
-            verts.push(OverlayVertex { position: [bg_l, bg_b], color: bg_color, uv });
-            verts.push(OverlayVertex { position: [bg_r, bg_t], color: bg_color, uv });
-            verts.push(OverlayVertex { position: [bg_r, bg_b], color: bg_color, uv });
-            verts.push(OverlayVertex { position: [bg_l, bg_b], color: bg_color, uv });
+            verts.push(OverlayVertex {
+                position: [bg_l, bg_t],
+                color: bg_color,
+                uv,
+            });
+            verts.push(OverlayVertex {
+                position: [bg_r, bg_t],
+                color: bg_color,
+                uv,
+            });
+            verts.push(OverlayVertex {
+                position: [bg_l, bg_b],
+                color: bg_color,
+                uv,
+            });
+            verts.push(OverlayVertex {
+                position: [bg_r, bg_t],
+                color: bg_color,
+                uv,
+            });
+            verts.push(OverlayVertex {
+                position: [bg_r, bg_b],
+                color: bg_color,
+                uv,
+            });
+            verts.push(OverlayVertex {
+                position: [bg_l, bg_b],
+                color: bg_color,
+                uv,
+            });
         }
 
         for (line_idx, line) in lines.iter().enumerate() {
             let y = start_y - line_idx as f32 * bitmap_font::LINE_HEIGHT;
             for (ch_idx, ch) in line.chars().enumerate() {
-                let Some(glyph) = bitmap_font::glyph(ch) else { continue };
+                let Some(glyph) = bitmap_font::glyph(ch) else {
+                    continue;
+                };
                 let cx = start_x + ch_idx as f32 * bitmap_font::CHAR_SPACING;
                 for (row, &bits) in glyph.iter().enumerate() {
                     for col in 0..5 {
@@ -454,12 +474,36 @@ impl DebugOverlay {
                             let px = cx + col as f32 * bitmap_font::PIXEL_SIZE;
                             let py = y - row as f32 * bitmap_font::PIXEL_SIZE;
                             let s = bitmap_font::PIXEL_SIZE * 0.45;
-                            verts.push(OverlayVertex { position: [px - s, py + s], color: text_color, uv });
-                            verts.push(OverlayVertex { position: [px + s, py + s], color: text_color, uv });
-                            verts.push(OverlayVertex { position: [px - s, py - s], color: text_color, uv });
-                            verts.push(OverlayVertex { position: [px + s, py + s], color: text_color, uv });
-                            verts.push(OverlayVertex { position: [px + s, py - s], color: text_color, uv });
-                            verts.push(OverlayVertex { position: [px - s, py - s], color: text_color, uv });
+                            verts.push(OverlayVertex {
+                                position: [px - s, py + s],
+                                color: text_color,
+                                uv,
+                            });
+                            verts.push(OverlayVertex {
+                                position: [px + s, py + s],
+                                color: text_color,
+                                uv,
+                            });
+                            verts.push(OverlayVertex {
+                                position: [px - s, py - s],
+                                color: text_color,
+                                uv,
+                            });
+                            verts.push(OverlayVertex {
+                                position: [px + s, py + s],
+                                color: text_color,
+                                uv,
+                            });
+                            verts.push(OverlayVertex {
+                                position: [px + s, py - s],
+                                color: text_color,
+                                uv,
+                            });
+                            verts.push(OverlayVertex {
+                                position: [px - s, py - s],
+                                color: text_color,
+                                uv,
+                            });
                         }
                     }
                 }
@@ -467,7 +511,11 @@ impl DebugOverlay {
         }
     }
 
-    fn build_pose_landmarks(&self, verts: &mut Vec<OverlayVertex>, pose_2d: &Option<Vec<glam::Vec2>>) {
+    fn build_pose_landmarks(
+        &self,
+        verts: &mut Vec<OverlayVertex>,
+        pose_2d: &Option<Vec<glam::Vec2>>,
+    ) {
         let Some(landmarks) = pose_2d else { return };
         if landmarks.len() < 33 {
             return;
@@ -516,11 +564,7 @@ impl DebugOverlay {
         }
     }
 
-    fn build_face_landmarks(
-        &self,
-        verts: &mut Vec<OverlayVertex>,
-        face: &Option<Vec<glam::Vec3>>,
-    ) {
+    fn build_face_landmarks(&self, verts: &mut Vec<OverlayVertex>, face: &Option<Vec<glam::Vec3>>) {
         let Some(landmarks) = face else { return };
 
         // Draw all face landmarks for debugging (468+ points)

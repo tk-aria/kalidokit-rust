@@ -1018,12 +1018,12 @@ image_path の拡張子判定:
 
 ### Step 10.1: crates/app/Cargo.toml に video-decoder 依存追加
 
-- [ ] `video-decoder = { path = "../video-decoder" }` を `[dependencies]` に追加
-- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+- [x] `video-decoder = { path = "../video-decoder" }` を `[dependencies]` に追加 <!-- 2026-03-17 21:20 JST -->
+- [x] `cargo check -p kalidokit-rust` が通ることを確認 <!-- 2026-03-17 21:20 JST -->
 
 ### Step 10.2: VideoSession trait に frame_rgba() を追加
 
-- [ ] `video-decoder/src/session.rs` の `VideoSession` trait に `frame_rgba()` メソッドを追加
+- [x] `video-decoder/src/session.rs` の `VideoSession` trait に `frame_rgba()` メソッドを追加 <!-- 2026-03-17 21:24 JST -->
 
 ```rust
 pub trait VideoSession: Send {
@@ -1038,23 +1038,23 @@ pub trait VideoSession: Send {
 }
 ```
 
-- [ ] `SwVideoSession` で `frame_rgba()` を override → `Some(&self.frame_buffer)`
-- [ ] `AppleVideoSession` で `frame_rgba()` を override → `Some(&self.frame_buffer)`
-- [ ] `cargo test -p video-decoder` が通ることを確認
+- [x] `SwVideoSession` で `frame_rgba()` を override → `Some(&self.frame_buffer)` <!-- 2026-03-17 21:24 JST -->
+- [x] `AppleVideoSession` で `frame_rgba()` を override → `Some(&self.frame_buffer)` <!-- 2026-03-17 21:24 JST -->
+- [x] `cargo test -p video-decoder` が通ることを確認 (75 tests pass) <!-- 2026-03-17 21:28 JST -->
 
 ### Step 10.3: Scene に動画背景テクスチャ管理を追加
 
-- [ ] `crates/renderer/src/scene.rs` に `BgVideo` struct を追加
+- [x] `crates/renderer/src/scene.rs` に `BgVideo` struct を追加 <!-- 2026-03-17 21:25 JST -->
   - `texture: wgpu::Texture` — デコードフレーム書き込み先 (RGBA8, TEXTURE_BINDING | COPY_DST)
   - `bind_group: wgpu::BindGroup` — 既存の BgImage と同じ fullscreen quad パイプラインを共有
-  - `pipeline: wgpu::RenderPipeline` — BgImage のパイプラインを再利用
+  - `pipeline: wgpu::RenderPipeline` — BgImage のパイプラインを再利用 (`BgImage::create_gpu_resources` を `pub(crate)` に変更)
   - `width: u32, height: u32`
 
-- [ ] `Scene` に `bg_video: Option<BgVideo>` フィールドを追加
-- [ ] `pub fn set_background_video(device, queue, surface_format, width, height) -> Result<()>` — BgVideo 作成
-- [ ] `pub fn remove_background_video()` — BgVideo 破棄
-- [ ] `pub fn update_video_frame(queue, rgba_data, width, height)` — テクスチャに RGBA データを書き込み (queue.write_texture)
-- [ ] `render_to_view_with_depth()` の背景パスで `bg_video` が `bg_image` より優先されるように分岐
+- [x] `Scene` に `bg_video: Option<BgVideo>` フィールドを追加 <!-- 2026-03-17 21:25 JST -->
+- [x] `pub fn set_background_video(device, queue, surface_format, width, height) -> Result<()>` — BgVideo 作成 <!-- 2026-03-17 21:25 JST -->
+- [x] `pub fn remove_background_video()` — BgVideo 破棄 <!-- 2026-03-17 21:25 JST -->
+- [x] `pub fn update_video_frame(queue, rgba_data, width, height)` — テクスチャに RGBA データを書き込み <!-- 2026-03-17 21:25 JST -->
+- [x] `render_to_view_with_depth()` の背景パスで `bg_video` が `bg_image` より優先されるように分岐 <!-- 2026-03-17 21:25 JST -->
 
 ```rust
 // render_to_view_with_depth 内の背景描画部分
@@ -1069,11 +1069,11 @@ if let Some(bg_video) = &self.bg_video {
 }
 ```
 
-- [ ] **⚠ 300行超え見込み**: scene.rs は既に大きいため、BgVideo 関連を `crates/renderer/src/bg_video.rs` に分離を検討
+- [x] **⚠ 300行超え見込み**: BgVideo 追加は約40行。scene.rs は大きいが BgVideo 部分は小さいため分離不要 <!-- 2026-03-17 21:25 JST -->
 
 ### Step 10.4: AppState に VideoSession を追加
 
-- [ ] `crates/app/src/state.rs` の `AppState` に以下を追加:
+- [x] `crates/app/src/state.rs` の `AppState` に以下を追加: <!-- 2026-03-17 21:26 JST -->
 
 ```rust
 /// Video background decode session (None if image_path is not a video).
@@ -1082,7 +1082,7 @@ pub video_session: Option<Box<dyn video_decoder::VideoSession>>,
 
 ### Step 10.5: init.rs で image_path の拡張子判定 → 動画 or 静止画
 
-- [ ] `crates/app/src/init.rs` の背景初期化部分を拡張子判定に変更
+- [x] `crates/app/src/init.rs` の背景初期化部分を拡張子判定に変更 (is_video_file() 追加) <!-- 2026-03-17 21:26 JST -->
 
 ```rust
 // init.rs 内 (背景設定部分)
@@ -1140,11 +1140,11 @@ if let Some(bg_path) = &prefs.background.image_path {
 }
 ```
 
-- [ ] `init_all()` の `AppState` 構築で `video_session` フィールドを設定
+- [x] `init_all()` の `AppState` 構築で `video_session` フィールドを設定 <!-- 2026-03-17 21:26 JST -->
 
 ### Step 10.6: update.rs で毎フレーム動画デコード + テクスチャ更新
 
-- [ ] `crates/app/src/update.rs` の `update_frame()` に動画フレームデコードを追加
+- [x] `crates/app/src/update.rs` の `update_frame()` に動画フレームデコードを追加 <!-- 2026-03-17 21:27 JST -->
 
 ```rust
 // update.rs 内 (既存の tick_background の前に追加)
@@ -1179,7 +1179,7 @@ if state.video_session.is_none() {
 
 ### Step 10.7: app.rs にキーボードショートカット追加
 
-- [ ] 動画の pause/resume トグル (例: `KeyP` キー)
+- [x] 動画の pause/resume トグル (`KeyP` キー) <!-- 2026-03-17 21:27 JST -->
 
 ```rust
 KeyCode::KeyP => {

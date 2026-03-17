@@ -26,7 +26,10 @@ fn main() {
             }
         }
 
-        println!("[vcam_test] Sending {} frames ({}x{})...", frame_count, width, height);
+        println!(
+            "[vcam_test] Sending {} frames ({}x{})...",
+            frame_count, width, height
+        );
         let pixel_count = (width * height) as usize;
 
         for i in 0..frame_count {
@@ -51,7 +54,14 @@ fn main() {
             match vcam.send_frame(&rgba, width, height) {
                 Ok(()) => {
                     if i % 30 == 0 {
-                        println!("[vcam_test] Frame {}/{} sent (RGB={},{},{})", i + 1, frame_count, r, g, b);
+                        println!(
+                            "[vcam_test] Frame {}/{} sent (RGB={},{},{})",
+                            i + 1,
+                            frame_count,
+                            r,
+                            g,
+                            b
+                        );
                     }
                 }
                 Err(e) => {

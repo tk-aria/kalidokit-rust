@@ -43,7 +43,11 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     }
 
     // 2. Try to receive a new tracking result (non-blocking)
-    if let Some(result) = state.tracker_thread.try_recv_result().filter(|_| state.tracking_enabled) {
+    if let Some(result) = state
+        .tracker_thread
+        .try_recv_result()
+        .filter(|_| state.tracking_enabled)
+    {
         pipeline_logger::tracker(log::Level::Debug, "result received")
             .field(
                 "face",
@@ -163,10 +167,10 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     // Auto blink: update every frame regardless of tracking
     if state.blink_mode == BlinkMode::Auto {
         state.auto_blink.update();
-        state
-            .vrm_model
-            .blend_shapes
-            .set(vrm::blendshape::BlendShapePreset::Blink, state.auto_blink.value);
+        state.vrm_model.blend_shapes.set(
+            vrm::blendshape::BlendShapePreset::Blink,
+            state.auto_blink.value,
+        );
         rig_changed = true;
     }
 
@@ -330,8 +334,36 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         .texture
         .create_view(&wgpu::TextureViewDescriptor::default());
 
-    // 5a. Advance background animation (no-op for static images)
-    state.scene.tick_background(&state.render_ctx.queue, elapsed);
+    // 5a. Decode video background frame
+    if let Some(session) = &mut state.video_session {
+        match session.decode_frame(elapsed) {
+            Ok(video_decoder::FrameStatus::NewFrame) => {
+                if let Some(rgba) = session.frame_rgba() {
+                    let info = session.info();
+                    state.scene.update_video_frame(
+                        &state.render_ctx.queue,
+                        rgba,
+                        info.width,
+                        info.height,
+                    );
+                }
+            }
+            Ok(video_decoder::FrameStatus::Waiting) => {}
+            Ok(video_decoder::FrameStatus::EndOfStream) => {
+                log::info!("Video background ended");
+            }
+            Err(e) => {
+                log::warn!("Video decode error: {}", e);
+            }
+        }
+    }
+
+    // 5b. Advance background animation (static/GIF — only when no video)
+    if state.video_session.is_none() {
+        state
+            .scene
+            .tick_background(&state.render_ctx.queue, elapsed);
+    }
 
     // 5b. Main 3D scene render
     state.scene.render_to_view(&state.render_ctx, &view);
@@ -430,16 +462,13 @@ fn apply_rig_to_model(state: &mut AppState) {
     let cfg = &state.rig_config;
 
     // Sample idle animation pose (if active)
-    let idle_pose = state
-        .idle_animation
-        .as_ref()
-        .and_then(|anim| {
-            if anim.enabled {
-                Some(anim.sample())
-            } else {
-                None
-            }
-        });
+    let idle_pose = state.idle_animation.as_ref().and_then(|anim| {
+        if anim.enabled {
+            Some(anim.sample())
+        } else {
+            None
+        }
+    });
 
     // Apply idle animation to bones that are NOT driven by tracking.
     // This sets a base pose that tracking will override/blend with.
@@ -451,10 +480,7 @@ fn apply_rig_to_model(state: &mut AppState) {
             if !tracking_bones.contains(&bone) {
                 // No tracking for this bone: apply idle animation directly.
                 // No additional interpolation — keyframes are already slerp-interpolated.
-                state
-                    .vrm_model
-                    .humanoid_bones
-                    .set_rotation(bone, rot);
+                state.vrm_model.humanoid_bones.set_rotation(bone, rot);
             }
         }
     }
@@ -581,29 +607,43 @@ fn apply_rig_to_model(state: &mut AppState) {
 
         // Hips: rigRotation("Hips", rotation, 0.7)
         let hips_quat = blend_with_idle(
-            pose.hips.rotation.to_quat_dampened(cfg.hips_rotation.dampener),
-            HumanoidBoneName::Hips, &idle_pose, &state.idle_animation,
+            pose.hips
+                .rotation
+                .to_quat_dampened(cfg.hips_rotation.dampener),
+            HumanoidBoneName::Hips,
+            &idle_pose,
+            &state.idle_animation,
         );
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            HumanoidBoneName::Hips, hips_quat, cfg.hips_rotation.lerp_amount,
+            HumanoidBoneName::Hips,
+            hips_quat,
+            cfg.hips_rotation.lerp_amount,
         );
 
         // Spine: rigRotation("Spine", Spine, 0.45, 0.3)
         let spine_quat = blend_with_idle(
             pose.spine.to_quat_dampened(cfg.spine.dampener),
-            HumanoidBoneName::Spine, &idle_pose, &state.idle_animation,
+            HumanoidBoneName::Spine,
+            &idle_pose,
+            &state.idle_animation,
         );
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            HumanoidBoneName::Spine, spine_quat, cfg.spine.lerp_amount,
+            HumanoidBoneName::Spine,
+            spine_quat,
+            cfg.spine.lerp_amount,
         );
 
         // Chest: rigRotation("Chest", Spine, 0.25, 0.3)
         let chest_quat = blend_with_idle(
             pose.chest.to_quat_dampened(cfg.chest.dampener),
-            HumanoidBoneName::Chest, &idle_pose, &state.idle_animation,
+            HumanoidBoneName::Chest,
+            &idle_pose,
+            &state.idle_animation,
         );
         state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            HumanoidBoneName::Chest, chest_quat, cfg.chest.lerp_amount,
+            HumanoidBoneName::Chest,
+            chest_quat,
+            cfg.chest.lerp_amount,
         );
 
         // Arms: rigRotation(name, rotation, 1, 0.3)
@@ -615,9 +655,15 @@ fn apply_rig_to_model(state: &mut AppState) {
         ] {
             let q = blend_with_idle(
                 euler.to_quat_dampened(cfg.limbs.dampener),
-                bone, &idle_pose, &state.idle_animation,
+                bone,
+                &idle_pose,
+                &state.idle_animation,
             );
-            state.vrm_model.humanoid_bones.set_rotation_interpolated(bone, q, cfg.limbs.lerp_amount);
+            state.vrm_model.humanoid_bones.set_rotation_interpolated(
+                bone,
+                q,
+                cfg.limbs.lerp_amount,
+            );
         }
 
         // Legs: rigRotation(name, rotation, 1, 0.3)
@@ -629,9 +675,15 @@ fn apply_rig_to_model(state: &mut AppState) {
         ] {
             let q = blend_with_idle(
                 euler.to_quat_dampened(cfg.limbs.dampener),
-                bone, &idle_pose, &state.idle_animation,
+                bone,
+                &idle_pose,
+                &state.idle_animation,
             );
-            state.vrm_model.humanoid_bones.set_rotation_interpolated(bone, q, cfg.limbs.lerp_amount);
+            state.vrm_model.humanoid_bones.set_rotation_interpolated(
+                bone,
+                q,
+                cfg.limbs.lerp_amount,
+            );
         }
 
         // Hip position: rigPosition("Hips", pos, 1, 0.07)
@@ -716,31 +768,59 @@ fn collect_tracked_bones(state: &AppState) -> std::collections::HashSet<Humanoid
 
     if state.rig.pose.is_some() {
         set.extend([
-            Hips, Spine, Chest,
-            RightUpperArm, RightLowerArm, LeftUpperArm, LeftLowerArm,
-            RightUpperLeg, RightLowerLeg, LeftUpperLeg, LeftLowerLeg,
+            Hips,
+            Spine,
+            Chest,
+            RightUpperArm,
+            RightLowerArm,
+            LeftUpperArm,
+            LeftLowerArm,
+            RightUpperLeg,
+            RightLowerLeg,
+            LeftUpperLeg,
+            LeftLowerLeg,
         ]);
     }
 
     if state.rig.left_hand.is_some() {
         set.extend([
             LeftHand,
-            LeftThumbProximal, LeftThumbIntermediate, LeftThumbDistal,
-            LeftIndexProximal, LeftIndexIntermediate, LeftIndexDistal,
-            LeftMiddleProximal, LeftMiddleIntermediate, LeftMiddleDistal,
-            LeftRingProximal, LeftRingIntermediate, LeftRingDistal,
-            LeftLittleProximal, LeftLittleIntermediate, LeftLittleDistal,
+            LeftThumbProximal,
+            LeftThumbIntermediate,
+            LeftThumbDistal,
+            LeftIndexProximal,
+            LeftIndexIntermediate,
+            LeftIndexDistal,
+            LeftMiddleProximal,
+            LeftMiddleIntermediate,
+            LeftMiddleDistal,
+            LeftRingProximal,
+            LeftRingIntermediate,
+            LeftRingDistal,
+            LeftLittleProximal,
+            LeftLittleIntermediate,
+            LeftLittleDistal,
         ]);
     }
 
     if state.rig.right_hand.is_some() {
         set.extend([
             RightHand,
-            RightThumbProximal, RightThumbIntermediate, RightThumbDistal,
-            RightIndexProximal, RightIndexIntermediate, RightIndexDistal,
-            RightMiddleProximal, RightMiddleIntermediate, RightMiddleDistal,
-            RightRingProximal, RightRingIntermediate, RightRingDistal,
-            RightLittleProximal, RightLittleIntermediate, RightLittleDistal,
+            RightThumbProximal,
+            RightThumbIntermediate,
+            RightThumbDistal,
+            RightIndexProximal,
+            RightIndexIntermediate,
+            RightIndexDistal,
+            RightMiddleProximal,
+            RightMiddleIntermediate,
+            RightMiddleDistal,
+            RightRingProximal,
+            RightRingIntermediate,
+            RightRingDistal,
+            RightLittleProximal,
+            RightLittleIntermediate,
+            RightLittleDistal,
         ]);
     }
 
@@ -848,17 +928,18 @@ fn vcam_send_frame(state: &mut AppState) {
     const VCAM_H: u32 = 720;
 
     // Ensure staging resources exist
-    state.scene.ensure_frame_capture(&state.render_ctx.device, VCAM_W, VCAM_H);
+    state
+        .scene
+        .ensure_frame_capture(&state.render_ctx.device, VCAM_W, VCAM_H);
 
     // Render the scene to the capture texture (uses its own depth buffer at VCAM resolution)
     state.scene.render_to_capture(&state.render_ctx);
 
     // Async double-buffered readback: copies current frame to GPU buffer,
     // returns previous frame's data (one frame latency, non-blocking pipeline).
-    let prev_frame = state.scene.capture_frame_async(
-        &state.render_ctx.device,
-        &state.render_ctx.queue,
-    );
+    let prev_frame = state
+        .scene
+        .capture_frame_async(&state.render_ctx.device, &state.render_ctx.queue);
 
     if let Some(bgra_data) = prev_frame {
         #[cfg(target_os = "macos")]
@@ -892,22 +973,49 @@ fn build_hud_lines(state: &AppState) -> Vec<String> {
     let lighting = &state.stage_lighting;
     vec![
         format!("V: Shading ({})", lighting.shading_mode.label()),
-        format!("B: Blink mode ({})", match state.blink_mode {
-            BlinkMode::Tracking => "Tracking",
-            BlinkMode::Auto => "Auto",
-        }),
+        format!(
+            "B: Blink mode ({})",
+            match state.blink_mode {
+                BlinkMode::Tracking => "Tracking",
+                BlinkMode::Auto => "Auto",
+            }
+        ),
         format!("Scroll: Zoom ({:.1})", state.camera_distance),
         String::new(),
-        format!("1: Key light   ({}) {:.1}", lighting.key.preset.label(), lighting.key.intensity),
-        format!("2: Fill light  ({}) {:.1}", lighting.fill.preset.label(), lighting.fill.intensity),
-        format!("3: Back light  ({}) {:.1}", lighting.back.preset.label(), lighting.back.intensity),
+        format!(
+            "1: Key light   ({}) {:.1}",
+            lighting.key.preset.label(),
+            lighting.key.intensity
+        ),
+        format!(
+            "2: Fill light  ({}) {:.1}",
+            lighting.fill.preset.label(),
+            lighting.fill.intensity
+        ),
+        format!(
+            "3: Back light  ({}) {:.1}",
+            lighting.back.preset.label(),
+            lighting.back.intensity
+        ),
         String::new(),
         "Q/W: Key intensity +/-".to_string(),
         "A/S: Fill intensity +/-".to_string(),
         "Z/X: Back intensity +/-".to_string(),
-        format!("T: Tracking ({})", if state.tracking_enabled { "ON" } else { "OFF" }),
-        format!("I: Idle anim ({})", state.idle_animation.as_ref().map_or("N/A", |a| if a.enabled { "ON" } else { "OFF" })),
-        format!("C: VCam ({})", if state.vcam_enabled { "ON" } else { "OFF" }),
+        format!(
+            "T: Tracking ({})",
+            if state.tracking_enabled { "ON" } else { "OFF" }
+        ),
+        format!(
+            "I: Idle anim ({})",
+            state
+                .idle_animation
+                .as_ref()
+                .map_or("N/A", |a| if a.enabled { "ON" } else { "OFF" })
+        ),
+        format!(
+            "C: VCam ({})",
+            if state.vcam_enabled { "ON" } else { "OFF" }
+        ),
     ]
 }
 
@@ -987,7 +1095,15 @@ mod tests {
             lerp_amount: 0.3,
         };
 
-        apply_hand_bones(&mut bones, &hand, &wrist_combined, Side::Left, &config, &None, &None);
+        apply_hand_bones(
+            &mut bones,
+            &hand,
+            &wrist_combined,
+            Side::Left,
+            &config,
+            &None,
+            &None,
+        );
 
         // All 16 left-hand bones should now have non-identity rotations
         let check_bones = [

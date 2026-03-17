@@ -199,6 +199,10 @@ impl VideoSession for SwVideoSession {
     fn backend(&self) -> Backend {
         Backend::Software
     }
+
+    fn frame_rgba(&self) -> Option<&[u8]> {
+        Some(&self.frame_buffer)
+    }
 }
 
 /// Return a reference to the current RGBA frame buffer.

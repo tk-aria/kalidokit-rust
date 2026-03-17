@@ -75,6 +75,13 @@ pub trait VideoSession: Send {
 
     /// Returns the decoder backend in use.
     fn backend(&self) -> Backend;
+
+    /// Returns the current decoded frame as RGBA pixel data (CPU-side).
+    /// Returns None if no frame has been decoded yet or if the backend
+    /// writes directly to a GPU texture (zero-copy path).
+    fn frame_rgba(&self) -> Option<&[u8]> {
+        None
+    }
 }
 
 #[cfg(test)]

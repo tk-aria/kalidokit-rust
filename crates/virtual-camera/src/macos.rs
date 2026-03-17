@@ -58,7 +58,10 @@ impl MacOsVirtualCamera {
 
 impl VirtualCamera for MacOsVirtualCamera {
     fn start(&mut self) -> anyhow::Result<()> {
-        log::info!("[VCam] Starting macOS virtual camera (TCP server on localhost:{})", TCP_PORT);
+        log::info!(
+            "[VCam] Starting macOS virtual camera (TCP server on localhost:{})",
+            TCP_PORT
+        );
 
         let listener = TcpListener::bind(("127.0.0.1", TCP_PORT))
             .map_err(|e| anyhow::anyhow!("Failed to bind TCP port {}: {}", TCP_PORT, e))?;
@@ -109,11 +112,7 @@ impl VirtualCamera for MacOsVirtualCamera {
                     });
                     sent += 1;
                     if sent.is_multiple_of(60) {
-                        log::info!(
-                            "[VCam] Frame {} sent (clients={})",
-                            sent,
-                            guard.len()
-                        );
+                        log::info!("[VCam] Frame {} sent (clients={})", sent, guard.len());
                     }
                 }
             })?;

@@ -81,7 +81,10 @@ impl FaceMeshDetector {
         };
 
         pipeline_logger::tracker(log::Level::Debug, "face crop region")
-            .field("crop", format!("({},{}){}x{}", crop.x, crop.y, crop.w, crop.h))
+            .field(
+                "crop",
+                format!("({},{}){}x{}", crop.x, crop.y, crop.w, crop.h),
+            )
             .field("frame", format!("{}x{}", img_w, img_h))
             .emit();
 
@@ -146,8 +149,7 @@ impl FaceMeshDetector {
         }
 
         // Normalize landmarks to [0,1] relative to the 192x192 input
-        let crop_landmarks =
-            preprocess::normalize_landmarks(raw_data, num_landmarks, 192.0, 192.0);
+        let crop_landmarks = preprocess::normalize_landmarks(raw_data, num_landmarks, 192.0, 192.0);
 
         // Map landmarks from crop-relative [0,1] to full-frame [0,1]
         let full_landmarks: Vec<Vec3> = crop_landmarks
@@ -292,8 +294,21 @@ fn is_eye_lid_landmark(index: usize) -> bool {
     // Right eye lid: 387,386,385 (upper), 373,374,380 (lower), 263,362 (corners)
     matches!(
         index,
-        130 | 133 | 144 | 145 | 153 | 158 | 159 | 160 | 263 | 362 | 373 | 374 | 380 | 385
-            | 386 | 387
+        130 | 133
+            | 144
+            | 145
+            | 153
+            | 158
+            | 159
+            | 160
+            | 263
+            | 362
+            | 373
+            | 374
+            | 380
+            | 385
+            | 386
+            | 387
     )
 }
 

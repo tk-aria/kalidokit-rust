@@ -514,11 +514,7 @@ mod tests {
         let mut last_dts = std::time::Duration::ZERO;
         let mut count = 0;
         while let Some(pkt) = demuxer.next_packet().unwrap() {
-            assert!(
-                pkt.dts >= last_dts,
-                "DTS not monotonic at packet {}",
-                count
-            );
+            assert!(pkt.dts >= last_dts, "DTS not monotonic at packet {}", count);
             last_dts = pkt.dts;
             count += 1;
         }

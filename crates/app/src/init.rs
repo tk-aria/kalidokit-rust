@@ -58,6 +58,16 @@ fn check_model_files() -> Result<()> {
     Ok(())
 }
 
+/// Check if a file path has a video extension.
+fn is_video_file(path: &str) -> bool {
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    matches!(ext.as_str(), "mp4" | "m4v" | "mov")
+}
+
 /// Initialize all application resources.
 ///
 /// 1. wgpu rendering context
@@ -118,7 +128,10 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
     {
         let total_targets: usize = mesh_morph_targets.iter().map(|t| t.len()).sum();
         pipeline_logger::bone(log::Level::Info, "morph targets extracted")
-            .field("meshes_with_targets", mesh_morph_targets.iter().filter(|t| !t.is_empty()).count())
+            .field(
+                "meshes_with_targets",
+                mesh_morph_targets.iter().filter(|t| !t.is_empty()).count(),
+            )
             .field("total_targets", total_targets)
             .emit();
 
@@ -126,7 +139,8 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         for (i, targets) in mesh_morph_targets.iter().enumerate() {
             if !targets.is_empty() {
                 let verts = vrm_model.meshes[i].vertices.len();
-                let max_delta: f32 = targets.iter()
+                let max_delta: f32 = targets
+                    .iter()
                     .flat_map(|t| t.iter())
                     .flat_map(|d| d.iter())
                     .map(|v| v.abs())
@@ -187,15 +201,61 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
 
     // Apply background config
     scene.set_clear_color(prefs.background.to_wgpu_color());
+    let mut video_session: Option<Box<dyn video_decoder::VideoSession>> = None;
     if let Some(bg_path) = &prefs.background.image_path {
-        match scene.set_background_image_from_path(
-            &render_ctx.device,
-            &render_ctx.queue,
-            render_ctx.config.format,
-            Some(bg_path),
-        ) {
-            Ok(()) => log::info!("Background image loaded: {bg_path}"),
-            Err(e) => log::warn!("Failed to load background image '{bg_path}': {e}"),
+        if is_video_file(bg_path) {
+            // Open video decoder session for video backgrounds
+            #[cfg(target_os = "macos")]
+            let native_handle = video_decoder::NativeHandle::Metal {
+                texture: std::ptr::null_mut(),
+                device: std::ptr::null_mut(),
+            };
+            #[cfg(not(target_os = "macos"))]
+            let native_handle = video_decoder::NativeHandle::Wgpu {
+                queue: std::ptr::null(),
+                texture_id: 0,
+            };
+            let output = video_decoder::OutputTarget {
+                native_handle,
+                format: video_decoder::PixelFormat::Rgba8Srgb,
+                width: 1280,
+                height: 720,
+                color_space: video_decoder::ColorSpace::default(),
+            };
+            match video_decoder::open(bg_path, output, video_decoder::SessionConfig::default()) {
+                Ok(session) => {
+                    let info = session.info();
+                    log::info!(
+                        "Video background opened: {bg_path} ({}x{}, {:.1}fps, {:?})",
+                        info.width,
+                        info.height,
+                        info.fps,
+                        info.backend
+                    );
+                    // Create GPU texture for video frames
+                    if let Err(e) = scene.set_background_video(
+                        &render_ctx.device,
+                        &render_ctx.queue,
+                        render_ctx.config.format,
+                        info.width,
+                        info.height,
+                    ) {
+                        log::warn!("Failed to create video background texture: {e}");
+                    }
+                    video_session = Some(session);
+                }
+                Err(e) => log::warn!("Failed to open video background '{bg_path}': {e}"),
+            }
+        } else {
+            match scene.set_background_image_from_path(
+                &render_ctx.device,
+                &render_ctx.queue,
+                render_ctx.config.format,
+                Some(bg_path),
+            ) {
+                Ok(()) => log::info!("Background image loaded: {bg_path}"),
+                Err(e) => log::warn!("Failed to load background image '{bg_path}': {e}"),
+            }
         }
     }
 
@@ -227,7 +287,10 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         render_ctx.config.format,
     );
 
-    let anim_path = prefs.animation_path.as_deref().unwrap_or(DEFAULT_ANIMATION_PATH);
+    let anim_path = prefs
+        .animation_path
+        .as_deref()
+        .unwrap_or(DEFAULT_ANIMATION_PATH);
     let idle_animation = load_idle_animation(&vrm_model, anim_path);
 
     Ok(AppState {
@@ -255,6 +318,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         tracking_enabled: true,
         animation_path: prefs.animation_path,
         background: prefs.background,
+        video_session,
     })
 }
 
@@ -262,7 +326,10 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
 ///
 /// Extracts the VRM bind pose rotations and passes them to the animation player
 /// so delta rotations from Mixamo can be correctly applied.
-fn load_idle_animation(vrm_model: &vrm::model::VrmModel, path: &str) -> Option<vrm::animation_player::AnimationPlayer> {
+fn load_idle_animation(
+    vrm_model: &vrm::model::VrmModel,
+    path: &str,
+) -> Option<vrm::animation_player::AnimationPlayer> {
     use std::collections::HashMap;
     use std::path::Path;
     use vrm::bone::HumanoidBoneName;
@@ -284,16 +351,28 @@ fn load_idle_animation(vrm_model: &vrm::model::VrmModel, path: &str) -> Option<v
             // Extract VRM bind pose: bone name → bind rotation from node_transforms
             let mut bind_pose = HashMap::new();
             let all_bones = [
-                HumanoidBoneName::Hips, HumanoidBoneName::Spine, HumanoidBoneName::Chest,
-                HumanoidBoneName::UpperChest, HumanoidBoneName::Neck, HumanoidBoneName::Head,
-                HumanoidBoneName::LeftShoulder, HumanoidBoneName::LeftUpperArm,
-                HumanoidBoneName::LeftLowerArm, HumanoidBoneName::LeftHand,
-                HumanoidBoneName::RightShoulder, HumanoidBoneName::RightUpperArm,
-                HumanoidBoneName::RightLowerArm, HumanoidBoneName::RightHand,
-                HumanoidBoneName::LeftUpperLeg, HumanoidBoneName::LeftLowerLeg,
-                HumanoidBoneName::LeftFoot, HumanoidBoneName::LeftToes,
-                HumanoidBoneName::RightUpperLeg, HumanoidBoneName::RightLowerLeg,
-                HumanoidBoneName::RightFoot, HumanoidBoneName::RightToes,
+                HumanoidBoneName::Hips,
+                HumanoidBoneName::Spine,
+                HumanoidBoneName::Chest,
+                HumanoidBoneName::UpperChest,
+                HumanoidBoneName::Neck,
+                HumanoidBoneName::Head,
+                HumanoidBoneName::LeftShoulder,
+                HumanoidBoneName::LeftUpperArm,
+                HumanoidBoneName::LeftLowerArm,
+                HumanoidBoneName::LeftHand,
+                HumanoidBoneName::RightShoulder,
+                HumanoidBoneName::RightUpperArm,
+                HumanoidBoneName::RightLowerArm,
+                HumanoidBoneName::RightHand,
+                HumanoidBoneName::LeftUpperLeg,
+                HumanoidBoneName::LeftLowerLeg,
+                HumanoidBoneName::LeftFoot,
+                HumanoidBoneName::LeftToes,
+                HumanoidBoneName::RightUpperLeg,
+                HumanoidBoneName::RightLowerLeg,
+                HumanoidBoneName::RightFoot,
+                HumanoidBoneName::RightToes,
             ];
             for bone_name in &all_bones {
                 if let Some(bone) = vrm_model.humanoid_bones.get(*bone_name) {
