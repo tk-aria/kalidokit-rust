@@ -205,9 +205,12 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
     if let Some(bg_path) = &prefs.background.image_path {
         if is_video_file(bg_path) {
             // Open video decoder session for video backgrounds
-            // Use Wgpu handle (software decoder) to avoid AVFoundation
-            // crash in release builds. TODO: investigate release-mode
-            // segfault in AppleVideoSession and switch back to Metal handle.
+            #[cfg(target_os = "macos")]
+            let native_handle = video_decoder::NativeHandle::Metal {
+                texture: std::ptr::null_mut(),
+                device: std::ptr::null_mut(),
+            };
+            #[cfg(not(target_os = "macos"))]
             let native_handle = video_decoder::NativeHandle::Wgpu {
                 queue: std::ptr::null(),
                 texture_id: 0,

@@ -130,25 +130,20 @@ impl AppleVideoSession {
         let codec = Codec::H264; // AVAssetReader handles both H.264 and H.265 transparently.
 
         // 4. Configure output settings: request BGRA pixel format.
-        let pixel_format_key: &NSString = unsafe {
-            // kCVPixelBufferPixelFormatTypeKey is &CFString; toll-free bridge to NSString.
-            let cf: &CFString = kCVPixelBufferPixelFormatTypeKey;
-            // SAFETY: CFString and NSString are toll-free bridged on Apple platforms.
-            &*(cf as *const CFString as *const NSString)
-        };
-        let pixel_format_value = NSNumber::new_u32(kCVPixelFormatType_32BGRA);
+        // Toll-free bridge kCVPixelBufferPixelFormatTypeKey (CFString) to NSString.
+        // We bind the bridged reference to a variable so it outlives the dictionary creation.
+        let pixel_format_key_cf: &CFString = unsafe { kCVPixelBufferPixelFormatTypeKey };
+        let pixel_format_key_ptr = pixel_format_key_cf as *const CFString as *const NSString;
+        // SAFETY: CFString and NSString are toll-free bridged on Apple platforms.
+        // The &NSString reference borrows the static CFString constant which lives forever.
+        let pixel_format_key_ref: &NSString = unsafe { &*pixel_format_key_ptr };
 
-        // Build the output settings dictionary.
-        // NSDictionary::from_slices requires keys that impl NSCopying.
-        // NSString implements NSCopying, and NSNumber is a valid AnyObject value.
-        let keys: &[&NSString] = &[pixel_format_key];
-        let values: &[&objc2::runtime::AnyObject] = unsafe {
-            // SAFETY: NSNumber is an NSObject subclass, so &NSNumber can be treated as &AnyObject.
-            std::slice::from_raw_parts(
-                &(&*pixel_format_value as &objc2::runtime::AnyObject) as *const _,
-                1,
-            )
-        };
+        let pixel_format_value = NSNumber::new_u32(kCVPixelFormatType_32BGRA);
+        // Bind &AnyObject to a local variable to ensure it lives long enough.
+        let value_ref: &objc2::runtime::AnyObject = &pixel_format_value;
+
+        let keys: &[&NSString] = &[pixel_format_key_ref];
+        let values: &[&objc2::runtime::AnyObject] = &[value_ref];
         let output_settings: Retained<NSDictionary<NSString, objc2::runtime::AnyObject>> =
             NSDictionary::from_slices(keys, values);
 
