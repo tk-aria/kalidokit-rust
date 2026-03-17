@@ -1,7 +1,7 @@
 //! Display a video as a fullscreen background in a wgpu window.
 //!
-//! Uses the software decoder to decode frames and uploads them to a GPU
-//! texture via `queue.write_texture()`, then renders a fullscreen quad.
+//! On macOS, uses VideoToolbox (AVFoundation HW decode).
+//! On other platforms, falls back to the software (openh264) decoder.
 //!
 //! # Usage
 //!
@@ -32,16 +32,48 @@ struct GpuState {
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
-    config: wgpu::SurfaceConfiguration,
     texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::RenderPipeline,
 }
 
+/// Unified session wrapper that provides `frame_rgba()` regardless of backend.
+enum DecoderSession {
+    #[cfg(target_os = "macos")]
+    Apple(video_decoder::backend::apple::AppleVideoSession),
+    Software(video_decoder::backend::software::SwVideoSession),
+}
+
+impl DecoderSession {
+    fn as_session(&self) -> &dyn video_decoder::VideoSession {
+        match self {
+            #[cfg(target_os = "macos")]
+            DecoderSession::Apple(s) => s,
+            DecoderSession::Software(s) => s,
+        }
+    }
+
+    fn as_session_mut(&mut self) -> &mut dyn video_decoder::VideoSession {
+        match self {
+            #[cfg(target_os = "macos")]
+            DecoderSession::Apple(s) => s,
+            DecoderSession::Software(s) => s,
+        }
+    }
+
+    fn frame_rgba(&self) -> &[u8] {
+        match self {
+            #[cfg(target_os = "macos")]
+            DecoderSession::Apple(s) => s.frame_rgba(),
+            DecoderSession::Software(s) => s.frame_rgba(),
+        }
+    }
+}
+
 struct App {
     input: String,
     gpu: Option<GpuState>,
-    session: Option<Box<dyn video_decoder::VideoSession>>,
+    session: Option<DecoderSession>,
     last_frame: Option<Instant>,
     window: Option<Arc<winit::window::Window>>,
 }
@@ -178,7 +210,6 @@ impl App {
             device,
             queue,
             surface,
-            config,
             texture,
             bind_group,
             pipeline,
@@ -186,37 +217,76 @@ impl App {
     }
 
     fn init_session(&mut self) {
-        use video_decoder::*;
+        use video_decoder::session::{OutputTarget, SessionConfig};
+        use video_decoder::types::{ColorSpace, PixelFormat};
+        use video_decoder::handle::NativeHandle;
 
         let output = OutputTarget {
-            native_handle: NativeHandle::Wgpu {
-                queue: std::ptr::null(),
-                texture_id: 0,
+            native_handle: NativeHandle::Metal {
+                texture: std::ptr::null_mut(),
+                device: std::ptr::null_mut(),
             },
             format: PixelFormat::Rgba8Srgb,
             width: 640,
             height: 360,
             color_space: ColorSpace::default(),
         };
+        let config = SessionConfig::default();
 
-        match open(&self.input, output, SessionConfig::default()) {
-            Ok(session) => {
-                let info = session.info();
-                println!(
-                    "Video: {}x{}, {:.1} fps, {:.1}s, backend: {:?}",
-                    info.width,
-                    info.height,
-                    info.fps,
-                    info.duration.as_secs_f64(),
-                    info.backend,
-                );
-                self.session = Some(session);
+        // Try VideoToolbox on macOS, fall back to Software.
+        let session: DecoderSession = {
+            #[cfg(target_os = "macos")]
+            {
+                match video_decoder::backend::apple::AppleVideoSession::new(
+                    &self.input, output, &config,
+                ) {
+                    Ok(s) => DecoderSession::Apple(s),
+                    Err(e) => {
+                        eprintln!("VideoToolbox failed ({}), falling back to SW", e);
+                        let sw_output = OutputTarget {
+                            native_handle: NativeHandle::Wgpu {
+                                queue: std::ptr::null(),
+                                texture_id: 0,
+                            },
+                            ..output
+                        };
+                        DecoderSession::Software(
+                            video_decoder::backend::software::SwVideoSession::new(
+                                &self.input, sw_output, &config,
+                            )
+                            .expect("SW decoder failed"),
+                        )
+                    }
+                }
             }
-            Err(e) => {
-                eprintln!("Failed to open video: {}", e);
-                std::process::exit(1);
+            #[cfg(not(target_os = "macos"))]
+            {
+                let sw_output = OutputTarget {
+                    native_handle: NativeHandle::Wgpu {
+                        queue: std::ptr::null(),
+                        texture_id: 0,
+                    },
+                    ..output
+                };
+                DecoderSession::Software(
+                    video_decoder::backend::software::SwVideoSession::new(
+                        &self.input, sw_output, &config,
+                    )
+                    .expect("SW decoder failed"),
+                )
             }
-        }
+        };
+
+        let info = session.as_session().info();
+        println!(
+            "Video: {}x{}, {:.1} fps, {:.1}s, backend: {:?}",
+            info.width,
+            info.height,
+            info.fps,
+            info.duration.as_secs_f64(),
+            info.backend,
+        );
+        self.session = Some(session);
     }
 }
 
@@ -252,7 +322,8 @@ impl winit::application::ApplicationHandler for App {
             winit::event::WindowEvent::KeyboardInput {
                 event:
                     winit::event::KeyEvent {
-                        logical_key: winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape),
+                        logical_key:
+                            winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape),
                         state: winit::event::ElementState::Pressed,
                         ..
                     },
@@ -270,17 +341,13 @@ impl winit::application::ApplicationHandler for App {
 
                 // Decode next frame.
                 if let Some(session) = &mut self.session {
-                    if let Ok(video_decoder::FrameStatus::NewFrame) = session.decode_frame(dt) {
+                    if let Ok(video_decoder::FrameStatus::NewFrame) =
+                        session.as_session_mut().decode_frame(dt)
+                    {
                         // Upload RGBA to GPU texture.
                         if let Some(gpu) = &self.gpu {
-                            // Access RGBA buffer via the SW session's frame_rgba().
-                            // We need to downcast; since we opened with Wgpu handle, it's SwVideoSession.
-                            let sw = unsafe {
-                                &*(session.as_ref() as *const dyn video_decoder::VideoSession
-                                    as *const video_decoder::backend::software::SwVideoSession)
-                            };
-                            let rgba = sw.frame_rgba();
-                            let info = session.info();
+                            let rgba = session.frame_rgba();
+                            let info = session.as_session().info();
 
                             gpu.queue.write_texture(
                                 wgpu::TexelCopyTextureInfo {
@@ -357,7 +424,6 @@ struct VertexOutput {
 
 @vertex
 fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
-    // Fullscreen triangle.
     let x = f32(i32(vi) / 2) * 4.0 - 1.0;
     let y = f32(i32(vi) % 2) * 4.0 - 1.0;
     var out: VertexOutput;
