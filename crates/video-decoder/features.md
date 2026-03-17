@@ -268,6 +268,7 @@ pub trait VideoSession: Send {
 - [ ] `cargo doc -p video-decoder --no-deps` — 警告なし
 - [ ] テストカバレッジ 90% 以上を確認 (`cargo llvm-cov -p video-decoder`)、未カバー部分のテスト追加
 - [ ] `cargo build -p video-decoder` が正常完了
+- [ ] **動作確認**: `cargo test -p video-decoder` を実行し、全型定義が正しく構築でき、stub の `open()` が期待通りのエラーを返すことを確認する。目的の動作と異なる場合は修正を繰り返す
 
 ---
 
@@ -369,6 +370,7 @@ pub trait Demuxer: Send {
 - [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
 - [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
 - [ ] `cargo build -p video-decoder` が正常完了
+- [ ] **動作確認**: テストコードで `Mp4Demuxer` を使い `test_h264_360p.mp4` を demux し、全パケットが PTS 昇順で取得され、SPS から正しい解像度が抽出されることを確認する。目的の動作と異なる場合は修正を繰り返す
 
 ---
 
@@ -522,6 +524,7 @@ impl<T> DpbManager<T> {
 - [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
 - [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
 - [ ] `cargo build -p video-decoder` が正常完了
+- [ ] **動作確認**: テストコードで `PlaybackState` を使い 30fps/60fps 動画のフレームタイミング制御、ループ再生、pause/resume が仕様通り動作することを確認する。`DpbManager` の allocate/release/reset が正しく参照管理することを確認する。目的の動作と異なる場合は修正を繰り返す
 
 ---
 
@@ -628,7 +631,7 @@ fn main() -> anyhow::Result<()> {
 - [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
 - [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
 - [ ] `cargo build -p video-decoder` が正常完了
-- [ ] `cargo run -p video-decoder --example decode_to_png` が動作し PNG が出力される
+- [ ] **動作確認**: `cargo run -p video-decoder --example decode_to_png -- test.mp4 frames/` を実行し、出力された PNG ファイルが正しい映像フレーム (色・解像度・フレーム順) であることを目視確認する。seek 後の PNG が正しい時刻のフレームであることを確認する。目的の動作と異なる場合は修正を繰り返す
 
 ---
 
@@ -706,7 +709,7 @@ fn main() -> anyhow::Result<()> {
 - [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
 - [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
 - [ ] `cargo build -p video-decoder` が正常完了
-- [ ] macOS で `examples/wgpu_video_bg.rs` が MP4 を 60fps 背景再生
+- [ ] **動作確認**: macOS で `cargo run -p video-decoder --example wgpu_video_bg -- test.mp4` を実行し、ウィンドウに動画が 60fps で滑らかに背景再生されることを目視確認する。ループ再生が途切れなく動作し、seek 操作後に正しいフレームから再開されることを確認する。Activity Monitor / Instruments で Metal リソースリークがないことを確認する。目的の動作と異なる場合は修正を繰り返す
 
 ---
 
@@ -787,7 +790,7 @@ fn main() -> anyhow::Result<()> {
 - [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
 - [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
 - [ ] `cargo build -p video-decoder` が正常完了 (Windows ターゲット)
-- [ ] Windows 10/11 で `examples/wgpu_video_bg.rs` が動作
+- [ ] **動作確認**: Windows 10/11 で `cargo run -p video-decoder --example wgpu_video_bg -- test.mp4` を実行し、D3D12 Video バックエンドで動画が 60fps 再生されることを確認する。D3D12 Video 非対応環境では MF フォールバックで再生されることを確認する。ログ出力で `Using D3d12Video decoder` / `Using MediaFoundation decoder` が表示されることを確認する。NVIDIA / AMD / Intel GPU それぞれで動作確認する。目的の動作と異なる場合は修正を繰り返す
 
 ---
 
@@ -882,6 +885,7 @@ fn main() -> anyhow::Result<()> {
 - [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
 - [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
 - [ ] `cargo build -p video-decoder` が正常完了 (Linux ターゲット)
+- [ ] **動作確認**: Linux で `cargo run -p video-decoder --example wgpu_video_bg -- test.mp4` を実行し、Vulkan Video 対応ドライバでは Vulkan Video バックエンドで再生されることを確認する。Vulkan Video 非対応環境では `--features gstreamer` で GStreamer VA-API にフォールバックすることを確認する。ログ出力で使用中バックエンドを確認する。`vainfo` コマンドで VA-API HW デコードが有効であることを確認する。目的の動作と異なる場合は修正を繰り返す
 
 ---
 
@@ -932,6 +936,7 @@ fn main() -> anyhow::Result<()> {
 - [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
 - [ ] テストカバレッジ 90% 以上を確認 (ホスト環境テスト分)、未カバー部分のテスト追加
 - [ ] `cargo build -p video-decoder --target aarch64-linux-android` が正常完了
+- [ ] **動作確認**: Android 実機 (API 26+) またはエミュレータでアプリケーションを起動し、MediaCodec バックエンドで MP4 が再生されることを確認する。AHardwareBuffer → Vulkan import パスが動作し、映像が正しく表示されることを確認する。`adb logcat` で使用中バックエンドとデコード性能のログを確認する。目的の動作と異なる場合は修正を繰り返す
 
 ---
 
@@ -987,4 +992,12 @@ fn main() -> anyhow::Result<()> {
 - [ ] `cargo bench -p video-decoder` — ベンチ動作
 - [ ] テストカバレッジ 90% 以上を最終確認 (`cargo llvm-cov -p video-decoder`)、未カバー部分のテスト追加
 - [ ] `cargo build -p video-decoder` が全対応ターゲットで正常完了
-- [ ] `examples/decode_to_png` と `examples/wgpu_video_bg` が正常動作
+- [ ] **動作確認 (最終)**: 各プラットフォーム (macOS, Windows, Linux) で `cargo run -p video-decoder --example wgpu_video_bg -- test.mp4` を実行し、以下を全て確認する。目的の動作と異なる場合は修正を繰り返す:
+  - 動画が 60fps で滑らかに再生される
+  - ループ再生が途切れなく動作する
+  - seek 操作が正しいフレームに移動する
+  - pause / resume が正しく動作する
+  - ログに使用中バックエンド名が表示される
+  - 各プラットフォームで適切な HW デコーダが自動選択される
+  - HW 非対応環境で SW フォールバックが動作する
+  - `examples/decode_to_png` で出力された PNG が正しい映像フレームである
