@@ -55,6 +55,12 @@ pub struct AppState {
     pub background: BackgroundConfig,
     /// Video background decode session (None if not using video background).
     pub video_session: Option<Box<dyn video_decoder::VideoSession>>,
+    /// FPS counter: frames rendered since last reset.
+    pub fps_counter: u32,
+    /// FPS counter: video frames decoded since last reset.
+    pub fps_decode_counter: u32,
+    /// FPS counter: timestamp of last reset.
+    pub fps_timer: Instant,
 }
 
 /// Current rig solver results (face/pose/hand).

@@ -347,6 +347,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         info.height,
                     );
                 }
+                state.fps_decode_counter += 1;
             }
             Ok(video_decoder::FrameStatus::Waiting) => {}
             Ok(video_decoder::FrameStatus::EndOfStream) => {

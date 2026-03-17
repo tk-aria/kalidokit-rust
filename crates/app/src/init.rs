@@ -319,6 +319,9 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         animation_path: prefs.animation_path,
         background: prefs.background,
         video_session,
+        fps_counter: 0,
+        fps_decode_counter: 0,
+        fps_timer: std::time::Instant::now(),
     })
 }
 

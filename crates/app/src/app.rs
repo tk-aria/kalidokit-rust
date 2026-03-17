@@ -76,6 +76,29 @@ impl ApplicationHandler for App {
                 if let Err(e) = crate::update::update_frame(state) {
                     log::error!("Frame update error: {e}");
                 }
+
+                // FPS counter: update window title every second
+                state.fps_counter += 1;
+                let elapsed = state.fps_timer.elapsed();
+                if elapsed >= std::time::Duration::from_secs(1) {
+                    let render_fps = state.fps_counter as f64 / elapsed.as_secs_f64();
+                    let decode_fps = state.fps_decode_counter;
+                    state.fps_counter = 0;
+                    state.fps_decode_counter = 0;
+                    state.fps_timer = std::time::Instant::now();
+
+                    let video_info = state.video_session.as_ref().map(|s| {
+                        format!(" | video decode: {} fps ({:?})", decode_fps, s.info().backend)
+                    }).unwrap_or_default();
+
+                    let title = format!(
+                        "KalidoKit Rust | render: {:.0} fps{}",
+                        render_fps, video_info,
+                    );
+                    log::info!("{}", title);
+                    state.render_ctx.window.set_title(&title);
+                }
+
                 state.render_ctx.window.request_redraw();
             }
             WindowEvent::MouseWheel { delta, .. } => {
