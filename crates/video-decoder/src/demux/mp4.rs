@@ -142,17 +142,29 @@ impl Demuxer for Mp4Demuxer {
             .seek(SeekFrom::Start(entry.offset))
             .map_err(|e| VideoError::Demux(format!("seek failed: {}", e)))?;
 
-        let mut data = vec![0u8; entry.size as usize];
+        let mut raw = vec![0u8; entry.size as usize];
         self.reader
-            .read_exact(&mut data)
+            .read_exact(&mut raw)
             .map_err(|e| VideoError::Demux(format!("read failed: {}", e)))?;
+
+        // Convert AVCC (length-prefixed) → Annex B (start-code prefixed) NAL units.
+        // For keyframes, prepend SPS/PPS from the avcC extra_data so the decoder
+        // can initialize properly.
+        let mut annex_b = Vec::with_capacity(raw.len() + 64);
+
+        if entry.is_sync && !self.params.extra_data.is_empty() {
+            // Prepend SPS and PPS NAL units from avcC.
+            annex_b_from_avcc_extra(&self.params.extra_data, &mut annex_b);
+        }
+
+        avcc_to_annex_b(&raw, self.nal_length_size, &mut annex_b);
 
         let dts = self.ticks_to_duration(entry.dts_ticks);
         let pts_ticks = (entry.dts_ticks as i64 + entry.cts_offset).max(0) as u64;
         let pts = self.ticks_to_duration(pts_ticks);
 
         Ok(Some(VideoPacket {
-            data,
+            data: annex_b,
             pts,
             dts,
             is_keyframe: entry.is_sync,
@@ -368,6 +380,85 @@ fn build_sample_table(track: &mp4parse::Track, _timescale: u64) -> Result<Vec<Sa
     }
 
     Ok(samples)
+}
+
+/// Convert AVCC length-prefixed NAL units to Annex B start-code format.
+/// Each NAL in AVCC is prefixed with `nal_length_size` bytes of big-endian length.
+/// We replace them with the 4-byte start code 0x00_00_00_01.
+fn avcc_to_annex_b(avcc_data: &[u8], nal_length_size: u8, out: &mut Vec<u8>) {
+    let len_size = nal_length_size as usize;
+    let mut pos = 0;
+    while pos + len_size <= avcc_data.len() {
+        let mut nal_len: usize = 0;
+        for i in 0..len_size {
+            nal_len = (nal_len << 8) | (avcc_data[pos + i] as usize);
+        }
+        pos += len_size;
+
+        if pos + nal_len > avcc_data.len() {
+            break;
+        }
+
+        out.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        out.extend_from_slice(&avcc_data[pos..pos + nal_len]);
+        pos += nal_len;
+    }
+}
+
+/// Extract SPS and PPS NAL units from the avcC box extra_data and write them
+/// in Annex B format (with start codes) into `out`.
+fn annex_b_from_avcc_extra(extra: &[u8], out: &mut Vec<u8>) {
+    if extra.len() < 7 {
+        return;
+    }
+    // avcC structure:
+    //   [0] configurationVersion
+    //   [1] AVCProfileIndication
+    //   [2] profile_compatibility
+    //   [3] AVCLevelIndication
+    //   [4] (nal_length_size - 1) & 0x03  (lower 2 bits)
+    //   [5] numSPS & 0x1F (lower 5 bits)
+    //   then for each SPS: 2-byte length (big-endian) + SPS NAL bytes
+    //   then 1 byte: numPPS
+    //   then for each PPS: 2-byte length (big-endian) + PPS NAL bytes
+
+    let mut pos = 5;
+    let num_sps = (extra[pos] & 0x1F) as usize;
+    pos += 1;
+
+    for _ in 0..num_sps {
+        if pos + 2 > extra.len() {
+            return;
+        }
+        let sps_len = ((extra[pos] as usize) << 8) | (extra[pos + 1] as usize);
+        pos += 2;
+        if pos + sps_len > extra.len() {
+            return;
+        }
+        out.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        out.extend_from_slice(&extra[pos..pos + sps_len]);
+        pos += sps_len;
+    }
+
+    if pos >= extra.len() {
+        return;
+    }
+    let num_pps = extra[pos] as usize;
+    pos += 1;
+
+    for _ in 0..num_pps {
+        if pos + 2 > extra.len() {
+            return;
+        }
+        let pps_len = ((extra[pos] as usize) << 8) | (extra[pos + 1] as usize);
+        pos += 2;
+        if pos + pps_len > extra.len() {
+            return;
+        }
+        out.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        out.extend_from_slice(&extra[pos..pos + pps_len]);
+        pos += pps_len;
+    }
 }
 
 #[cfg(test)]
