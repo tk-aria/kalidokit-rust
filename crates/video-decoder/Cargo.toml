@@ -33,6 +33,10 @@ gstreamer-allocators = { version = "0.23", optional = true }
 # Optional V4L2 (SBC)
 nix = { version = "0.29", features = ["ioctl", "mman", "fs"], optional = true }
 
+[target.'cfg(target_os = "android")'.dependencies]
+ndk = { version = "0.9", features = ["media"] }
+ash = { version = "0.38", default-features = false, features = ["std"] }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [
     "Win32_Graphics_Direct3D12",

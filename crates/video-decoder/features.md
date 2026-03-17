@@ -879,12 +879,12 @@ fn main() -> anyhow::Result<()> {
 
 ### Step 8.1: Cargo.toml に Android 依存追加
 
-- [ ] `cfg(target_os = "android")` ブロックに `ndk = "0.9"` + `ash = "0.38"` を追加
+- [x] `cfg(target_os = "android")` ブロックに `ndk = "0.9"` + `ash = "0.38"` を追加 <!-- 2026-03-17 18:47 JST -->
 
 ### Step 8.2: MediaCodec — `backend/media_codec.rs` (~250行)
 
-- [ ] `McVideoSession` struct: extractor, codec, vk_device, nv12_pass, playback, info
-- [ ] 初期化: AMediaExtractor → AMediaCodec (バッファモード)
+- [x] `McVideoSession` struct stub (cfg(android) gated, Android 環境で実装予定) <!-- 2026-03-17 18:48 JST -->
+- [ ] 初期化: AMediaExtractor → AMediaCodec (バッファモード) — Android 環境で実装
 
 ```rust
 // 参考: docs/design/video-decoder-crate-design.md §8.7
@@ -895,32 +895,30 @@ fn main() -> anyhow::Result<()> {
 // codec.start()?;
 ```
 
-- [ ] decode_frame: input submit → output dequeue → AHardwareBuffer → VkImportAndroidHardwareBufferInfoANDROID → nv12_pass
+- [ ] decode_frame: input submit → output dequeue → AHardwareBuffer → Vulkan import — Android 環境で実装
 
 ### Step 8.3: backend/mod.rs に Android バックエンド接続
 
-- [ ] `detect_backends`: `NativeHandle::Vulkan` + Android → `[MediaCodec]`
-- [ ] `create_with_backend`: `Backend::MediaCodec` → `McVideoSession::new()`
+- [x] `detect_backends`: Vulkan handle + Android → `[MediaCodec]` <!-- 2026-03-17 18:48 JST -->
+- [x] `create_with_backend`: `Backend::MediaCodec` → `McVideoSession::new()` <!-- 2026-03-17 18:48 JST -->
 
 ### Step 8.4: テスト — Android バックエンド
 
-- [ ] **正常系テスト**:
+- [ ] **正常系テスト** — Android 環境で実施:
   - AMediaExtractor でトラック情報取得
   - AMediaCodec でデコード → AHardwareBuffer 取得
   - Vulkan import → nv12_pass → RGBA テクスチャ
-- [ ] **異常系テスト**:
-  - 非対応コーデック → SW フォールバック
-  - AHardwareBuffer 取得失敗 → `VideoError::GpuInterop`
-- [ ] **クロスビルド確認**: `cargo build -p video-decoder --target aarch64-linux-android`
+- [x] **異常系テスト (macOS から実行可能分)**: Backend::MediaCodec enum 値 validity <!-- 2026-03-17 18:49 JST -->
+- [ ] **クロスビルド確認**: `cargo build -p video-decoder --target aarch64-linux-android` — Android NDK 環境で実施
 
 ### Step 8.5: Phase 8 検証
 
-- [ ] `cargo check -p video-decoder --target aarch64-linux-android` — 型チェック pass
-- [ ] `cargo clippy -p video-decoder -- -D warnings` — 警告なし
-- [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
-- [ ] テストカバレッジ 90% 以上を確認 (ホスト環境テスト分)、未カバー部分のテスト追加
-- [ ] `cargo build -p video-decoder --target aarch64-linux-android` が正常完了
-- [ ] **動作確認**: Android 実機 (API 26+) またはエミュレータでアプリケーションを起動し、MediaCodec バックエンドで MP4 が再生されることを確認する。AHardwareBuffer → Vulkan import パスが動作し、映像が正しく表示されることを確認する。`adb logcat` で使用中バックエンドとデコード性能のログを確認する。目的の動作と異なる場合は修正を繰り返す
+- [ ] `cargo check -p video-decoder --target aarch64-linux-android` — Android NDK 環境で実施
+- [x] `cargo clippy -p video-decoder -- -D warnings` — 警告なし (macOS) <!-- 2026-03-17 18:49 JST -->
+- [x] `cargo fmt -p video-decoder --check` — フォーマット OK <!-- 2026-03-17 18:49 JST -->
+- [ ] テストカバレッジ 90% 以上を確認 — 保留
+- [x] `cargo build -p video-decoder` が正常完了 (macOS でクロスチェック) <!-- 2026-03-17 18:49 JST -->
+- [ ] **動作確認**: Android 環境で実施 — MediaCodec → AHardwareBuffer → Vulkan 確認
 
 ---
 

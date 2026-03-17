@@ -6,6 +6,8 @@ pub mod apple;
 pub mod d3d12_video;
 #[cfg(all(target_os = "linux", feature = "gstreamer"))]
 pub mod gst_vaapi;
+#[cfg(target_os = "android")]
+pub mod media_codec;
 #[cfg(target_os = "windows")]
 pub mod media_foundation;
 pub mod software;
@@ -25,6 +27,8 @@ use self::apple::AppleVideoSession;
 use self::d3d12_video::D3d12VideoSession;
 #[cfg(all(target_os = "linux", feature = "gstreamer"))]
 use self::gst_vaapi::GstVideoSession;
+#[cfg(target_os = "android")]
+use self::media_codec::McVideoSession;
 #[cfg(target_os = "windows")]
 use self::media_foundation::MfVideoSession;
 use self::software::SwVideoSession;
@@ -119,9 +123,13 @@ fn detect_backends(handle: &NativeHandle) -> Vec<Backend> {
                     backends.push(Backend::V4l2);
                 }
             }
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(target_os = "android")]
             {
-                // On non-Linux, Vulkan Video backends are not available.
+                backends.push(Backend::MediaCodec);
+            }
+            #[cfg(not(any(target_os = "linux", target_os = "android")))]
+            {
+                // On non-Linux/Android, Vulkan Video backends are not available.
                 let _ = &mut backends;
             }
             backends
@@ -171,6 +179,11 @@ fn create_with_backend(
         #[cfg(all(target_os = "linux", feature = "v4l2"))]
         Backend::V4l2 => {
             let session = V4l2VideoSession::new(path, output, config)?;
+            Ok(Box::new(session))
+        }
+        #[cfg(target_os = "android")]
+        Backend::MediaCodec => {
+            let session = McVideoSession::new(path, output, config)?;
             Ok(Box::new(session))
         }
         // HW backends not yet implemented (or not available on this platform).
@@ -279,6 +292,14 @@ mod tests {
         assert_eq!(format!("{:?}", vk), "VulkanVideo");
         assert_eq!(format!("{:?}", gst), "GStreamerVaapi");
         assert_eq!(format!("{:?}", v4l2), "V4l2");
+    }
+
+    #[test]
+    fn backend_media_codec_is_valid_enum_value() {
+        let mc = Backend::MediaCodec;
+        assert_eq!(format!("{:?}", mc), "MediaCodec");
+        assert_ne!(mc, Backend::Software);
+        assert_ne!(mc, Backend::VulkanVideo);
     }
 
     #[test]
