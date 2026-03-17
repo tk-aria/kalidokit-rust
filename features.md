@@ -24,6 +24,7 @@ Phase 7 (仕上げ) ← Phase 6に依存
 Phase 10 (macOS仮想カメラ: CMIOExtension) ← Phase 6に依存
 Phase 10.5 (macOS仮想カメラ: CMIO DAL Plugin — ブラウザ互換) ← Phase 10に依存
 Phase 11 (Linux仮想カメラ・オーディオ: PipeWire + v4l2loopback) ← Phase 6に依存 (Phase 10と並行可能)
+Phase 12 (デスクトップマスコット: ウィンドウ透過) ← Phase 6に依存 (Phase 10, 11と並行可能)
 ```
 
 ## ライブラリバージョン一覧
@@ -1949,3 +1950,283 @@ wgpu render → GPU readback (map_async) → CPU 変換 (RGBA↔BGRA + downscale
   - `docker compose up` でコンテナ起動
   - コンテナ内で仮想カメラ・オーディオが使用可能
   - Google Meet で仮想カメラ映像が配信される
+
+---
+
+## Phase 12: デスクトップマスコット (ウィンドウ透過 + タイトルバーなし)
+
+**目的**: VRM モデルをデスクトップ上にオーバーレイ表示するマスコット機能。ウィンドウ背景を完全透過し、タイトルバーを非表示にして、モデルがデスクトップ上に直接存在するように見せる。
+
+**依存関係**: Phase 6 (統合) が完了していること
+
+**対応プラットフォーム**: Windows, macOS, Linux (X11 + コンポジタ必須、Wayland は AlwaysOnTop 非対応)
+
+**設計書**: `docs/design/desktop-mascot-design.md`
+
+### Step 12.1: RenderContext に透過モード切替を追加
+
+**ファイル**: `crates/renderer/src/context.rs` (~20行追加)
+
+- [ ] `RenderContext` に `adapter: wgpu::Adapter` フィールドを追加 (capabilities 取得用)
+- [ ] `pub fn set_transparent(&mut self, transparent: bool)` メソッドを追加
+
+```rust
+// context.rs に追加
+pub fn set_transparent(&mut self, transparent: bool) {
+    if transparent {
+        let caps = self.surface.get_capabilities(&self.adapter);
+        self.config.alpha_mode =
+            if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PostMultiplied) {
+                wgpu::CompositeAlphaMode::PostMultiplied
+            } else if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied) {
+                wgpu::CompositeAlphaMode::PreMultiplied
+            } else {
+                log::warn!("No transparent alpha mode available");
+                wgpu::CompositeAlphaMode::Opaque
+            };
+    } else {
+        self.config.alpha_mode = wgpu::CompositeAlphaMode::Opaque;
+    }
+    self.surface.configure(&self.device, &self.config);
+}
+```
+
+- [ ] `cargo check -p renderer` が通ることを確認
+- [ ] **テスト**: 正常系 — `set_transparent(true)` + `set_transparent(false)` で panic しない
+
+### Step 12.2: Scene にクリアカラーのアルファ切替を追加
+
+**ファイル**: `crates/renderer/src/scene.rs` (~5行追加)
+
+- [ ] `pub fn set_clear_alpha(&mut self, alpha: f64)` メソッドを追加
+
+```rust
+pub fn set_clear_alpha(&mut self, alpha: f64) {
+    self.clear_color.a = alpha;
+}
+```
+
+- [ ] マスコットモード時: `set_clear_alpha(0.0)` — 背景を完全透過
+- [ ] 通常モード時: `set_clear_alpha(1.0)` — 背景を不透明に戻す
+- [ ] `cargo check -p renderer` が通ることを確認
+
+### Step 12.3: MascotState モジュール作成
+
+**ファイル**: `crates/app/src/mascot.rs` (~120行, **新規**)
+
+- [ ] `MascotState` struct を実装
+
+```rust
+use winit::dpi::{LogicalSize, PhysicalPosition};
+use winit::window::{Window, WindowLevel};
+
+pub struct MascotState {
+    pub enabled: bool,
+    dragging: bool,
+    drag_start_cursor: PhysicalPosition<f64>,
+    drag_start_window: PhysicalPosition<i32>,
+    /// Window size before entering mascot mode (for restoration).
+    normal_size: LogicalSize<u32>,
+    /// Mascot window size.
+    mascot_size: LogicalSize<u32>,
+}
+
+impl MascotState {
+    pub fn new() -> Self {
+        Self {
+            enabled: false,
+            dragging: false,
+            drag_start_cursor: PhysicalPosition::new(0.0, 0.0),
+            drag_start_window: PhysicalPosition::new(0, 0),
+            normal_size: LogicalSize::new(1280, 720),
+            mascot_size: LogicalSize::new(512, 512),
+        }
+    }
+
+    /// Enter mascot mode: transparent, no decorations, always on top, smaller size.
+    pub fn enter(&mut self, window: &Window) {
+        self.normal_size = LogicalSize::new(
+            window.inner_size().width,
+            window.inner_size().height,
+        );
+        window.set_decorations(false);
+        window.set_window_level(WindowLevel::AlwaysOnTop);
+        let _ = window.request_inner_size(self.mascot_size);
+        self.enabled = true;
+        log::info!("Mascot mode: ON ({}x{})", self.mascot_size.width, self.mascot_size.height);
+    }
+
+    /// Leave mascot mode: restore decorations, normal level, original size.
+    pub fn leave(&mut self, window: &Window) {
+        window.set_decorations(true);
+        window.set_window_level(WindowLevel::Normal);
+        let _ = window.request_inner_size(self.normal_size);
+        self.enabled = false;
+        log::info!("Mascot mode: OFF");
+    }
+
+    /// Toggle mascot mode.
+    pub fn toggle(&mut self, window: &Window) {
+        if self.enabled {
+            self.leave(window);
+        } else {
+            self.enter(window);
+        }
+    }
+
+    /// Start drag on mouse button press.
+    pub fn start_drag(&mut self, window: &Window, cursor_pos: PhysicalPosition<f64>) {
+        if !self.enabled { return; }
+        self.dragging = true;
+        self.drag_start_cursor = cursor_pos;
+        self.drag_start_window = window.outer_position().unwrap_or_default();
+    }
+
+    /// Update drag on mouse move.
+    pub fn update_drag(&self, window: &Window, cursor_pos: PhysicalPosition<f64>) {
+        if !self.dragging { return; }
+        let dx = cursor_pos.x - self.drag_start_cursor.x;
+        let dy = cursor_pos.y - self.drag_start_cursor.y;
+        let new_x = self.drag_start_window.x + dx as i32;
+        let new_y = self.drag_start_window.y + dy as i32;
+        window.set_outer_position(PhysicalPosition::new(new_x, new_y));
+    }
+
+    /// End drag on mouse button release.
+    pub fn end_drag(&mut self) {
+        self.dragging = false;
+    }
+}
+```
+
+- [ ] `crates/app/src/main.rs` (or `lib.rs`) に `pub mod mascot;` を追加
+- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+- [ ] **テスト**: 正常系 — `MascotState::new()` のデフォルト値確認、toggle の enabled 切替
+
+### Step 12.4: AppState に MascotState を追加
+
+**ファイル**: `crates/app/src/state.rs` (~2行追加)
+
+- [ ] `pub mascot: MascotState` フィールドを `AppState` に追加
+
+**ファイル**: `crates/app/src/init.rs` (~1行追加)
+
+- [ ] `AppState` 構築で `mascot: MascotState::new()` を設定
+
+- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+
+### Step 12.5: app.rs にマスコットモード切替 (KeyM) + ドラッグ移動を実装
+
+**ファイル**: `crates/app/src/app.rs` (~40行追加)
+
+- [ ] `KeyCode::KeyM` ハンドラを追加 — マスコットモード切替
+
+```rust
+KeyCode::KeyM => {
+    state.mascot.toggle(&state.render_ctx.window);
+    if state.mascot.enabled {
+        // 透過有効化
+        state.render_ctx.set_transparent(true);
+        state.scene.set_clear_alpha(0.0);
+        // 背景無効化 (透過時に不要)
+        state.scene.remove_background_video();
+    } else {
+        // 透過無効化
+        state.render_ctx.set_transparent(false);
+        state.scene.set_clear_alpha(1.0);
+        // 背景復元 (user_prefs から)
+        // ... restore background from state.background
+    }
+    save_prefs(state);
+}
+```
+
+- [ ] `WindowEvent::MouseInput` (Left, Pressed) → `state.mascot.start_drag()`
+- [ ] `WindowEvent::CursorMoved` → `state.mascot.update_drag()`
+- [ ] `WindowEvent::MouseInput` (Left, Released) → `state.mascot.end_drag()`
+
+```rust
+WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
+    if state.mascot.enabled {
+        // CursorMoved で最新の位置を使うため、ここでは drag 開始フラグだけ
+        state.mascot.start_drag(&state.render_ctx.window, /* last_cursor_pos */);
+    }
+}
+```
+
+- [ ] `AppState` に `last_cursor_pos: PhysicalPosition<f64>` を追加して CursorMoved で更新
+- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+
+### Step 12.6: ウィンドウ作成時の透過対応
+
+**ファイル**: `crates/app/src/app.rs` (~3行変更)
+
+- [ ] `resumed()` でのウィンドウ作成を透過対応に変更
+
+```rust
+let attrs = Window::default_attributes()
+    .with_title("KalidoKit Rust - VRM Motion Capture")
+    .with_inner_size(winit::dpi::LogicalSize::new(1280, 720))
+    .with_transparent(true);  // ← 追加: 透過ウィンドウを許可
+```
+
+- [ ] **注意**: `with_transparent(true)` はウィンドウ作成時にのみ設定可能 (後から変更不可)。常に true にしておき、`alpha_mode` と `clear_color.a` で透過/不透明を切り替える
+- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+
+### Step 12.7: user_prefs にマスコットモード永続化
+
+**ファイル**: `crates/app/src/user_prefs.rs` (~3行追加)
+
+- [ ] `UserPrefs` に `mascot_mode: bool` フィールドを追加 (`#[serde(default)]`)
+- [ ] `app.rs` の `save_prefs()` で `mascot_mode` を保存
+- [ ] `init.rs` で `mascot_mode: true` の場合にマスコットモードで起動
+
+```rust
+// user_prefs.rs
+#[serde(default)]
+pub mascot_mode: bool,
+```
+
+```yaml
+# user_prefs.yml 例
+mascot_mode: true
+```
+
+- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+
+### Step 12.8: テスト
+
+- [ ] **正常系テスト**:
+  - `MascotState::new()` — enabled=false
+  - `toggle()` — enabled が true/false 切替
+  - `enter()` → `leave()` — 正常に状態遷移
+  - user_prefs.yml に `mascot_mode: true` → マスコットモードで起動
+  - user_prefs.yml に `mascot_mode: false` → 通常モードで起動
+- [ ] **異常系テスト**:
+  - `start_drag()` を非マスコットモードで呼び出し → no-op
+  - `end_drag()` をドラッグ中でないときに呼び出し → no-op
+  - `set_transparent(true)` で透過モード非対応 → Opaque にフォールバック (ログ警告)
+- [ ] **プラットフォームテスト** (各 OS で実行):
+  - macOS: 透過 + Metal 正常、ドラッグ移動
+  - Windows: 透過 + D3D12 正常、ドラッグ移動
+  - Linux (X11 + picom): 透過 + Vulkan 正常、ドラッグ移動
+
+### Step 12.9: Phase 12 検証
+
+- [ ] `cargo check --workspace` — 全クレート pass
+- [ ] `cargo test -p kalidokit-rust -p renderer -p vrm -p solver` — 全テスト pass
+- [ ] `cargo clippy --workspace -- -D warnings` — 警告なし
+- [ ] `cargo fmt --check` — フォーマット OK
+- [ ] `cargo build --release` — リリースビルド成功
+- [ ] テストカバレッジ確認、未カバー部分のテスト追加
+- [ ] **動作確認 (macOS)**: アプリを起動し `KeyM` でマスコットモードに切り替えて以下を確認する。目的の動作と異なる場合は修正を繰り返す:
+  - ウィンドウ背景が完全に透過し、デスクトップが見える
+  - VRM モデルだけが表示される
+  - タイトルバーが非表示
+  - 最前面に表示される
+  - マウスドラッグでウィンドウを移動できる
+  - `KeyM` 再押下で通常ウィンドウに復帰
+  - FPS タイトルバーに表示 (マスコットモード時はタイトルバーがないためログのみ)
+  - release ビルドでも正常動作
+- [ ] **動作確認 (Windows)**: 同上 (Windows 環境で実施)
+- [ ] **動作確認 (Linux)**: 同上 (X11 + コンポジタ環境で実施)
