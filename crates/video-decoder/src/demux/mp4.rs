@@ -465,6 +465,12 @@ fn annex_b_from_avcc_extra(extra: &[u8], out: &mut Vec<u8>) {
 mod tests {
     use super::*;
 
+    fn fixture_path() -> String {
+        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/big_buck_bunny_360p.mp4");
+        p.to_str().unwrap().to_string()
+    }
+
     #[test]
     fn open_nonexistent_returns_error() {
         let result = Mp4Demuxer::new("/nonexistent/video.mp4");
@@ -480,5 +486,76 @@ mod tests {
             }
             other => panic!("expected UnsupportedCodec, got {:?}", other.err()),
         }
+    }
+
+    #[test]
+    fn open_big_buck_bunny_metadata() {
+        let path = fixture_path();
+        if !std::path::Path::new(&path).exists() {
+            eprintln!("Skipping: fixture not found at {}", path);
+            return;
+        }
+        let demuxer = Mp4Demuxer::new(&path).expect("should open");
+        let params = demuxer.parameters();
+        assert_eq!(params.codec, Codec::H264);
+        assert_eq!(params.width, 640);
+        assert_eq!(params.height, 360);
+        assert!((params.fps - 30.0).abs() < 1.0);
+        assert!(params.duration.as_secs() >= 9); // ~10s
+    }
+
+    #[test]
+    fn packets_are_dts_ordered() {
+        let path = fixture_path();
+        if !std::path::Path::new(&path).exists() {
+            return;
+        }
+        let mut demuxer = Mp4Demuxer::new(&path).unwrap();
+        let mut last_dts = std::time::Duration::ZERO;
+        let mut count = 0;
+        while let Some(pkt) = demuxer.next_packet().unwrap() {
+            assert!(
+                pkt.dts >= last_dts,
+                "DTS not monotonic at packet {}",
+                count
+            );
+            last_dts = pkt.dts;
+            count += 1;
+        }
+        assert!(count > 100, "expected >100 packets, got {}", count);
+    }
+
+    #[test]
+    fn first_packet_is_keyframe() {
+        let path = fixture_path();
+        if !std::path::Path::new(&path).exists() {
+            return;
+        }
+        let mut demuxer = Mp4Demuxer::new(&path).unwrap();
+        let pkt = demuxer
+            .next_packet()
+            .unwrap()
+            .expect("should have at least one packet");
+        assert!(pkt.is_keyframe);
+    }
+
+    #[test]
+    fn seek_resets_position() {
+        let path = fixture_path();
+        if !std::path::Path::new(&path).exists() {
+            return;
+        }
+        let mut demuxer = Mp4Demuxer::new(&path).unwrap();
+        // Read a few packets to advance
+        for _ in 0..30 {
+            demuxer.next_packet().unwrap();
+        }
+        // Seek to near the beginning
+        demuxer.seek(std::time::Duration::from_millis(100)).unwrap();
+        let pkt = demuxer
+            .next_packet()
+            .unwrap()
+            .expect("should have packet after seek");
+        assert!(pkt.is_keyframe, "seek should land on a keyframe");
     }
 }

@@ -109,11 +109,9 @@ impl App {
             ..Default::default()
         }))
         .expect("no adapter");
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor::default(),
-            None,
-        ))
-        .expect("no device");
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
+                .expect("no device");
 
         let config = surface
             .get_default_config(&adapter, size.width.max(1), size.height.max(1))
@@ -228,9 +226,9 @@ impl App {
     }
 
     fn init_session(&mut self) {
+        use video_decoder::handle::NativeHandle;
         use video_decoder::session::{OutputTarget, SessionConfig};
         use video_decoder::types::{ColorSpace, PixelFormat};
-        use video_decoder::handle::NativeHandle;
 
         let output = OutputTarget {
             native_handle: NativeHandle::Metal {
@@ -249,7 +247,9 @@ impl App {
             #[cfg(target_os = "macos")]
             {
                 match video_decoder::backend::apple::AppleVideoSession::new(
-                    &self.input, output, &config,
+                    &self.input,
+                    output,
+                    &config,
                 ) {
                     Ok(s) => DecoderSession::Apple(s),
                     Err(e) => {
@@ -263,7 +263,9 @@ impl App {
                         };
                         DecoderSession::Software(
                             video_decoder::backend::software::SwVideoSession::new(
-                                &self.input, sw_output, &config,
+                                &self.input,
+                                sw_output,
+                                &config,
                             )
                             .expect("SW decoder failed"),
                         )
@@ -281,7 +283,9 @@ impl App {
                 };
                 DecoderSession::Software(
                     video_decoder::backend::software::SwVideoSession::new(
-                        &self.input, sw_output, &config,
+                        &self.input,
+                        sw_output,
+                        &config,
                     )
                     .expect("SW decoder failed"),
                 )
@@ -333,8 +337,7 @@ impl winit::application::ApplicationHandler for App {
             winit::event::WindowEvent::KeyboardInput {
                 event:
                     winit::event::KeyEvent {
-                        logical_key:
-                            winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape),
+                        logical_key: winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape),
                         state: winit::event::ElementState::Pressed,
                         ..
                     },
@@ -361,7 +364,9 @@ impl winit::application::ApplicationHandler for App {
                     self.fps_timer = now;
 
                     if let Some(window) = &self.window {
-                        let backend_name = self.session.as_ref()
+                        let backend_name = self
+                            .session
+                            .as_ref()
                             .map(|s| format!("{:?}", s.as_session().info().backend))
                             .unwrap_or_default();
                         window.set_title(&format!(
@@ -416,22 +421,19 @@ impl winit::application::ApplicationHandler for App {
                             .device
                             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
                         {
-                            let mut pass =
-                                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                                    label: Some("video_bg_pass"),
-                                    color_attachments: &[Some(
-                                        wgpu::RenderPassColorAttachment {
-                                            view: &view,
-                                            resolve_target: None,
-                                            ops: wgpu::Operations {
-                                                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                                                store: wgpu::StoreOp::Store,
-                                            },
-                                        },
-                                    )],
-                                    depth_stencil_attachment: None,
-                                    ..Default::default()
-                                });
+                            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                label: Some("video_bg_pass"),
+                                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                    view: &view,
+                                    resolve_target: None,
+                                    ops: wgpu::Operations {
+                                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                                        store: wgpu::StoreOp::Store,
+                                    },
+                                })],
+                                depth_stencil_attachment: None,
+                                ..Default::default()
+                            });
                             pass.set_pipeline(&gpu.pipeline);
                             pass.set_bind_group(0, &gpu.bind_group, &[]);
                             pass.draw(0..3, 0..1);

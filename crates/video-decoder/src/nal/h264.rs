@@ -119,4 +119,21 @@ mod tests {
         let result = H264Context::from_avcc(&[]);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn h264_context_from_fixture() {
+        use crate::demux::{Demuxer, Mp4Demuxer};
+
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/big_buck_bunny_360p.mp4");
+        if !path.exists() {
+            return;
+        }
+        let demuxer = Mp4Demuxer::new(path.to_str().unwrap()).unwrap();
+        let extra = &demuxer.parameters().extra_data;
+        assert!(!extra.is_empty(), "avcC extra_data should not be empty");
+        let ctx = H264Context::from_avcc(extra).expect("should parse avcC");
+        assert_eq!(ctx.width, 640);
+        assert_eq!(ctx.height, 360);
+    }
 }

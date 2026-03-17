@@ -1,6 +1,4 @@
 //! Integration tests for `video_decoder::open()`.
-//!
-//! These tests exercise error paths since no test MP4 fixture exists yet.
 
 use video_decoder::*;
 
@@ -15,6 +13,12 @@ fn dummy_wgpu_output() -> OutputTarget {
         height: 480,
         color_space: ColorSpace::default(),
     }
+}
+
+fn fixture_path() -> String {
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/big_buck_bunny_360p.mp4");
+    p.to_str().unwrap().to_string()
 }
 
 #[test]
@@ -67,6 +71,20 @@ fn open_corrupt_mp4_returns_demux_error() {
     }
 
     std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn open_valid_mp4_returns_session() {
+    let path = fixture_path();
+    if !std::path::Path::new(&path).exists() {
+        return;
+    }
+    let output = dummy_wgpu_output();
+    let session = video_decoder::open(&path, output, SessionConfig::default()).unwrap();
+    let info = session.info();
+    assert_eq!(info.codec, video_decoder::Codec::H264);
+    assert_eq!(info.width, 640);
+    assert_eq!(info.height, 360);
 }
 
 #[test]

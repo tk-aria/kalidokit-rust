@@ -1,7 +1,6 @@
-//! Integration tests for decode error paths.
-//!
-//! Since no test MP4 fixture exists yet, these tests exercise error handling
-//! in the software decoder and the `open()` API for invalid inputs.
+//! Integration tests for decode paths.
+
+use std::time::Duration;
 
 use video_decoder::backend::software::SwVideoSession;
 use video_decoder::handle::NativeHandle;
@@ -20,6 +19,12 @@ fn dummy_wgpu_output() -> OutputTarget {
         height: 480,
         color_space: ColorSpace::default(),
     }
+}
+
+fn fixture_path() -> String {
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/big_buck_bunny_360p.mp4");
+    p.to_str().unwrap().to_string()
 }
 
 #[test]
@@ -74,4 +79,27 @@ fn frame_status_variants_are_distinct() {
     assert_ne!(FrameStatus::NewFrame, FrameStatus::Waiting);
     assert_ne!(FrameStatus::Waiting, FrameStatus::EndOfStream);
     assert_ne!(FrameStatus::NewFrame, FrameStatus::EndOfStream);
+}
+
+#[test]
+fn decode_10_frames_sw() {
+    let path = fixture_path();
+    if !std::path::Path::new(&path).exists() {
+        return;
+    }
+    let output = dummy_wgpu_output();
+    let mut session = video_decoder::open(&path, output, SessionConfig::default()).unwrap();
+    let dt = Duration::from_secs_f64(1.0 / 30.0);
+    let mut frames = 0;
+    for _ in 0..200 {
+        match session.decode_frame(dt).unwrap() {
+            video_decoder::FrameStatus::NewFrame => frames += 1,
+            video_decoder::FrameStatus::EndOfStream => break,
+            _ => {}
+        }
+        if frames >= 10 {
+            break;
+        }
+    }
+    assert!(frames >= 10, "expected >=10 frames, got {}", frames);
 }

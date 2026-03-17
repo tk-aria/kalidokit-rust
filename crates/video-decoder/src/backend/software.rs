@@ -267,4 +267,65 @@ mod tests {
 
         std::fs::remove_file(&path).ok();
     }
+
+    fn fixture_path() -> String {
+        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/big_buck_bunny_360p.mp4");
+        p.to_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn sw_decode_10_frames() {
+        let path = fixture_path();
+        if !std::path::Path::new(&path).exists() {
+            return;
+        }
+        let mut session =
+            SwVideoSession::new(&path, dummy_output(), &SessionConfig::default()).unwrap();
+        assert_eq!(session.info().codec, Codec::H264);
+        assert_eq!(session.info().width, 640);
+        assert_eq!(session.info().backend, Backend::Software);
+
+        let dt = std::time::Duration::from_secs_f64(1.0 / 30.0);
+        let mut new_frames = 0;
+        for _ in 0..100 {
+            match session.decode_frame(dt).unwrap() {
+                FrameStatus::NewFrame => new_frames += 1,
+                FrameStatus::Waiting => {}
+                FrameStatus::EndOfStream => break,
+            }
+            if new_frames >= 10 {
+                break;
+            }
+        }
+        assert!(new_frames >= 10, "expected >=10 frames, got {}", new_frames);
+        assert!(!session.frame_rgba().is_empty());
+    }
+
+    #[test]
+    fn sw_pause_resume() {
+        let path = fixture_path();
+        if !std::path::Path::new(&path).exists() {
+            return;
+        }
+        let mut session =
+            SwVideoSession::new(&path, dummy_output(), &SessionConfig::default()).unwrap();
+        let dt = std::time::Duration::from_secs_f64(1.0 / 30.0);
+
+        session.pause();
+        assert!(session.is_paused());
+        assert_eq!(session.decode_frame(dt).unwrap(), FrameStatus::Waiting);
+
+        session.resume();
+        assert!(!session.is_paused());
+        // Should eventually produce a frame
+        let mut got_frame = false;
+        for _ in 0..10 {
+            if session.decode_frame(dt).unwrap() == FrameStatus::NewFrame {
+                got_frame = true;
+                break;
+            }
+        }
+        assert!(got_frame);
+    }
 }

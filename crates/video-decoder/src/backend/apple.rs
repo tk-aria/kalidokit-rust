@@ -437,4 +437,37 @@ mod tests {
     fn backend_returns_videotoolbox() {
         assert_eq!(format!("{:?}", Backend::VideoToolbox), "VideoToolbox");
     }
+
+    fn fixture_path() -> String {
+        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/big_buck_bunny_360p.mp4");
+        p.to_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn apple_decode_10_frames() {
+        let path = fixture_path();
+        if !std::path::Path::new(&path).exists() {
+            return;
+        }
+        let mut session =
+            AppleVideoSession::new(&path, metal_output(), &SessionConfig::default()).unwrap();
+        assert_eq!(session.info().backend, Backend::VideoToolbox);
+        assert_eq!(session.info().width, 640);
+
+        let dt = std::time::Duration::from_secs_f64(1.0 / 30.0);
+        let mut new_frames = 0;
+        for _ in 0..100 {
+            match session.decode_frame(dt).unwrap() {
+                FrameStatus::NewFrame => new_frames += 1,
+                FrameStatus::Waiting => {}
+                FrameStatus::EndOfStream => break,
+            }
+            if new_frames >= 10 {
+                break;
+            }
+        }
+        assert!(new_frames >= 10, "expected >=10 frames, got {}", new_frames);
+        assert!(!session.frame_rgba().is_empty());
+    }
 }
