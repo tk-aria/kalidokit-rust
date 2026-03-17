@@ -9,6 +9,8 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 wgpu = { workspace = true }
+mp4parse = "0.17"
+h264-reader = "0.7"
 
 [dev-dependencies]
 pollster = { workspace = true }

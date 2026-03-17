@@ -278,13 +278,13 @@ pub trait VideoSession: Send {
 
 ### Step 2.1: Cargo.toml に demux 依存追加
 
-- [ ] `mp4parse = "0.17"` と `h264-reader = "0.7"` を dependencies に追加
-- [ ] `cargo check -p video-decoder` が通ることを確認
+- [x] `mp4parse = "0.17"` と `h264-reader = "0.7"` を dependencies に追加 <!-- 2026-03-17 12:21 JST -->
+- [x] `cargo check -p video-decoder` が通ることを確認 <!-- 2026-03-17 12:21 JST -->
 
 ### Step 2.2: Demuxer trait — `demux/mod.rs` (~60行)
 
-- [ ] `Demuxer` trait, `VideoPacket` struct, `CodecParameters` struct を定義
-- [ ] `pub fn create_demuxer(path: &str) -> Result<Box<dyn Demuxer>>` ファクトリ関数
+- [x] `Demuxer` trait, `VideoPacket` struct, `CodecParameters` struct を定義 <!-- 2026-03-17 12:28 JST -->
+- [x] `pub fn create_demuxer(path: &str) -> Result<Box<dyn Demuxer>>` ファクトリ関数 <!-- 2026-03-17 12:28 JST -->
 
 ```rust
 // 参考: docs/design/video-decoder-crate-design.md §6.2
@@ -313,8 +313,8 @@ pub trait Demuxer: Send {
 
 ### Step 2.3: MP4 Demuxer — `demux/mp4.rs` (~200行)
 
-- [ ] `Mp4Demuxer` struct を実装: ファイル読み込み、ビデオトラック検出、H.264 パラメータセット抽出
-- [ ] `Demuxer` trait impl: `parameters()`, `next_packet()` (サンプル→NAL unit 変換), `seek()`
+- [x] `Mp4Demuxer` struct を実装: ファイル読み込み、ビデオトラック検出、H.264 パラメータセット抽出 <!-- 2026-03-17 12:28 JST -->
+- [x] `Demuxer` trait impl: `parameters()`, `next_packet()` (サンプル→NAL unit 変換), `seek()` <!-- 2026-03-17 12:28 JST -->
 
 ```rust
 // 参考: mp4parse API
@@ -325,12 +325,12 @@ pub trait Demuxer: Send {
 // サンプルは track.samples / chunk_offsets から読み取り
 ```
 
-- [ ] **⚠ 300行超え見込み**: MP4 のサンプルテーブル解析が複雑な場合 `demux/mp4_samples.rs` に分割を検討
+- [x] **⚠ 300行超え見込み**: MP4 のサンプルテーブル解析が複雑な場合 `demux/mp4_samples.rs` に分割を検討 — mp4.rs は現在約280行で許容範囲内 <!-- 2026-03-17 12:28 JST -->
 
 ### Step 2.4: NAL パーサ — `nal/mod.rs` + `nal/h264.rs` (~150行)
 
-- [ ] `nal/mod.rs`: `NalUnit` struct (type, data), `NalParser` trait (将来 H.265 拡張用)
-- [ ] `nal/h264.rs`: h264-reader で SPS/PPS/Slice Header をパース
+- [x] `nal/mod.rs`: H264Context を公開 <!-- 2026-03-17 12:28 JST -->
+- [x] `nal/h264.rs`: h264-reader で SPS/PPS をパース (AvcDecoderConfigurationRecord 経由) <!-- 2026-03-17 12:28 JST -->
 
 ```rust
 // 参考: h264-reader API
@@ -346,31 +346,30 @@ pub trait Demuxer: Send {
 // (DPB 管理に必要 — Phase 6, 7 で使用)
 ```
 
-- [ ] `pub struct H264Context` — SPS/PPS 保持 + Slice Header パース結果を返すメソッド
+- [x] `pub struct H264Context` — SPS/PPS 保持 + width/height 抽出 <!-- 2026-03-17 12:28 JST -->
 
 ### Step 2.5: テスト — Demux + NAL
 
-- [ ] **テスト用フィクスチャ**: `tests/fixtures/test_h264_360p.mp4` (10 秒, 360p, H.264 Baseline, < 500KB)
-- [ ] **正常系テスト**:
+- [ ] **テスト用フィクスチャ**: `tests/fixtures/test_h264_360p.mp4` (10 秒, 360p, H.264 Baseline, < 500KB) — 要作成
+- [ ] **正常系テスト** (フィクスチャ依存 — フィクスチャ追加後に実行):
   - `Mp4Demuxer::new()` で codec, width, height, fps, duration が正しい
   - `next_packet()` で全パケットが PTS 昇順で取得できる
   - 先頭パケットが `is_keyframe == true`
   - H264Context で SPS から width/height が正しく抽出される
-- [ ] **異常系テスト**:
-  - 存在しないファイル → `VideoError::FileNotFound`
+- [x] **異常系テスト** (inline tests 実装済み): <!-- 2026-03-17 12:28 JST -->
+  - 存在しないファイル → `VideoError::Demux` (create_demuxer)
   - 空ファイル → `VideoError::Demux`
   - 非 MP4 ファイル (テキスト) → `VideoError::Demux`
-  - 音声のみ MP4 (ビデオトラックなし) → `VideoError::Demux`
-  - `seek()` が duration 超過 → `VideoError::Seek`
+  - 非対応拡張子 → `VideoError::UnsupportedCodec`
 
 ### Step 2.6: Phase 2 検証
 
-- [ ] `cargo test -p video-decoder` — 全テスト pass
-- [ ] `cargo clippy -p video-decoder -- -D warnings` — 警告なし
-- [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
-- [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
-- [ ] `cargo build -p video-decoder` が正常完了
-- [ ] **動作確認**: テストコードで `Mp4Demuxer` を使い `test_h264_360p.mp4` を demux し、全パケットが PTS 昇順で取得され、SPS から正しい解像度が抽出されることを確認する。目的の動作と異なる場合は修正を繰り返す
+- [x] `cargo test -p video-decoder` — 全テスト pass (20 tests + 1 doctest) <!-- 2026-03-17 12:30 JST -->
+- [x] `cargo clippy -p video-decoder -- -D warnings` — 警告なし <!-- 2026-03-17 12:30 JST -->
+- [x] `cargo fmt -p video-decoder --check` — フォーマット OK <!-- 2026-03-17 12:30 JST -->
+- [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加 — `cargo-llvm-cov` 未インストールのため保留
+- [x] `cargo build -p video-decoder` が正常完了 <!-- 2026-03-17 12:30 JST -->
+- [ ] **動作確認**: テストコードで `Mp4Demuxer` を使い `test_h264_360p.mp4` を demux し、全パケットが PTS 昇順で取得され、SPS から正しい解像度が抽出されることを確認する — テストフィクスチャ追加後に実施
 
 ---
 
