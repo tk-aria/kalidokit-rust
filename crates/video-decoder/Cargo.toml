@@ -21,6 +21,16 @@ objc2-core-media = "0.3"
 objc2-core-video = "0.3"
 objc2-core-foundation = "0.3"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Graphics_Direct3D12",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+] }
+
 [dev-dependencies]
 pollster = { workspace = true }
 env_logger = { workspace = true }

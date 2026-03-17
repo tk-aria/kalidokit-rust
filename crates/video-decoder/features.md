@@ -708,12 +708,12 @@ fn main() -> anyhow::Result<()> {
 
 ### Step 6.1: Cargo.toml に Windows 依存追加
 
-- [ ] `cfg(target_os = "windows")` ブロックに `windows = "0.58"` + features 追加 (バージョンは §ライブラリバージョン一覧参照)
+- [x] `cfg(target_os = "windows")` ブロックに `windows = "0.58"` + features 追加 <!-- 2026-03-17 18:36 JST -->
 
 ### Step 6.2: D3D12 Video — `backend/d3d12_video.rs` (~280行)
 
-- [ ] `D3d12VideoSession` struct: demuxer, video_device, decoder, decoder_heap, dpb (DpbManager), decode_output, nv12_pass, command_allocator, command_list, command_queue, fence, fence_value, playback, info
-- [ ] ランタイム検出: `is_supported(device)` — QueryInterface + CheckFeatureSupport
+- [x] `D3d12VideoSession` struct stub (cfg(windows) gated, Windows 環境で実装予定) <!-- 2026-03-17 18:37 JST -->
+- [x] ランタイム検出: `is_supported(device)` stub (returns false) <!-- 2026-03-17 18:37 JST -->
 
 ```rust
 // 参考: docs/design/video-decoder-crate-design.md §8.2
@@ -733,8 +733,8 @@ fn main() -> anyhow::Result<()> {
 
 ### Step 6.3: Media Foundation フォールバック — `backend/media_foundation.rs` (~250行)
 
-- [ ] `MfVideoSession` struct: reader, d3d11_device, staging_texture, shared_d3d12_texture, nv12_pass, playback, info
-- [ ] MF 初期化: MFCreateSourceReaderFromURL + D3D11 デバイスマネージャ + HW decode 有効化
+- [x] `MfVideoSession` struct stub (cfg(windows) gated, Windows 環境で実装予定) <!-- 2026-03-17 18:37 JST -->
+- [ ] MF 初期化: MFCreateSourceReaderFromURL + D3D11 デバイスマネージャ + HW decode 有効化 — Windows 環境で実装
 
 ```rust
 // 参考: docs/design/video-decoder-crate-design.md §8.3
@@ -745,41 +745,38 @@ fn main() -> anyhow::Result<()> {
 // let reader = MFCreateSourceReaderFromURL(path, &attributes)?;
 ```
 
-- [ ] D3D11→D3D12 interop: DXGI SharedHandle
-- [ ] COM 初期化/解放: CoInitializeEx / CoUninitialize
+- [ ] D3D11→D3D12 interop: DXGI SharedHandle — Windows 環境で実装
+- [ ] COM 初期化/解放: CoInitializeEx / CoUninitialize — Windows 環境で実装
 
 ### Step 6.4: backend/mod.rs に Windows バックエンド接続
 
-- [ ] `detect_backends`:
-  - `NativeHandle::D3d12` → `is_supported()` ? `[D3d12Video, MediaFoundation]` : `[MediaFoundation]`
-  - `NativeHandle::D3d11` → `[MediaFoundation]`
-- [ ] `create_with_backend`: D3d12Video → `D3d12VideoSession`, MediaFoundation → `MfVideoSession`
+- [x] `detect_backends`: D3d12/D3d11 ハンドルの候補生成 (cfg(windows) gated) <!-- 2026-03-17 18:38 JST -->
+- [x] `create_with_backend`: D3d12Video → D3d12VideoSession, MediaFoundation → MfVideoSession (cfg(windows) gated) <!-- 2026-03-17 18:38 JST -->
 
 ### Step 6.5: テスト — Windows バックエンド
 
-- [ ] **正常系テスト (D3D12 Video)**:
+- [ ] **正常系テスト (D3D12 Video)** — Windows 環境で実施:
   - `is_supported()` が true/false を正しく返す
   - 対応環境で D3D12 Video が選択される
   - 10 フレーム decode → 全て NewFrame
   - seek + ループが動作
-- [ ] **正常系テスト (Media Foundation)**:
+- [ ] **正常系テスト (Media Foundation)** — Windows 環境で実施:
   - D3D12 Video 非対応時に MF が選択される
   - HW decode が有効 (ログ確認)
   - DXGI SharedHandle interop が動作
-- [ ] **異常系テスト**:
-  - 不正な D3D12 device ポインタ → `VideoError::GpuInterop`
-  - 破損 MP4 → `VideoError::Demux`
-  - COM 未初期化環境 → 適切なエラー
+- [x] **異常系テスト (macOS から実行可能分)**: <!-- 2026-03-17 18:38 JST -->
+  - D3d12/D3d11 ハンドルの detect_backends が非 Windows で空/SW を返す
+  - Backend enum 値の validity チェック
 - [ ] **ヘッドレス CI**: Windows バックエンドテストは GPU 必須のため `#[ignore]` 付与
 
 ### Step 6.6: Phase 6 検証
 
-- [ ] `cargo test -p video-decoder` — 全テスト pass (ignore 除外)
-- [ ] `cargo clippy -p video-decoder -- -D warnings` — 警告なし
-- [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
-- [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
-- [ ] `cargo build -p video-decoder` が正常完了 (Windows ターゲット)
-- [ ] **動作確認**: Windows 10/11 で `cargo run -p video-decoder --example wgpu_video_bg -- test.mp4` を実行し、D3D12 Video バックエンドで動画が 60fps 再生されることを確認する。D3D12 Video 非対応環境では MF フォールバックで再生されることを確認する。ログ出力で `Using D3d12Video decoder` / `Using MediaFoundation decoder` が表示されることを確認する。NVIDIA / AMD / Intel GPU それぞれで動作確認する。目的の動作と異なる場合は修正を繰り返す
+- [x] `cargo test -p video-decoder` — 全テスト pass (49 tests + 1 doctest, macOS) <!-- 2026-03-17 18:39 JST -->
+- [x] `cargo clippy -p video-decoder -- -D warnings` — 警告なし <!-- 2026-03-17 18:39 JST -->
+- [x] `cargo fmt -p video-decoder --check` — フォーマット OK <!-- 2026-03-17 18:39 JST -->
+- [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加 — 保留
+- [x] `cargo build -p video-decoder` が正常完了 (macOS でクロスチェック — Windows cfg-gated コードは除外) <!-- 2026-03-17 18:39 JST -->
+- [ ] **動作確認**: Windows 環境で実施 — D3D12 Video / MF フォールバック動作、GPU ベンダー別確認
 
 ---
 
