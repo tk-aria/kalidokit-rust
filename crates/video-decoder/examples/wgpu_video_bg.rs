@@ -76,6 +76,12 @@ struct App {
     session: Option<DecoderSession>,
     last_frame: Option<Instant>,
     window: Option<Arc<winit::window::Window>>,
+    // FPS counter
+    fps_counter: u32,
+    fps_timer: Instant,
+    render_fps: f64,
+    decode_fps: u32,
+    decode_count: u32,
 }
 
 impl App {
@@ -86,6 +92,11 @@ impl App {
             session: None,
             last_frame: None,
             window: None,
+            fps_counter: 0,
+            fps_timer: Instant::now(),
+            render_fps: 0.0,
+            decode_fps: 0,
+            decode_count: 0,
         }
     }
 
@@ -339,11 +350,33 @@ impl winit::application::ApplicationHandler for App {
                     .unwrap_or(std::time::Duration::from_millis(16));
                 self.last_frame = Some(now);
 
+                // FPS counter: update every second.
+                self.fps_counter += 1;
+                let elapsed = now.duration_since(self.fps_timer);
+                if elapsed >= std::time::Duration::from_secs(1) {
+                    self.render_fps = self.fps_counter as f64 / elapsed.as_secs_f64();
+                    self.decode_fps = self.decode_count;
+                    self.fps_counter = 0;
+                    self.decode_count = 0;
+                    self.fps_timer = now;
+
+                    if let Some(window) = &self.window {
+                        let backend_name = self.session.as_ref()
+                            .map(|s| format!("{:?}", s.as_session().info().backend))
+                            .unwrap_or_default();
+                        window.set_title(&format!(
+                            "video-decoder | render: {:.0} fps | decode: {} fps | backend: {}",
+                            self.render_fps, self.decode_fps, backend_name,
+                        ));
+                    }
+                }
+
                 // Decode next frame.
                 if let Some(session) = &mut self.session {
                     if let Ok(video_decoder::FrameStatus::NewFrame) =
                         session.as_session_mut().decode_frame(dt)
                     {
+                        self.decode_count += 1;
                         // Upload RGBA to GPU texture.
                         if let Some(gpu) = &self.gpu {
                             let rgba = session.frame_rgba();
