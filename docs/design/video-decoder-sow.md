@@ -94,22 +94,49 @@
 
 ---
 
-### WP-3: Windows バックエンド (Media Foundation)
+### WP-3: Windows バックエンド — D3D12 Video API (優先パス)
 
-**目的:** Windows で Media Foundation → D3D11/D3D12 interop デコード
+**目的:** D3D12 Video API で D3D12 内完結のデコード。demux/NAL/DPB を Vulkan Video と共有。
 
 | # | タスク | 詳細 | 成果ファイル | 受入基準 |
 |---|--------|------|-------------|----------|
-| 3.1 | MF 初期化 | `MFCreateSourceReaderFromURL` + D3D11 デバイスマネージャ設定 | `src/backend/media_foundation.rs` L1-120 | SourceReader が D3D11 HW アクセラレーション有効で作成される |
-| 3.2 | フレーム読み取り | `ReadSample()` → IMFDXGIBuffer → ID3D11Texture2D | `src/backend/media_foundation.rs` L120-200 | テクスチャが DXGI_FORMAT_NV12 で正しいサイズ |
-| 3.3 | NV12→RGBA 変換 | MF Video Processor MFT または WGSL compute shader で変換 | `src/backend/media_foundation.rs` L200-280 | 変換後の RGBA が視覚的に正しい |
-| 3.4 | D3D11→D3D12 interop | DXGI shared handle で wgpu D3D12 テクスチャにコピー | `src/backend/media_foundation.rs` L280-360 | wgpu テクスチャが描画に使用できる |
-| 3.5 | seek 実装 | `IMFSourceReader::SetCurrentPosition()` | `src/backend/media_foundation.rs` L360-400 | seek 後の PTS が正しい |
-| 3.6 | COM 初期化/解放 | `CoInitializeEx` / `CoUninitialize`、IMF* オブジェクトの Release | `src/backend/media_foundation.rs` | COM リソースリークなし |
+| 3.1 | ランタイム検出 | `ID3D12Device::QueryInterface(IID_ID3D12VideoDevice)` + `CheckFeatureSupport(D3D12_FEATURE_VIDEO_DECODE_SUPPORT)` で H.264 対応確認 | `src/backend/d3d12_video.rs` L1-80 | 非対応環境でパニックせず false を返す |
+| 3.2 | VideoDecoder 作成 | `ID3D12VideoDevice::CreateVideoDecoder` + H.264 プロファイル設定。MaxDPB 数指定 | `src/backend/d3d12_video.rs` L80-160 | Decoder が正しいプロファイルで作成される |
+| 3.3 | VideoDecoderHeap 作成 | `CreateVideoDecoderHeap` で解像度依存リソース確保 | `src/backend/d3d12_video.rs` L160-220 | Heap が動画の解像度に合致 |
+| 3.4 | DPB 管理 | D3D12 テクスチャ配列 (NV12) で DPB スロット管理。POC ベース参照管理は Vulkan Video と共通化 | `src/backend/d3d12_video.rs` L220-340 | I/P/B フレームの参照関係が正しく解決される |
+| 3.5 | デコードコマンド | `ID3D12VideoDecodeCommandList::DecodeFrame` + `ExecuteCommandLists` + `ID3D12Fence` 同期 | `src/backend/d3d12_video.rs` L340-440 | デコード出力テクスチャ (NV12) が正しい画像データ |
+| 3.6 | NV12→RGBA 変換 | WP-1.5 の NV12ToRgbaPass (WGSL compute) で変換 → OutputTarget に書き込み | `src/backend/d3d12_video.rs` L440-480 | 最終 RGBA テクスチャが正しい |
+| 3.7 | seek | demuxer seek → DPB リセット → 次のキーフレームからデコード再開。DecoderHeap は再作成不要 | `src/backend/d3d12_video.rs` L480-540 | seek 後にアーティファクトなく再生継続 |
+| 3.8 | リソース解放 | Drop で ID3D12VideoDecoder, DecoderHeap, DPB テクスチャ, Fence, CommandList を解放 | `src/backend/d3d12_video.rs` | D3D12 リソースリークなし |
 
 **WP-3 完了基準:**
-- Windows 10/11 で MP4 が HW デコード + 60fps 再生
+- Windows 10 v1703+ / Windows 11 で MP4 が D3D12 Video HW デコード + 60fps 再生
 - NVIDIA / AMD / Intel GPU で動作確認
+- `detect_backends()` → `[D3d12Video, MediaFoundation]` が正しく返る
+- D3D12 Video 非対応環境で自動的に WP-3b (MF) にフォールバック
+
+---
+
+### WP-3b: Windows バックエンド — Media Foundation (フォールバック)
+
+**目的:** D3D12 Video API が利用不可の場合の Media Foundation HW decode フォールバック
+
+**使用条件:**
+- D3D12 Video 非対応 (古い GPU / ドライバ / Windows バージョン)
+- `SessionConfig.preferred_backend = Some(Backend::MediaFoundation)` 指定時
+
+| # | タスク | 詳細 | 成果ファイル | 受入基準 |
+|---|--------|------|-------------|----------|
+| 3b.1 | MF 初期化 | `MFCreateSourceReaderFromURL` + D3D11 デバイスマネージャ設定。`MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS=1` で HW decode 要求 | `src/backend/media_foundation.rs` L1-120 | SourceReader が D3D11 HW アクセラレーション有効で作成される |
+| 3b.2 | フレーム読み取り | `ReadSample()` → IMFDXGIBuffer → ID3D11Texture2D | `src/backend/media_foundation.rs` L120-200 | テクスチャが DXGI_FORMAT_NV12 で正しいサイズ |
+| 3b.3 | NV12→RGBA 変換 | MF Video Processor MFT で NV12→RGB32 変換 (MF 内 GPU 変換)、または WGSL compute shader | `src/backend/media_foundation.rs` L200-280 | 変換後の RGBA が視覚的に正しい |
+| 3b.4 | D3D11→D3D12 interop | `IDXGIResource1::CreateSharedHandle()` で DXGI shared handle 作成 → D3D12 にインポート → OutputTarget にコピー | `src/backend/media_foundation.rs` L280-360 | wgpu テクスチャが描画に使用できる |
+| 3b.5 | seek 実装 | `IMFSourceReader::SetCurrentPosition()` | `src/backend/media_foundation.rs` L360-400 | seek 後の PTS が正しい |
+| 3b.6 | COM 初期化/解放 | `CoInitializeEx` / `CoUninitialize`、全 COM オブジェクトの Release | `src/backend/media_foundation.rs` | COM リソースリークなし |
+
+**WP-3b 完了基準:**
+- D3D12 Video 非対応環境で MP4 が MF HW デコード + 60fps 再生
+- DXGI SharedHandle 経由で wgpu D3D12 テクスチャに正しく書き込まれる
 
 ---
 
@@ -209,17 +236,19 @@
 
 ```
 WP-1 (共通基盤)
-  ├──→ WP-2 (macOS/iOS)      ← WP-1.2, 1.6 に依存
-  ├──→ WP-3 (Windows)        ← WP-1.2, 1.5, 1.6 に依存
-  ├──→ WP-4 (Linux VkVideo)  ← WP-1.2, 1.3, 1.4, 1.5, 1.6, 1.7 に依存
-  ├──→ WP-5 (Linux GStreamer) ← WP-1.2, 1.5, 1.6 に依存
-  ├──→ WP-6 (Linux V4L2)     ← WP-1.2, 1.3, 1.4, 1.5, 1.6 に依存
-  ├──→ WP-7 (Android)        ← WP-1.2, 1.5, 1.6 に依存
+  ├──→ WP-2 (macOS/iOS)        ← WP-1.2, 1.6 に依存
+  ├──→ WP-3 (Win D3D12 Video)  ← WP-1.2, 1.3, 1.4, 1.5, 1.6, 1.7 に依存
+  ├──→ WP-3b (Win MF fallback) ← WP-1.2, 1.5, 1.6 に依存 (WP-3 と並行可能)
+  ├──→ WP-4 (Linux VkVideo)    ← WP-1.2, 1.3, 1.4, 1.5, 1.6, 1.7 に依存
+  ├──→ WP-5 (Linux GStreamer)  ← WP-1.2, 1.5, 1.6 に依存
+  ├──→ WP-6 (Linux V4L2)      ← WP-1.2, 1.3, 1.4, 1.5, 1.6 に依存
+  ├──→ WP-7 (Android)         ← WP-1.2, 1.5, 1.6 に依存
   └──→ WP-8 (テスト/ドキュメント) ← WP-1 完了後から随時
 
-  WP-4, WP-6 は demux/NAL パース (WP-1.3, 1.4) を共有
+  WP-3, WP-4, WP-6 は demux/NAL パース (WP-1.3, 1.4) を共有
+  WP-3, WP-4 は DPB 管理ロジック (POC ベース参照管理) を共有
   WP-4, WP-5, WP-6 は DMA-BUF→Vulkan import コードを共有
-  WP-3, WP-4, WP-5, WP-6, WP-7 は NV12→RGBA (WP-1.5) を共有
+  WP-3, WP-3b, WP-4, WP-5, WP-6, WP-7 は NV12→RGBA (WP-1.5) を共有
 ```
 
 ## 5. 並行実施可能な WP
@@ -227,20 +256,21 @@ WP-1 (共通基盤)
 以下の WP は WP-1 完了後に並行して実施可能:
 
 ```
-             WP-1 (共通基盤)
-               │
-    ┌──────────┼──────────┬──────────┬──────────┐
-    ▼          ▼          ▼          ▼          ▼
-  WP-2      WP-3      WP-4       WP-7      WP-8
- (macOS)   (Win)    (Linux/Vk)  (Android) (テスト)
-                       │
-                  ┌────┤
-                  ▼    ▼
-                WP-5  WP-6
-               (GSt)  (V4L2)
+                 WP-1 (共通基盤)
+                   │
+    ┌──────┬───────┼──────────┬──────────┬─────────┐
+    ▼      ▼       ▼          ▼          ▼         ▼
+  WP-2  WP-3    WP-3b      WP-4       WP-7      WP-8
+(macOS)(D3D12V) (MF fb)   (Linux/Vk) (Android) (テスト)
+                              │
+                         ┌────┤
+                         ▼    ▼
+                       WP-5  WP-6
+                      (GSt)  (V4L2)
 ```
 
-- WP-2, WP-3, WP-4, WP-7 は互いに独立、並行可能
+- WP-2, WP-3, WP-3b, WP-4, WP-7 は互いに独立、並行可能
+- WP-3 と WP-4 は demux/NAL/DPB ロジックを共有 → 片方の成果がもう一方を加速
 - WP-5, WP-6 は WP-4 の Vulkan import コードに依存するため、WP-4 の後
 
 ---
@@ -268,7 +298,8 @@ WP-1 (共通基盤)
 | R1 | wgpu HAL API の breaking change | ネイティブテクスチャ interop が壊れる | HAL 版とCPU upload 版の両パスを維持。wgpu バージョンを固定 |
 | R2 | Vulkan Video ドライバのバグ | デコード結果が不正 | GStreamer VA-API フォールバックで回避。ドライバ最小バージョンを明記 |
 | R3 | objc2-av-foundation の API カバレッジ不足 | AVAssetReader の一部 API がバインディングにない | `objc2::msg_send!` マクロで直接 Obj-C メッセージ送信にフォールバック |
-| R4 | D3D11→D3D12 shared handle の互換性 | 一部 GPU/ドライバで shared handle が動かない | MF の RGB32 出力 + CPU コピーのフォールバック |
+| R4 | D3D12 Video API の対応環境が限定的 | Windows 10 v1703 未満、古い GPU で利用不可 | MF フォールバック (WP-3b) で回避。ランタイム検出で自動切替 |
+| R4b | D3D11→D3D12 shared handle の互換性 (MF フォールバック時) | 一部 GPU/ドライバで shared handle が動かない | MF の RGB32 出力 + CPU コピーの最終フォールバック |
 | R5 | ndk media crate のカバレッジ不足 | AMediaCodec の一部 API がバインディングにない | `ndk-sys` 経由で C API を直接 FFI |
 | R6 | H.264 の複雑なプロファイル | B フレーム参照・MBAFF 等で DPB 管理が複雑 | Phase 1 は Baseline/Main Profile に限定。High Profile は段階的 |
 | R7 | GStreamer バージョン差異 | ディストリ間で GStreamer プラグインの有無が異なる | ランタイムでパイプライン構築失敗を検出しフォールバック |

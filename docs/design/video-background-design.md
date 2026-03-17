@@ -100,53 +100,59 @@ let wgpu_texture = unsafe {
 };
 ```
 
-### 2.2 Windows — Media Foundation
+### 2.2 Windows — D3D12 Video API (優先) + Media Foundation (フォールバック)
+
+#### 2.2.1 D3D12 Video API (優先パス — D3D12 内完結)
 
 ```
-MP4/WebM file
-  → IMFSourceReader (demux + decode pipeline)
-    → IMFMediaBuffer → IMFDXGIBuffer
-      → ID3D11Texture2D (GPU memory)
-        → wgpu::hal::dx12 shared texture
-          → wgpu::Texture
+MP4 file
+  → mp4parse (Rust) で demux → H.264 NAL units
+    → h264-reader で SPS/PPS/Slice パース
+      → ID3D12VideoDevice::CreateVideoDecoder
+        → ID3D12VideoDecoderHeap (DPB)
+          → ID3D12VideoDecodeCommandList::DecodeFrame
+            → D3D12 Texture (NV12)
+              → NV12→RGBA (WGSL compute)
+                → OutputTarget の D3D12 Texture (wgpu 所有)
 ```
 
 | 項目 | 詳細 |
 |------|------|
-| **Demuxer + Decoder** | `IMFSourceReader` (MF が demux〜decode を一括管理) |
-| **出力形式** | `IMFDXGIBuffer` → `ID3D11Texture2D` |
-| **GPU 転送** | DXGI shared handle で D3D11→D3D12 interop、またはステージング経由 |
-| **Rust FFI** | `windows` crate (`windows::Media::MediaFoundation`, `windows::Graphics::Direct3D11`) |
-| **対応コーデック** | H.264, HEVC (拡張), VP9, AV1 (Win10 1809+) |
-| **wgpu interop** | `wgpu::hal::api::Dx12` で共有テクスチャをインポート |
+| **Demuxer** | `mp4parse` (Rust pure — Vulkan Video と共通) |
+| **NAL パーサ** | `h264-reader` (Vulkan Video と共通) |
+| **Decoder** | D3D12 Video API (`ID3D12VideoDecoder` + `ID3D12VideoDecodeCommandList`) |
+| **DPB 管理** | アプリ側 (Vulkan Video と同じ POC ベースロジック共有) |
+| **出力形式** | `ID3D12Resource` (NV12 D3D12 テクスチャ) |
+| **GPU 転送** | **D3D12 内完結 — D3D11 interop 不要** |
+| **Rust FFI** | `windows` crate (`Win32_Graphics_Direct3D12_Video`) |
+| **対応コーデック** | H.264, HEVC, VP9, AV1 (GPU/ドライバ依存) |
+| **wgpu interop** | 同一 D3D12 デバイス上のテクスチャ → interop 不要 |
+| **最低要件** | Windows 10 v1703+, D3D12 対応 GPU |
 
-**フロー詳細:**
-```rust
-// 1. MFSourceReader を D3D11 デバイス付きで作成
-let mut attributes: IMFAttributes = MFCreateAttributes(3)?;
-attributes.SetUnknown(&MF_SOURCE_READER_D3D_MANAGER, &dxgi_manager)?;
-attributes.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1)?;
-let reader = MFCreateSourceReaderFromURL(path, &attributes)?;
+**Vulkan Video との対称性:** demux, NAL パース, DPB 管理は共通ロジック。
 
-// 2. 出力を NV12 or RGB32 に設定
-let media_type = MFCreateMediaType()?;
-media_type.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
-media_type.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_RGB32)?;
-reader.SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &media_type)?;
+#### 2.2.2 Media Foundation (フォールバック — HW decode)
 
-// 3. フレーム読み取り
-let (_, _, _, sample) = reader.ReadSample(
-    MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0
-)?;
-let buffer: IMFMediaBuffer = sample.ConvertToContiguousBuffer()?;
-let dxgi_buffer: IMFDXGIBuffer = buffer.cast()?;
-let texture: ID3D11Texture2D = dxgi_buffer.GetResource()?;
-
-// 4. D3D11 → D3D12 shared handle → wgpu
-//    (DXGI keyed mutex or NT handle で共有)
+```
+MP4/WebM file
+  → IMFSourceReader (demux + decode pipeline, HW decode 有効)
+    → IMFMediaBuffer → IMFDXGIBuffer
+      → ID3D11Texture2D (GPU memory)
+        → DXGI SharedHandle → D3D12 Import
+          → NV12→RGBA (WGSL compute or MF Video Processor)
+            → wgpu::Texture
 ```
 
-**注意:** MF の D3D11 出力と wgpu の D3D12 バックエンド間の interop は DXGI shared handle (`IDXGIResource1::CreateSharedHandle`) を使う。NV12 → RGBA の色変換が必要な場合は MF の Video Processor MFT か、WGSL コンピュートシェーダで変換。
+| 項目 | 詳細 |
+|------|------|
+| **使用条件** | D3D12 Video 非対応時 (古い GPU/ドライバ/Windows バージョン) |
+| **Demuxer + Decoder** | `IMFSourceReader` (MF が demux〜decode を一括管理, HW decode) |
+| **出力形式** | `IMFDXGIBuffer` → `ID3D11Texture2D` |
+| **GPU 転送** | DXGI shared handle で D3D11→D3D12 interop |
+| **Rust FFI** | `windows` crate (`Win32_Media_MediaFoundation`, `Win32_Graphics_Direct3D11`) |
+| **対応コーデック** | H.264, HEVC (拡張), VP9, AV1 (Win10 1809+) |
+
+**注意:** MF の D3D11 出力と wgpu の D3D12 バックエンド間の interop は DXGI shared handle (`IDXGIResource1::CreateSharedHandle`) を使う。
 
 ### 2.3 Linux — Vulkan Video (優先) + GStreamer VA-API (フォールバック) + V4L2 (SBC)
 
@@ -437,16 +443,17 @@ let ahardware_buffer = codec.get_output_hardware_buffer(buf_idx)?;
 
 ## 3. 比較まとめ
 
-| | macOS | Windows | Linux (優先) | Linux (FB) | iOS | Android |
-|---|---|---|---|---|---|---|
-| **Demuxer** | AVAssetReader | IMFSourceReader | mp4parse (Rust) | GStreamer | AVAssetReader | AMediaExtractor |
-| **Decoder** | VideoToolbox | MF Transform | Vulkan Video | VA-API (auto) | VideoToolbox | AMediaCodec |
-| **GPU interop** | CVMetalTextureCache | DXGI SharedHandle | Vulkan 内完結 | DMA-BUF→Vulkan | CVMetalTextureCache | AHardwareBuffer→Vulkan |
-| **wgpu backend** | Metal | DX12 | Vulkan | Vulkan | Metal | Vulkan |
-| **ゼロコピー** | ✅ IOSurface | ⚠️ D3D11→D3D12 | ✅ Vulkan内 | ✅ DMA-BUF | ✅ IOSurface | ✅ AHardwareBuffer |
-| **外部依存** | OS 標準 | OS 標準 | **なし** | libgstreamer | OS 標準 | NDK |
-| **Rust FFI** | objc2 系 | windows crate | ash | gstreamer-rs | objc2 系 | ndk crate |
-| **色変換** | BGRA 直接 | NV12→RGBA 要 | NV12→RGBA 要 | NV12→RGBA 要 | BGRA 直接 | NV12→RGBA 要 |
+| | macOS | Windows (優先) | Windows (FB) | Linux (優先) | Linux (FB) | iOS | Android |
+|---|---|---|---|---|---|---|---|
+| **Demuxer** | AVAssetReader | mp4parse (Rust) | IMFSourceReader | mp4parse (Rust) | GStreamer | AVAssetReader | AMediaExtractor |
+| **Decoder** | VideoToolbox | D3D12 Video API | MF (HW decode) | Vulkan Video | VA-API (auto) | VideoToolbox | AMediaCodec |
+| **GPU interop** | CVMetalTextureCache | **D3D12 内完結** | DXGI SharedHandle | Vulkan 内完結 | DMA-BUF→Vulkan | CVMetalTextureCache | AHardwareBuffer→Vulkan |
+| **wgpu backend** | Metal | DX12 | DX12 | Vulkan | Vulkan | Metal | Vulkan |
+| **ゼロコピー** | ✅ IOSurface | ✅ D3D12内 | ⚠️ D3D11→D3D12 | ✅ Vulkan内 | ✅ DMA-BUF | ✅ IOSurface | ✅ AHardwareBuffer |
+| **外部依存** | OS 標準 | **なし** | OS 標準 | **なし** | libgstreamer | OS 標準 | NDK |
+| **Rust FFI** | objc2 系 | windows crate | windows crate | ash | gstreamer-rs | objc2 系 | ndk crate |
+| **demux/DPB 共有** | — | Vulkan Video と共通 | — | D3D12 Video と共通 | — | — | — |
+| **色変換** | BGRA 直接 | NV12→RGBA 要 | NV12→RGBA 要 | NV12→RGBA 要 | NV12→RGBA 要 | BGRA 直接 | NV12→RGBA 要 |
 
 ## 4. クレート構成
 

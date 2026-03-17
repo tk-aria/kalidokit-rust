@@ -184,7 +184,41 @@ Application              VideoSession             AVFoundation        Metal / wg
     │  既に更新済み)          │                        │                    │
 ```
 
-### 3.3 フレームデコードシーケンス (Linux Vulkan Video — NV12 変換あり)
+### 3.3 フレームデコードシーケンス (Windows D3D12 Video — NV12 変換あり)
+
+```
+Application          VideoSession          D3D12 Video API         WGSL Compute
+    │                    │                      │                      │
+    │  decode_frame(dt)  │                      │                      │
+    │────────────────────►                      │                      │
+    │                    │  NAL unit 取得       │                      │
+    │                    │  (mp4parse+h264)     │                      │
+    │                    │                      │                      │
+    │                    │  DecodeFrame()       │                      │
+    │                    │  (ID3D12VideoDecode  │                      │
+    │                    │   CommandList)       │                      │
+    │                    │──────────────────────►                      │
+    │                    │  D3D12 Texture (NV12)│                      │
+    │                    │◄──────────────────────                      │
+    │                    │                      │                      │
+    │                    │  NV12→RGBA dispatch  │                      │
+    │                    │  src: NV12 D3D12 Tex │                      │
+    │                    │  dst: OutputTarget   │                      │
+    │                    │─────────────────────────────────────────────►
+    │                    │                      │   compute dispatch   │
+    │                    │◄─────────────────────────────────────────────
+    │                    │                      │                      │
+    │                    │  ExecuteCommandLists │                      │
+    │                    │  + fence signal      │                      │
+    │                    │──────────────────────►                      │
+    │                    │◄──────────────────────                      │
+    │                    │                      │                      │
+    │  Ok(FrameStatus::  │                      │                      │
+    │    NewFrame)        │                      │                      │
+    │◄────────────────────                      │                      │
+```
+
+### 3.4 フレームデコードシーケンス (Linux Vulkan Video — NV12 変換あり)
 
 ```
 Application          VideoSession          ash / VulkanVideo       WGSL Compute
@@ -211,7 +245,7 @@ Application          VideoSession          ash / VulkanVideo       WGSL Compute
     │◄────────────────────                      │                      │
 ```
 
-### 3.4 フレームデコードシーケンス (GStreamer VA-API フォールバック)
+### 3.5 フレームデコードシーケンス (GStreamer VA-API フォールバック)
 
 ```
 Application          VideoSession          GStreamer               Vulkan
@@ -243,7 +277,7 @@ Application          VideoSession          GStreamer               Vulkan
     │◄────────────────────                    │                      │
 ```
 
-### 3.5 ループ再生 / seek シーケンス
+### 3.6 ループ再生 / seek シーケンス
 
 ```
 Application              VideoSession             Decoder
@@ -258,7 +292,9 @@ Application              VideoSession             Decoder
     │                        │────────────────────────►
     │                        │  [macOS] AVAssetReader  │
     │                        │    再作成 (seek不可のため)│
-    │                        │  [Win] IMFSourceReader  │
+    │                        │  [Win/D3D12] DPB reset  │
+    │                        │    + demuxer seek       │
+    │                        │  [Win/MF] IMFSourceReader│
     │                        │    .SetCurrentPosition()│
     │                        │  [Linux/Vk] DPB reset  │
     │                        │    + demuxer seek       │
@@ -315,9 +351,13 @@ video-decoder (crate root)
 │   │   cfg(any(target_os = "macos", target_os = "ios"))
 │   │   AVAssetReader → CVPixelBuffer → Metal blit
 │   │
-│   ├── media_foundation.rs ─ Windows
+│   ├── d3d12_video.rs ────── Windows 優先パス
 │   │   cfg(target_os = "windows")
-│   │   IMFSourceReader → ID3D11Texture2D → D3D11/D3D12 interop
+│   │   ID3D12VideoDecodeCommandList → D3D12 Texture (D3D12 内完結)
+│   │
+│   ├── media_foundation.rs ─ Windows フォールバック
+│   │   cfg(target_os = "windows")
+│   │   IMFSourceReader (HW decode) → D3D11 → DXGI SharedHandle → D3D12
 │   │
 │   ├── vulkan_video.rs ───── Linux 優先パス
 │   │   cfg(target_os = "linux")
@@ -373,6 +413,7 @@ crates/video-decoder/
 │   ├── backend/
 │   │   ├── mod.rs
 │   │   ├── apple.rs
+│   │   ├── d3d12_video.rs
 │   │   ├── media_foundation.rs
 │   │   ├── vulkan_video.rs
 │   │   ├── gst_vaapi.rs
@@ -549,7 +590,17 @@ pub enum NativeHandle {
         device: *mut std::ffi::c_void,
     },
 
-    /// Windows: `ID3D11Texture2D*`
+    /// Windows (D3D12 Video — 優先): `ID3D12Resource*`
+    D3d12 {
+        /// `ID3D12Resource*` (output texture) as `*mut c_void`
+        texture: *mut std::ffi::c_void,
+        /// `ID3D12Device*` as `*mut c_void`
+        device: *mut std::ffi::c_void,
+        /// `ID3D12CommandQueue*` (DIRECT or VIDEO_DECODE) as `*mut c_void`
+        command_queue: *mut std::ffi::c_void,
+    },
+
+    /// Windows (Media Foundation フォールバック): `ID3D11Texture2D*`
     D3d11 {
         /// `ID3D11Texture2D*` as `*mut c_void`
         texture: *mut std::ffi::c_void,
@@ -639,7 +690,9 @@ impl Default for SessionConfig {
 pub enum Backend {
     /// macOS / iOS: VideoToolbox via AVFoundation
     VideoToolbox,
-    /// Windows: Media Foundation
+    /// Windows: D3D12 Video API (優先)
+    D3d12Video,
+    /// Windows: Media Foundation (フォールバック — HW decode)
     MediaFoundation,
     /// Linux: Vulkan Video Extensions
     VulkanVideo,
@@ -751,7 +804,8 @@ pub trait VideoSession: Send {
 /// 1. VideoToolbox (常に利用可能)
 ///
 /// ## Windows
-/// 1. Media Foundation (常に利用可能)
+/// 1. D3D12 Video API (ランタイム検出: ID3D12VideoDevice)
+/// 2. Media Foundation — HW decode (フォールバック、D3D11→D3D12 interop)
 ///
 /// ## Linux
 /// 1. Vulkan Video (ランタイム検出: VkQueueVideoDecodeKHR)
@@ -867,7 +921,20 @@ fn detect_backends(handle: &NativeHandle) -> Vec<Backend> {
         // macOS / iOS
         NativeHandle::Metal { .. } => vec![Backend::VideoToolbox],
 
-        // Windows
+        // Windows (D3D12 — 優先)
+        NativeHandle::D3d12 { device, .. } => {
+            let mut backends = Vec::new();
+            // D3D12 Video API ランタイム検出
+            // ID3D12Device::QueryInterface(IID_ID3D12VideoDevice) 成功チェック
+            if d3d12_video::is_supported(*device) {
+                backends.push(Backend::D3d12Video);
+            }
+            // Media Foundation フォールバック (HW decode、D3D11 経由)
+            backends.push(Backend::MediaFoundation);
+            backends
+        }
+
+        // Windows (D3D11 レガシー — MF のみ)
         NativeHandle::D3d11 { .. } => vec![Backend::MediaFoundation],
 
         // Linux / Android
@@ -910,6 +977,11 @@ fn create_with_backend(
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         Backend::VideoToolbox => {
             Ok(Box::new(apple::AppleVideoSession::new(path, output, config)?))
+        }
+
+        #[cfg(target_os = "windows")]
+        Backend::D3d12Video => {
+            Ok(Box::new(d3d12_video::D3d12VideoSession::new(path, output, config)?))
         }
 
         #[cfg(target_os = "windows")]
@@ -1062,14 +1134,21 @@ objc2-metal = { version = "0.3", features = [
 # ──────────────────────────
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [
-    # Media Foundation
+    # D3D12 Video API (優先パス)
+    "Win32_Graphics_Direct3D12",
+    "Win32_Graphics_Direct3D12_Video",   # ID3D12VideoDevice, ID3D12VideoDecoder, etc.
+    # Media Foundation (フォールバック)
     "Win32_Media_MediaFoundation",
     "Win32_System_Com",
-    # D3D11 interop
+    # D3D11 interop (MF フォールバック時)
     "Win32_Graphics_Direct3D11",
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
 ] }
+
+# demux (D3D12 Video バックエンド用 — Vulkan Video と共有)
+mp4parse = "0.17"
+h264-reader = "0.7"
 
 # ──────────────────────────
 # Linux
@@ -1148,19 +1227,148 @@ pub struct AppleVideoSession {
 - AVAssetReader は seek 不可。新しい AVAssetReader を `timeRange` 指定で再作成
 - texture_cache は再利用可能
 
-### 8.2 media_foundation.rs — MfVideoSession
+### 8.2 d3d12_video.rs — D3d12VideoSession (Windows 優先パス)
+
+**設計思想:**
+D3D12 Video API は Vulkan Video と同じ低レベル設計（アプリ側 DPB 管理、コマンドリスト）。
+demux / NAL パース / DPB 管理ロジックを Vulkan Video と共有できる。
+D3D12 内で完結するため D3D11→D3D12 interop が不要。
+
+**フロー:**
+```
+MP4 file
+  → mp4parse (Rust) で demux → H.264 NAL units
+    → h264-reader で SPS/PPS/Slice パース
+      → ID3D12VideoDevice::CreateVideoDecoder
+        → ID3D12VideoDecoderHeap (DPB)
+          → ID3D12VideoDecodeCommandList::DecodeFrame
+            → D3D12 Texture (NV12)
+              → NV12→RGBA (WGSL compute or D3D12 Video Processor)
+                → OutputTarget の D3D12 Texture (wgpu 所有)
+```
+
+**状態管理:**
+```rust
+pub struct D3d12VideoSession {
+    /// demux + NAL parse (Vulkan Video と共通)
+    demuxer: Box<dyn Demuxer>,
+    /// ID3D12VideoDevice (D3D12 Video API エントリ)
+    video_device: ID3D12VideoDevice,
+    /// ID3D12VideoDecoder (デコードセッション状態)
+    decoder: ID3D12VideoDecoder,
+    /// ID3D12VideoDecoderHeap (解像度依存リソース + DPB ドライバ側状態)
+    decoder_heap: ID3D12VideoDecoderHeap,
+    /// DPB 管理 (参照フレーム用 D3D12 テクスチャ配列)
+    dpb: Vec<D3d12DpbSlot>,
+    /// デコード出力テクスチャ (NV12, D3D12)
+    decode_output: ID3D12Resource,
+    /// NV12→RGBA 変換パス (WGSL compute shader)
+    nv12_pass: NV12ToRgbaPass,
+    /// D3D12 コマンドアロケータ + コマンドリスト
+    command_allocator: ID3D12CommandAllocator,
+    command_list: ID3D12VideoDecodeCommandList,
+    command_queue: ID3D12CommandQueue,
+    /// D3D12 フェンス (GPU 同期)
+    fence: ID3D12Fence,
+    fence_value: u64,
+    /// 再生状態
+    playback: PlaybackState,
+    info: VideoInfo,
+}
+```
+
+**DPB スロット:**
+```rust
+struct D3d12DpbSlot {
+    texture: ID3D12Resource,    // D3D12 テクスチャ (NV12)
+    /// Picture Order Count
+    poc: i32,
+    in_use: bool,
+}
+```
+
+**ランタイム検出:**
+```rust
+fn is_supported(device: *mut c_void) -> bool {
+    // ID3D12Device::QueryInterface(IID_ID3D12VideoDevice) が成功するか
+    // + CheckFeatureSupport(D3D12_FEATURE_VIDEO_DECODE_SUPPORT) で
+    //   H.264 デコード対応を確認
+    unsafe {
+        let d3d12_device = device as *mut ID3D12Device;
+        let hr = (*d3d12_device).QueryInterface(
+            &IID_ID3D12VideoDevice,
+            &mut video_device as *mut _ as *mut *mut c_void,
+        );
+        if hr.is_err() { return false; }
+
+        let mut support = D3D12_FEATURE_DATA_VIDEO_DECODE_SUPPORT {
+            Configuration: D3D12_VIDEO_DECODE_CONFIGURATION {
+                DecodeProfile: D3D12_VIDEO_DECODE_PROFILE_H264,
+                ..Default::default()
+            },
+            Width: 1920,
+            Height: 1080,
+            ..Default::default()
+        };
+        let hr = video_device.CheckFeatureSupport(
+            D3D12_FEATURE_VIDEO_DECODE_SUPPORT,
+            &mut support as *mut _ as *mut c_void,
+            std::mem::size_of_val(&support) as u32,
+        );
+        hr.is_ok() && support.SupportFlags != D3D12_VIDEO_DECODE_SUPPORT_FLAG_NONE
+    }
+}
+```
+
+**decode_frame 実装方針:**
+1. `demuxer.next_packet()` で NAL unit 取得 (Vulkan Video と共通ロジック)
+2. h264-reader で Slice Header パース → 参照フレームリスト構築 (Vulkan Video と共通)
+3. `command_list.DecodeFrame()` でデコード
+   - 入力: `D3D12_VIDEO_DECODE_INPUT_STREAM_ARGUMENTS` (NAL data + 参照フレーム)
+   - 出力: `D3D12_VIDEO_DECODE_OUTPUT_STREAM_ARGUMENTS` (decode_output テクスチャ, NV12)
+4. `nv12_pass.convert()` で NV12 → RGBA (→ OutputTarget の D3D12 テクスチャ)
+5. `command_queue.ExecuteCommandLists()` + fence signal で GPU 送信
+
+**seek 実装方針:**
+- `demuxer.seek()` で最寄りキーフレームに移動
+- DPB リセット (全スロット解放)
+- Decoder は再作成不要 (DecoderHeap は解像度変更時のみ再作成)
+
+**Vulkan Video とのコード共有:**
+- `demux/mp4.rs` — MP4 demux (共通)
+- `nal/h264.rs` — SPS/PPS/Slice Header パース (共通)
+- `util/ring_buffer.rs` — DPB スロット管理ロジック (POC ベース参照管理は抽象化可能)
+- `convert/mod.rs` — NV12→RGBA WGSL compute shader (共通)
+
+**D3D12 Video API のティア:**
+- Tier 1: アプリが参照フレームを個別テクスチャで管理 → 本実装はこれを使用
+- Tier 2: テクスチャ配列 + サブリソース → パフォーマンス向上、将来対応
+
+### 8.3 media_foundation.rs — MfVideoSession (Windows フォールバック)
+
+**使用条件:**
+- D3D12 Video API が利用不可の場合 (古い GPU / ドライバ / Windows バージョン)
+- `SessionConfig.preferred_backend = Some(Backend::MediaFoundation)` 指定時
+
+**設計思想:**
+MF は demux + decode を一括管理する高レベル API。
+D3D12 Video と異なり DPB 管理は MF 内部で行われる。
+出力は D3D11 テクスチャのため、D3D11→D3D12 interop が必要。
 
 **状態管理:**
 ```rust
 pub struct MfVideoSession {
-    /// IMFSourceReader (D3D11 デバイスマネージャ付き)
+    /// IMFSourceReader (D3D11 デバイスマネージャ付き、HW decode 有効)
     reader: IMFSourceReader,
-    /// D3D11 デバイス (MF が使用するもの)
+    /// MF が使用する D3D11 デバイス
     d3d11_device: ID3D11Device,
-    /// 出力先テクスチャ (アプリ所有、D3D11 shared handle 経由)
-    output_d3d11_texture: ID3D11Texture2D,
-    /// NV12→RGBA 変換が必要な場合の Video Processor MFT
-    video_processor: Option<IMFTransform>,
+    /// MF デコード出力テクスチャ (D3D11, NV12 or RGB32)
+    /// → DXGI SharedHandle で D3D12 にアクセス可能にする
+    staging_texture: ID3D11Texture2D,
+    /// D3D12 側の shared テクスチャ (wgpu OutputTarget に blit する元)
+    shared_d3d12_texture: ID3D12Resource,
+    /// NV12→RGBA 変換 (MF Video Processor MFT or WGSL compute)
+    nv12_pass: Option<NV12ToRgbaPass>,
     /// 再生状態
     playback: PlaybackState,
     info: VideoInfo,
@@ -1168,17 +1376,39 @@ pub struct MfVideoSession {
 ```
 
 **decode_frame 実装方針:**
-1. `reader.ReadSample()` で IMFSample 取得
+1. `reader.ReadSample()` で IMFSample 取得 (MF が HW decode を内部実行)
 2. `IMFDXGIBuffer::GetResource()` で ID3D11Texture2D 取得
-3. MF Video Processor で NV12→RGBA 変換 (またはWGSL compute)
-4. D3D11 CopyResource で output_d3d11_texture にコピー
+3. MF の出力が NV12 の場合:
+   - MF Video Processor MFT で NV12→RGBA 変換
+   - または D3D11 テクスチャを DXGI SharedHandle 経由で D3D12 にインポート後 WGSL compute
+4. MF の出力が RGB32 の場合:
+   - `SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32)` で MF に変換させる (GPU 内変換)
+   - D3D11 CopyResource → DXGI SharedHandle → D3D12
 
-**D3D11↔D3D12 interop:**
-- wgpu は D3D12 バックエンド。MF は D3D11 出力
-- DXGI shared handle (`IDXGIResource1::CreateSharedHandle`) で共有
-- アプリ側が wgpu テクスチャ作成時に `SHARED` flag を付ける必要あり
+**D3D11→D3D12 interop:**
+```rust
+// D3D11 テクスチャを DXGI SharedHandle で D3D12 にインポート
+let dxgi_resource: IDXGIResource1 = staging_texture.cast()?;
+let shared_handle = dxgi_resource.CreateSharedHandle(
+    None,                              // security attributes
+    DXGI_SHARED_RESOURCE_READ,         // access
+    None,                              // name
+)?;
+let d3d12_resource = d3d12_device.OpenSharedHandle(
+    shared_handle,
+    &IID_ID3D12Resource,
+)?;
+```
 
-### 8.3 vulkan_video.rs — VkVideoSession
+**MF HW decode の確認:**
+- `MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS = 1` で HW decode を要求
+- `MF_SOURCE_READER_D3D_MANAGER` で DXGI デバイスマネージャを設定
+- MF が HW decode 不可の場合でも SW decode にフォールバック (MF 内部で自動)
+
+**seek 実装方針:**
+- `reader.SetCurrentPosition(MF_PROPERTY_TYPE_VT_I8, position)` で seek
+
+### 8.4 vulkan_video.rs — VkVideoSession
 
 **状態管理:**
 ```rust
@@ -1228,7 +1458,7 @@ struct DpbSlot {
 3. `vkCmdDecodeVideoKHR()` でデコード (→ decode_output VkImage, NV12)
 4. `nv12_pass.convert()` で NV12 → RGBA (→ OutputTarget の VkImage)
 
-### 8.4 gst_vaapi.rs — GstVideoSession
+### 8.5 gst_vaapi.rs — GstVideoSession
 
 **状態管理:**
 ```rust
@@ -1267,7 +1497,7 @@ filesrc location={path}
 3. 通常メモリの場合:
    - CPU → GPU アップロード (`queue.write_texture()`)
 
-### 8.5 v4l2.rs — V4l2VideoSession
+### 8.6 v4l2.rs — V4l2VideoSession
 
 **状態管理:**
 ```rust
@@ -1299,7 +1529,7 @@ fn find_v4l2_decoder() -> Option<String> {
 }
 ```
 
-### 8.6 media_codec.rs — McVideoSession
+### 8.7 media_codec.rs — McVideoSession
 
 **状態管理:**
 ```rust
@@ -1314,7 +1544,7 @@ pub struct McVideoSession {
 }
 ```
 
-### 8.7 software.rs — SwVideoSession
+### 8.8 software.rs — SwVideoSession
 
 **状態管理:**
 ```rust
@@ -1396,7 +1626,8 @@ pub struct SwVideoSession {
               │ ① が内部で発行するもの:
               │
               ├── [macOS] Metal command buffer (GPU 非同期)
-              ├── [Win]   D3D11 CopyResource (GPU 非同期)
+              ├── [Win/D3D12] ID3D12VideoDecodeCommandList (GPU 非同期)
+              ├── [Win/MF]  IMFSourceReader.ReadSample + D3D11 CopyResource (GPU 非同期)
               ├── [Linux/Vk] vkCmdDecodeVideoKHR + compute dispatch
               ├── [Linux/GSt] GStreamer は内部スレッドでデコード
               │               appsink.try_pull_sample() は non-blocking
