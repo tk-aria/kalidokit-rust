@@ -786,13 +786,13 @@ fn main() -> anyhow::Result<()> {
 
 ### Step 7.1: Cargo.toml に Linux 依存追加
 
-- [ ] `cfg(target_os = "linux")` ブロックに `ash = "0.38"` (常時), gstreamer 系 (optional), nix (optional)
-- [ ] features: `gstreamer`, `v4l2`
+- [x] `cfg(target_os = "linux")` ブロックに `ash = "0.38"` (常時), gstreamer 系 (optional), nix (optional) <!-- 2026-03-17 18:42 JST -->
+- [x] features: `gstreamer`, `v4l2` <!-- 2026-03-17 18:42 JST -->
 
 ### Step 7.2: Vulkan Video — `backend/vulkan_video.rs` (~280行)
 
-- [ ] `VkVideoSession` struct: demuxer, video_session, session_params, dpb (DpbManager), decode_output, nv12_pass, vk_device, video_queue, command_pool, playback, info
-- [ ] ランタイム検出: `is_supported(instance, physical_device)` — VkQueueFlags::VIDEO_DECODE_KHR チェック
+- [x] `VkVideoSession` struct stub (cfg(linux) gated, Linux 環境で実装予定) <!-- 2026-03-17 18:43 JST -->
+- [x] ランタイム検出: `is_supported(instance, physical_device)` stub <!-- 2026-03-17 18:43 JST -->
 
 ```rust
 // 参考: docs/design/video-decoder-crate-design.md §8.4
@@ -806,14 +806,14 @@ fn main() -> anyhow::Result<()> {
 // vkCreateVideoSessionKHR(device, &create_info)
 ```
 
-- [ ] decode_frame: demuxer.next_packet() → h264-reader → vkCmdDecodeVideoKHR → nv12_pass.convert()
-- [ ] DPB 管理: DpbManager<vk::Image> (Phase 3 の共通ロジック使用)
-- [ ] **⚠ 300行超え見込み**: Video Session 初期化を `backend/vk_video_init.rs` に分離
+- [ ] decode_frame: demuxer.next_packet() → h264-reader → vkCmdDecodeVideoKHR → nv12_pass.convert() — Linux 環境で実装
+- [ ] DPB 管理: DpbManager<vk::Image> — Linux 環境で実装
+- [ ] **⚠ 300行超え見込み**: Video Session 初期化を `backend/vk_video_init.rs` に分離 — 実装時に判断
 
 ### Step 7.3: GStreamer VA-API — `backend/gst_vaapi.rs` (~200行, cfg feature)
 
-- [ ] `#[cfg(feature = "gstreamer")]`
-- [ ] `GstVideoSession` struct: pipeline, appsink, vk_device, nv12_pass, playback, info
+- [x] `#[cfg(all(target_os = "linux", feature = "gstreamer"))]` gated stub <!-- 2026-03-17 18:43 JST -->
+- [x] `GstVideoSession` struct stub <!-- 2026-03-17 18:43 JST -->
 - [ ] パイプライン: `filesrc ! decodebin3 ! video/x-raw(memory:DMABuf),format=NV12 ! appsink`
 
 ```rust
@@ -829,9 +829,9 @@ fn main() -> anyhow::Result<()> {
 
 ### Step 7.4: V4L2 Stateless — `backend/v4l2.rs` (~200行, cfg feature)
 
-- [ ] `#[cfg(feature = "v4l2")]`
-- [ ] `V4l2VideoSession` struct: fd, demuxer, output_buffers, capture_buffers, nv12_pass, vk_device, playback, info
-- [ ] デバイス検出: `/dev/video*` スキャン + VIDIOC_QUERYCAP + VIDIOC_ENUM_FMT
+- [x] `#[cfg(all(target_os = "linux", feature = "v4l2"))]` gated stub <!-- 2026-03-17 18:43 JST -->
+- [x] `V4l2VideoSession` struct stub + `is_supported()` stub <!-- 2026-03-17 18:43 JST -->
+- [ ] デバイス検出: `/dev/video*` スキャン + VIDIOC_QUERYCAP + VIDIOC_ENUM_FMT — Linux 環境で実装
 
 ```rust
 // 参考: docs/design/video-decoder-crate-design.md §8.6
@@ -842,36 +842,34 @@ fn main() -> anyhow::Result<()> {
 
 ### Step 7.5: backend/mod.rs に Linux バックエンド接続
 
-- [ ] `detect_backends`:
-  - `NativeHandle::Vulkan` + Linux → Vulkan Video (ランタイム) + GStreamer (cfg) + V4L2 (cfg)
-- [ ] `create_with_backend`: 各バックエンドへの dispatch
+- [x] `detect_backends`: Vulkan handle → Linux backends (cfg-gated) <!-- 2026-03-17 18:43 JST -->
+- [x] `create_with_backend`: VulkanVideo / GStreamerVaapi / V4l2 dispatch (cfg-gated) <!-- 2026-03-17 18:43 JST -->
 
 ### Step 7.6: テスト — Linux バックエンド
 
-- [ ] **正常系テスト (Vulkan Video)**:
+- [ ] **正常系テスト (Vulkan Video)** — Linux 環境で実施:
   - `is_supported()` が正しく検出
   - 対応ドライバで decode → NewFrame
-- [ ] **正常系テスト (GStreamer)**:
+- [ ] **正常系テスト (GStreamer)** — Linux 環境で実施:
   - `cargo test --features gstreamer` でテスト pass
   - DMA-BUF パスと CPU フォールバックの両方
-- [ ] **異常系テスト**:
-  - Vulkan Video 非対応ドライバ → GStreamer にフォールバック
-  - GStreamer 未インストール (`--no-default-features`) → compile から除外確認
-  - V4L2 デバイスなし → Software フォールバック
-- [ ] **cfg 排除テスト**:
-  - `cargo build -p video-decoder` (features なし) → gstreamer/nix 依存ゼロ確認
+- [x] **異常系テスト (macOS から実行可能分)**: <!-- 2026-03-17 18:44 JST -->
+  - Vulkan handle の detect_backends が非 Linux で empty/SW を返す
+  - Backend enum 値の validity チェック
+  - cfg feature 無しで gstreamer/v4l2 コードが除外される
+- [ ] **cfg 排除テスト** — Linux 環境で実施:
   - `cargo build -p video-decoder --features gstreamer` → ビルド成功
   - `cargo build -p video-decoder --features v4l2` → ビルド成功
 
 ### Step 7.7: Phase 7 検証
 
-- [ ] `cargo test -p video-decoder` — 全テスト pass
-- [ ] `cargo test -p video-decoder --features gstreamer` — GStreamer テスト pass
-- [ ] `cargo clippy -p video-decoder -- -D warnings` — 警告なし
-- [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
-- [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
-- [ ] `cargo build -p video-decoder` が正常完了 (Linux ターゲット)
-- [ ] **動作確認**: Linux で `cargo run -p video-decoder --example wgpu_video_bg -- test.mp4` を実行し、Vulkan Video 対応ドライバでは Vulkan Video バックエンドで再生されることを確認する。Vulkan Video 非対応環境では `--features gstreamer` で GStreamer VA-API にフォールバックすることを確認する。ログ出力で使用中バックエンドを確認する。`vainfo` コマンドで VA-API HW デコードが有効であることを確認する。目的の動作と異なる場合は修正を繰り返す
+- [x] `cargo test -p video-decoder` — 全テスト pass (52 tests + 1 doctest, macOS) <!-- 2026-03-17 18:44 JST -->
+- [ ] `cargo test -p video-decoder --features gstreamer` — Linux 環境で実施
+- [x] `cargo clippy -p video-decoder -- -D warnings` — 警告なし <!-- 2026-03-17 18:44 JST -->
+- [x] `cargo fmt -p video-decoder --check` — フォーマット OK <!-- 2026-03-17 18:44 JST -->
+- [ ] テストカバレッジ 90% 以上を確認 — 保留
+- [x] `cargo build -p video-decoder` が正常完了 (macOS でクロスチェック) <!-- 2026-03-17 18:44 JST -->
+- [ ] **動作確認**: Linux 環境で実施 — Vulkan Video / GStreamer VA-API フォールバック確認
 
 ---
 

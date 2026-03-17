@@ -4,9 +4,15 @@
 pub mod apple;
 #[cfg(target_os = "windows")]
 pub mod d3d12_video;
+#[cfg(all(target_os = "linux", feature = "gstreamer"))]
+pub mod gst_vaapi;
 #[cfg(target_os = "windows")]
 pub mod media_foundation;
 pub mod software;
+#[cfg(all(target_os = "linux", feature = "v4l2"))]
+pub mod v4l2;
+#[cfg(target_os = "linux")]
+pub mod vulkan_video;
 
 use crate::error::{Result, VideoError};
 use crate::handle::NativeHandle;
@@ -17,9 +23,15 @@ use crate::types::Backend;
 use self::apple::AppleVideoSession;
 #[cfg(target_os = "windows")]
 use self::d3d12_video::D3d12VideoSession;
+#[cfg(all(target_os = "linux", feature = "gstreamer"))]
+use self::gst_vaapi::GstVideoSession;
 #[cfg(target_os = "windows")]
 use self::media_foundation::MfVideoSession;
 use self::software::SwVideoSession;
+#[cfg(all(target_os = "linux", feature = "v4l2"))]
+use self::v4l2::V4l2VideoSession;
+#[cfg(target_os = "linux")]
+use self::vulkan_video::VkVideoSession;
 
 /// Create a video session with automatic backend selection.
 ///
@@ -93,7 +105,27 @@ fn detect_backends(handle: &NativeHandle) -> Vec<Backend> {
                 vec![]
             }
         }
-        NativeHandle::Vulkan { .. } => vec![Backend::VulkanVideo, Backend::GStreamerVaapi],
+        NativeHandle::Vulkan { .. } => {
+            let mut backends = Vec::new();
+            #[cfg(target_os = "linux")]
+            {
+                if VkVideoSession::is_supported(std::ptr::null_mut(), std::ptr::null_mut()) {
+                    backends.push(Backend::VulkanVideo);
+                }
+                #[cfg(feature = "gstreamer")]
+                backends.push(Backend::GStreamerVaapi);
+                #[cfg(feature = "v4l2")]
+                if V4l2VideoSession::is_supported() {
+                    backends.push(Backend::V4l2);
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                // On non-Linux, Vulkan Video backends are not available.
+                let _ = &mut backends;
+            }
+            backends
+        }
         // Wgpu handle has no HW-accelerated path; go straight to software.
         NativeHandle::Wgpu { .. } => vec![Backend::Software],
     }
@@ -124,6 +156,21 @@ fn create_with_backend(
         #[cfg(target_os = "windows")]
         Backend::MediaFoundation => {
             let session = MfVideoSession::new(path, output, config)?;
+            Ok(Box::new(session))
+        }
+        #[cfg(target_os = "linux")]
+        Backend::VulkanVideo => {
+            let session = VkVideoSession::new(path, output, config)?;
+            Ok(Box::new(session))
+        }
+        #[cfg(all(target_os = "linux", feature = "gstreamer"))]
+        Backend::GStreamerVaapi => {
+            let session = GstVideoSession::new(path, output, config)?;
+            Ok(Box::new(session))
+        }
+        #[cfg(all(target_os = "linux", feature = "v4l2"))]
+        Backend::V4l2 => {
+            let session = V4l2VideoSession::new(path, output, config)?;
             Ok(Box::new(session))
         }
         // HW backends not yet implemented (or not available on this platform).
@@ -191,5 +238,66 @@ mod tests {
         assert_ne!(d3d12, mf);
         assert_eq!(format!("{:?}", d3d12), "D3d12Video");
         assert_eq!(format!("{:?}", mf), "MediaFoundation");
+    }
+
+    #[test]
+    fn detect_backends_vulkan_handle_on_current_platform() {
+        let handle = NativeHandle::Vulkan {
+            image: 0,
+            device: std::ptr::null_mut(),
+            physical_device: std::ptr::null_mut(),
+            instance: std::ptr::null_mut(),
+            queue: std::ptr::null_mut(),
+            queue_family_index: 0,
+        };
+        let backends = detect_backends(&handle);
+        // On non-Linux platforms, Vulkan Video backends are not available.
+        #[cfg(not(target_os = "linux"))]
+        assert!(
+            backends.is_empty(),
+            "Vulkan handle should yield no backends on non-Linux"
+        );
+        #[cfg(target_os = "linux")]
+        {
+            // VkVideoSession::is_supported returns false in stub, so VulkanVideo
+            // should not be present. GStreamer/V4L2 depend on feature flags.
+            assert!(
+                !backends.contains(&Backend::VulkanVideo),
+                "Stub VkVideoSession::is_supported should return false"
+            );
+        }
+    }
+
+    #[test]
+    fn backend_linux_enum_values_are_distinct() {
+        let vk = Backend::VulkanVideo;
+        let gst = Backend::GStreamerVaapi;
+        let v4l2 = Backend::V4l2;
+        assert_ne!(vk, gst);
+        assert_ne!(gst, v4l2);
+        assert_ne!(vk, v4l2);
+        assert_eq!(format!("{:?}", vk), "VulkanVideo");
+        assert_eq!(format!("{:?}", gst), "GStreamerVaapi");
+        assert_eq!(format!("{:?}", v4l2), "V4l2");
+    }
+
+    #[test]
+    fn create_with_vulkan_backend_on_non_linux_returns_no_hw_decoder() {
+        #[cfg(not(target_os = "linux"))]
+        {
+            let output = OutputTarget {
+                native_handle: NativeHandle::Wgpu {
+                    queue: std::ptr::null(),
+                    texture_id: 0,
+                },
+                format: crate::types::PixelFormat::Rgba8Srgb,
+                width: 640,
+                height: 480,
+                color_space: crate::types::ColorSpace::default(),
+            };
+            let config = SessionConfig::default();
+            let result = create_with_backend("/dev/null", &output, &config, Backend::VulkanVideo);
+            assert!(result.is_err());
+        }
     }
 }
