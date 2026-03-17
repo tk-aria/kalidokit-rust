@@ -988,7 +988,9 @@ fn main() -> anyhow::Result<()> {
 
 ## Phase 10: kalidokit-rust アプリへの video-decoder 統合
 
-**目的**: 現在の kalidokit-rust アプリ (`crates/app`) の背景描画パイプラインに video-decoder クレートを統合し、動画ファイルを背景として再生可能にする
+**目的**: 現在の kalidokit-rust アプリ (`crates/app`) の背景描画パイプラインに video-decoder クレートを統合し、既存の `image_path` に動画ファイル (MP4/MOV) を指定するだけで動画背景として再生可能にする
+
+**設計方針**: `video_path` 等の専用設定は設けず、既存の `BackgroundConfig.image_path` の拡張子で静止画/GIF/動画を自動判定する
 
 **依存関係**: Phase 4 (SW デコーダ動作) + Phase 5 (macOS VideoToolbox) が完了していること
 
@@ -1008,31 +1010,41 @@ crates/renderer/src/
 └── light.rs        BackgroundConfig { color, image_path }
 ```
 
+### 統合後のフロー
+
+```
+image_path の拡張子判定:
+  .mp4 / .m4v / .mov  → video-decoder で動画デコード → GPU テクスチャ書込み
+  .gif                → 既存の BgImage (GIF アニメーション)
+  .png / .jpg / .jpeg → 既存の BgImage (静止画)
+  None                → 単色背景 (BackgroundConfig.color)
+```
+
 ### Step 10.1: crates/app/Cargo.toml に video-decoder 依存追加
 
 - [ ] `video-decoder = { path = "../video-decoder" }` を `[dependencies]` に追加
 - [ ] `cargo check -p kalidokit-rust` が通ることを確認
 
-### Step 10.2: BackgroundConfig に動画パス対応追加
+### Step 10.2: VideoSession trait に frame_rgba() を追加
 
-- [ ] `crates/renderer/src/light.rs` の `BackgroundConfig` に `video_path: Option<String>` フィールドを追加
+- [ ] `video-decoder/src/session.rs` の `VideoSession` trait に `frame_rgba()` メソッドを追加
 
 ```rust
-/// Background configuration: clear color, optional image, optional video.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct BackgroundConfig {
-    #[serde(default = "BackgroundConfig::default_color")]
-    pub color: [f32; 3],
-    /// Static image or animated GIF path.
-    #[serde(default)]
-    pub image_path: Option<String>,
-    /// Video file path (MP4 H.264). Takes priority over image_path.
-    #[serde(default)]
-    pub video_path: Option<String>,
+pub trait VideoSession: Send {
+    // ... 既存メソッド ...
+
+    /// Returns the current decoded frame as RGBA pixel data (CPU-side).
+    /// Returns None if no frame has been decoded yet or if the backend
+    /// writes directly to a GPU texture (zero-copy path).
+    fn frame_rgba(&self) -> Option<&[u8]> {
+        None
+    }
 }
 ```
 
-- [ ] `cargo check --workspace` が通ることを確認
+- [ ] `SwVideoSession` で `frame_rgba()` を override → `Some(&self.frame_buffer)`
+- [ ] `AppleVideoSession` で `frame_rgba()` を override → `Some(&self.frame_buffer)`
+- [ ] `cargo test -p video-decoder` が通ることを確認
 
 ### Step 10.3: Scene に動画背景テクスチャ管理を追加
 
@@ -1042,97 +1054,101 @@ pub struct BackgroundConfig {
   - `pipeline: wgpu::RenderPipeline` — BgImage のパイプラインを再利用
   - `width: u32, height: u32`
 
-```rust
-struct BgVideo {
-    texture: wgpu::Texture,
-    bind_group: wgpu::BindGroup,
-    pipeline: wgpu::RenderPipeline,
-    width: u32,
-    height: u32,
-}
-```
-
 - [ ] `Scene` に `bg_video: Option<BgVideo>` フィールドを追加
 - [ ] `pub fn set_background_video(device, queue, surface_format, width, height) -> Result<()>` — BgVideo 作成
 - [ ] `pub fn remove_background_video()` — BgVideo 破棄
-- [ ] `pub fn update_video_frame(queue, rgba_data, width, height)` — テクスチャに RGBA データを書き込み
+- [ ] `pub fn update_video_frame(queue, rgba_data, width, height)` — テクスチャに RGBA データを書き込み (queue.write_texture)
 - [ ] `render_to_view_with_depth()` の背景パスで `bg_video` が `bg_image` より優先されるように分岐
 
 ```rust
 // render_to_view_with_depth 内の背景描画部分
 if let Some(bg_video) = &self.bg_video {
-    // 動画背景パス (BgVideo の bind_group + pipeline で fullscreen quad)
-    let mut pass = encoder.begin_render_pass(/* ... */);
+    // 動画背景パス
+    let mut pass = encoder.begin_render_pass(/* clear */);
     pass.set_pipeline(&bg_video.pipeline);
     pass.set_bind_group(0, &bg_video.bind_group, &[]);
     pass.draw(0..3, 0..1);
 } else if let Some(bg) = &self.bg_image {
     // 既存の静止画/GIF 背景パス
-    // ...
 }
 ```
 
-- [ ] **⚠ 300行超え見込み**: scene.rs は既に大きいため、BgVideo 関連のロジックを `crates/renderer/src/bg_video.rs` に分離することを検討
+- [ ] **⚠ 300行超え見込み**: scene.rs は既に大きいため、BgVideo 関連を `crates/renderer/src/bg_video.rs` に分離を検討
 
 ### Step 10.4: AppState に VideoSession を追加
 
 - [ ] `crates/app/src/state.rs` の `AppState` に以下を追加:
 
 ```rust
-/// Video background decode session (None if not using video background).
+/// Video background decode session (None if image_path is not a video).
 pub video_session: Option<Box<dyn video_decoder::VideoSession>>,
 ```
 
-### Step 10.5: init.rs で動画背景を初期化
+### Step 10.5: init.rs で image_path の拡張子判定 → 動画 or 静止画
 
-- [ ] `crates/app/src/init.rs` の `init_all()` 内で、`BackgroundConfig.video_path` が設定されている場合に動画セッションを開く
+- [ ] `crates/app/src/init.rs` の背景初期化部分を拡張子判定に変更
 
 ```rust
 // init.rs 内 (背景設定部分)
-if let Some(video_path) = &prefs.background.video_path {
-    // macOS では Metal NativeHandle でVideoToolbox を使用
-    // 他プラットフォームでは Wgpu handle で SW フォールバック
-    let output = video_decoder::OutputTarget {
-        native_handle: video_decoder::NativeHandle::Metal {
+fn is_video_file(path: &str) -> bool {
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    matches!(ext.as_str(), "mp4" | "m4v" | "mov")
+}
+
+// image_path が動画の場合は video-decoder、そうでなければ既存の BgImage
+if let Some(bg_path) = &prefs.background.image_path {
+    if is_video_file(bg_path) {
+        // 動画背景: video-decoder で開く
+        #[cfg(target_os = "macos")]
+        let native_handle = video_decoder::NativeHandle::Metal {
             texture: std::ptr::null_mut(),
             device: std::ptr::null_mut(),
-        },
-        format: video_decoder::PixelFormat::Rgba8Srgb,
-        width: 0, height: 0,
-        color_space: video_decoder::ColorSpace::default(),
-    };
+        };
+        #[cfg(not(target_os = "macos"))]
+        let native_handle = video_decoder::NativeHandle::Wgpu {
+            queue: std::ptr::null(),
+            texture_id: 0,
+        };
 
-    match video_decoder::open(video_path, output, video_decoder::SessionConfig::default()) {
-        Ok(session) => {
-            let info = session.info();
-            log::info!("Video background: {}x{} {:.0}fps {:?}",
-                info.width, info.height, info.fps, info.backend);
+        let output = video_decoder::OutputTarget {
+            native_handle,
+            format: video_decoder::PixelFormat::Rgba8Srgb,
+            width: 0, height: 0,
+            color_space: video_decoder::ColorSpace::default(),
+        };
 
-            // Scene に動画背景テクスチャを作成
-            scene.set_background_video(
-                &render_ctx.device, &render_ctx.queue,
-                render_ctx.config.format,
-                info.width, info.height,
-            )?;
-
-            state.video_session = Some(session);
+        match video_decoder::open(bg_path, output, video_decoder::SessionConfig::default()) {
+            Ok(session) => {
+                let info = session.info();
+                log::info!("Video background: {}x{} {:.0}fps {:?}",
+                    info.width, info.height, info.fps, info.backend);
+                scene.set_background_video(
+                    &render_ctx.device, &render_ctx.queue,
+                    render_ctx.config.format,
+                    info.width, info.height,
+                )?;
+                video_session = Some(session);
+            }
+            Err(e) => {
+                log::warn!("Failed to open video background '{}': {}", bg_path, e);
+            }
         }
-        Err(e) => {
-            log::warn!("Failed to open video background '{}': {}", video_path, e);
-            // image_path があればそちらにフォールバック
-        }
+    } else {
+        // 静止画/GIF: 既存パス
+        scene.set_background_image_from_path(/* ... */)?;
     }
-} else if let Some(bg_path) = &prefs.background.image_path {
-    // 既存の静止画/GIF パス
-    scene.set_background_image_from_path(/* ... */)?;
 }
 ```
 
-- [ ] `init_all()` の戻り値の `AppState` 構築で `video_session` フィールドを設定
+- [ ] `init_all()` の `AppState` 構築で `video_session` フィールドを設定
 
 ### Step 10.6: update.rs で毎フレーム動画デコード + テクスチャ更新
 
-- [ ] `crates/app/src/update.rs` の `update_frame()` 内で動画フレームをデコードしてテクスチャに書き込み
+- [ ] `crates/app/src/update.rs` の `update_frame()` に動画フレームデコードを追加
 
 ```rust
 // update.rs 内 (既存の tick_background の前に追加)
@@ -1141,11 +1157,13 @@ if let Some(session) = &mut state.video_session {
     use video_decoder::FrameStatus;
     match session.decode_frame(elapsed) {
         Ok(FrameStatus::NewFrame) => {
-            // frame_rgba() でデコード済み RGBA を取得
-            // → scene.update_video_frame() で GPU テクスチャに書き込み
-            // 注: frame_rgba() は VideoSession trait にないため、
-            //     backend 固有の方法でアクセスする必要がある
-            //     → Step 10.7 で解決
+            if let Some(rgba) = session.frame_rgba() {
+                let info = session.info();
+                state.scene.update_video_frame(
+                    &state.render_ctx.queue,
+                    rgba, info.width, info.height,
+                );
+            }
         }
         Ok(FrameStatus::Waiting) => { /* 前フレーム維持 */ }
         Ok(FrameStatus::EndOfStream) => {
@@ -1163,62 +1181,7 @@ if state.video_session.is_none() {
 }
 ```
 
-### Step 10.7: VideoSession に frame_rgba() アクセスを追加
-
-- [ ] `video-decoder` クレートの `VideoSession` trait に `frame_rgba()` メソッドを追加するか、
-      別の trait `CpuFrameAccess` を定義して各バックエンドに実装する
-
-```rust
-// video-decoder/src/session.rs に追加
-pub trait VideoSession: Send {
-    // ... 既存メソッド ...
-
-    /// Returns the current decoded frame as RGBA pixel data (CPU-side).
-    /// Returns None if no frame has been decoded yet or if the backend
-    /// writes directly to a GPU texture (zero-copy path).
-    fn frame_rgba(&self) -> Option<&[u8]> {
-        None // デフォルト実装: GPU 直接書き込みバックエンドでは None
-    }
-}
-```
-
-- [ ] `SwVideoSession` と `AppleVideoSession` で `frame_rgba()` を override して `Some(&self.frame_buffer)` を返す
-- [ ] update.rs で `session.frame_rgba()` を使用
-
-```rust
-// update.rs
-if let Ok(FrameStatus::NewFrame) = session.decode_frame(elapsed) {
-    if let Some(rgba) = session.frame_rgba() {
-        let info = session.info();
-        state.scene.update_video_frame(
-            &state.render_ctx.queue,
-            rgba, info.width, info.height,
-        );
-    }
-}
-```
-
-### Step 10.8: app.rs にキーボードショートカット追加
-
-- [ ] 動画背景の ON/OFF トグル (例: `KeyG` キー)
-
-```rust
-// app.rs — KeyboardInput ハンドラ内
-KeyCode::KeyG => {
-    if state.video_session.is_some() {
-        // 動画背景を停止
-        state.video_session = None;
-        state.scene.remove_background_video();
-        log::info!("Video background: OFF");
-    } else {
-        // 動画背景を再開 (background.video_path から)
-        if let Some(video_path) = &state.background.video_path {
-            // ... open session + set_background_video
-            log::info!("Video background: ON");
-        }
-    }
-}
-```
+### Step 10.7: app.rs にキーボードショートカット追加
 
 - [ ] 動画の pause/resume トグル (例: `KeyP` キー)
 
@@ -1236,38 +1199,22 @@ KeyCode::KeyP => {
 }
 ```
 
-### Step 10.9: user_prefs.yml で動画パスを永続化
-
-- [ ] `user_prefs.yml` に `video_path` が保存・復元されることを確認
-
-```yaml
-# user_prefs.yml の例
-camera_distance: 3.0
-blink_mode: Tracking
-background:
-  color: [0.12, 0.12, 0.15]
-  video_path: "assets/backgrounds/loop.mp4"
-```
-
-- [ ] `app.rs` の `save_prefs()` で `background.video_path` が保存されることを確認
-
-### Step 10.10: テスト
+### Step 10.8: テスト
 
 - [ ] **正常系テスト**:
-  - `user_prefs.yml` に `video_path` を設定してアプリ起動 → 動画背景が再生される
-  - `KeyG` で動画背景 ON/OFF 切替
-  - `KeyP` で pause/resume
+  - `image_path: "assets/backgrounds/loop.mp4"` でアプリ起動 → 動画背景が再生される
+  - `image_path: "assets/backgrounds/stage.jpg"` でアプリ起動 → 静止画背景 (既存動作)
+  - `image_path: "assets/backgrounds/neon_loop.gif"` でアプリ起動 → GIF アニメ (既存動作)
+  - `KeyP` で動画 pause/resume
   - ループ再生が途切れなく動作
-  - 静止画背景 (`image_path`) との排他制御 (video_path 優先)
 - [ ] **異常系テスト**:
-  - 存在しない動画パス → ログ警告、静止画 or 単色にフォールバック
+  - 存在しない動画パス → ログ警告、単色背景にフォールバック
   - 非対応フォーマット → ログ警告、フォールバック
-  - 動画再生中に背景設定変更 → 前セッション解放、新セッション作成
 - [ ] **パフォーマンステスト**:
   - 動画背景再生中のアプリ全体 FPS が 60fps を維持
   - VideoToolbox 使用時に CPU 使用率が低いことを確認 (Activity Monitor)
 
-### Step 10.11: Phase 10 検証
+### Step 10.9: Phase 10 検証
 
 - [ ] `cargo check --workspace` — 全クレートで型チェック pass
 - [ ] `cargo test --workspace` — 全テスト pass (tracker は除外)
@@ -1275,11 +1222,11 @@ background:
 - [ ] `cargo fmt --check` — フォーマット OK
 - [ ] `cargo build --release` — リリースビルド成功
 - [ ] テストカバレッジ確認、未カバー部分のテスト追加
-- [ ] **動作確認**: `user_prefs.yml` に `video_path: "assets/backgrounds/loop.mp4"` を設定してアプリを起動し、以下を全て確認する。目的の動作と異なる場合は修正を繰り返す:
+- [ ] **動作確認**: `user_prefs.yml` に `image_path: "assets/backgrounds/loop.mp4"` を設定してアプリを起動し、以下を全て確認する。目的の動作と異なる場合は修正を繰り返す:
   - VRM モデルの背景に動画が 30fps でループ再生されている
-  - ウィンドウタイトルまたはログに `backend: VideoToolbox` (macOS) が表示される
-  - `KeyG` で動画背景 ON/OFF が切り替わる
+  - ログに `Video background: ...x... ...fps VideoToolbox` (macOS) が表示される
   - `KeyP` で動画が pause/resume する
-  - 動画背景なし時は既存の静止画/GIF/単色背景が表示される
+  - `image_path` を静止画/GIF に変更 → 既存動作が維持される
+  - `image_path` を未設定 → 単色背景 (BackgroundConfig.color)
   - アプリ全体のレンダリング FPS が 60fps を維持
   - Activity Monitor / Instruments で GPU リソースリークがない
