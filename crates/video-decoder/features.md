@@ -89,7 +89,7 @@ image = "0.25"
 
 ### Step 1.2: モジュール構造の scaffold
 
-- [ ] 以下のディレクトリ・ファイルを空の mod 宣言付きで作成
+- [x] 以下のディレクトリ・ファイルを空の mod 宣言付きで作成 <!-- 2026-03-17 12:15 JST -->
 
 ```
 src/
@@ -110,11 +110,11 @@ src/
     └── mod.rs       # PlaybackState (stub)
 ```
 
-- [ ] `cargo check -p video-decoder` が通ることを確認
+- [x] `cargo check -p video-decoder` が通ることを確認 <!-- 2026-03-17 12:15 JST -->
 
 ### Step 1.3: エラー型 — `error.rs` (~50行)
 
-- [ ] `VideoError` enum を実装 (thiserror derive)
+- [x] `VideoError` enum を実装 (thiserror derive) <!-- 2026-03-17 12:15 JST -->
 
 ```rust
 // 参考: docs/design/video-decoder-crate-design.md §6.1
@@ -142,13 +142,13 @@ pub enum VideoError {
 pub type Result<T> = std::result::Result<T, VideoError>;
 ```
 
-- [ ] **テスト: `error.rs`**
+- [x] **テスト: `error.rs`** <!-- 2026-03-17 12:16 JST -->
   - 正常系: 各バリアントの Display 出力が期待通り
   - 異常系: `anyhow::Error` → `VideoError::Other` 変換
 
 ### Step 1.4: 基本型 — `types.rs` (~80行)
 
-- [ ] `Codec`, `PixelFormat`, `ColorSpace`, `FrameStatus`, `Backend`, `VideoInfo` を定義
+- [x] `Codec`, `PixelFormat`, `ColorSpace`, `FrameStatus`, `Backend`, `VideoInfo` を定義 <!-- 2026-03-17 12:15 JST -->
 
 ```rust
 // 参考: docs/design/video-decoder-crate-design.md §6.1
@@ -172,14 +172,14 @@ pub enum Backend {
 }
 ```
 
-- [ ] **テスト: `types.rs`**
+- [x] **テスト: `types.rs`** <!-- 2026-03-17 12:16 JST -->
   - 正常系: Default, Clone, PartialEq のテスト
   - 正常系: `ColorSpace::default()` == `Bt709`
 
 ### Step 1.5: NativeHandle — `handle.rs` (~90行)
 
-- [ ] `NativeHandle` enum 実装 (Metal, D3d12, D3d11, Vulkan, Wgpu)
-- [ ] `unsafe impl Send for NativeHandle`, `unsafe impl Sync for NativeHandle`
+- [x] `NativeHandle` enum 実装 (Metal, D3d12, D3d11, Vulkan, Wgpu) <!-- 2026-03-17 12:15 JST -->
+- [x] `unsafe impl Send for NativeHandle`, `unsafe impl Sync for NativeHandle` <!-- 2026-03-17 12:15 JST -->
 
 ```rust
 // 参考: docs/design/video-decoder-crate-design.md §6.1
@@ -206,13 +206,13 @@ unsafe impl Send for NativeHandle {}
 unsafe impl Sync for NativeHandle {}
 ```
 
-- [ ] **テスト: `handle.rs`**
+- [x] **テスト: `handle.rs`** <!-- 2026-03-17 12:16 JST -->
   - 正常系: NativeHandle::Wgpu の作成と Clone
   - 正常系: Send/Sync が成立することの static assert (`fn _assert_send<T: Send>() {}`)
 
 ### Step 1.6: セッション定義 — `session.rs` (~80行)
 
-- [ ] `OutputTarget` struct, `SessionConfig` struct, `VideoSession` trait 定義
+- [x] `OutputTarget` struct, `SessionConfig` struct, `VideoSession` trait 定義 <!-- 2026-03-17 12:15 JST -->
 
 ```rust
 // 参考: docs/design/video-decoder-crate-design.md §6.1
@@ -246,29 +246,29 @@ pub trait VideoSession: Send {
 }
 ```
 
-- [ ] **テスト: `session.rs`**
+- [x] **テスト: `session.rs`** <!-- 2026-03-17 12:16 JST -->
   - 正常系: `SessionConfig::default()` のフィールド検証
   - 正常系: `OutputTarget` の構築
 
 ### Step 1.7: lib.rs — パブリック re-exports + `open()` stub (~40行)
 
-- [ ] 全モジュールを `pub mod` で公開
-- [ ] 主要型を `pub use` で re-export
-- [ ] `pub fn open(path, output, config) -> Result<Box<dyn VideoSession>>` の stub (→ `Err(NoHwDecoder)`)
+- [x] 全モジュールを `pub mod` で公開 <!-- 2026-03-17 12:15 JST -->
+- [x] 主要型を `pub use` で re-export <!-- 2026-03-17 12:15 JST -->
+- [x] `pub fn open(path, output, config) -> Result<Box<dyn VideoSession>>` の stub (→ `Err(NoHwDecoder)`) <!-- 2026-03-17 12:15 JST -->
 
-- [ ] **テスト: `lib.rs`**
+- [x] **テスト: `lib.rs`** <!-- 2026-03-17 12:17 JST -->
   - 異常系: `open()` が存在しないファイルで `VideoError::FileNotFound` を返す
   - 異常系: stub 状態で `open()` が `VideoError::NoHwDecoder` を返す
 
 ### Step 1.8: Phase 1 検証
 
-- [ ] `cargo test -p video-decoder` — 全テスト pass
-- [ ] `cargo clippy -p video-decoder -- -D warnings` — 警告なし
-- [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
-- [ ] `cargo doc -p video-decoder --no-deps` — 警告なし
-- [ ] テストカバレッジ 90% 以上を確認 (`cargo llvm-cov -p video-decoder`)、未カバー部分のテスト追加
-- [ ] `cargo build -p video-decoder` が正常完了
-- [ ] **動作確認**: `cargo test -p video-decoder` を実行し、全型定義が正しく構築でき、stub の `open()` が期待通りのエラーを返すことを確認する。目的の動作と異なる場合は修正を繰り返す
+- [x] `cargo test -p video-decoder` — 全テスト pass (16 tests + 1 doctest) <!-- 2026-03-17 12:17 JST -->
+- [x] `cargo clippy -p video-decoder -- -D warnings` — 警告なし <!-- 2026-03-17 12:17 JST -->
+- [x] `cargo fmt -p video-decoder --check` — フォーマット OK <!-- 2026-03-17 12:17 JST -->
+- [x] `cargo doc -p video-decoder --no-deps` — 警告なし <!-- 2026-03-17 12:17 JST -->
+- [ ] テストカバレッジ 90% 以上を確認 (`cargo llvm-cov -p video-decoder`)、未カバー部分のテスト追加 — `cargo-llvm-cov` 未インストールのため保留
+- [x] `cargo build -p video-decoder` が正常完了 <!-- 2026-03-17 12:17 JST -->
+- [x] **動作確認**: `cargo test -p video-decoder` を実行し、全型定義が正しく構築でき、stub の `open()` が期待通りのエラーを返すことを確認する。目的の動作と異なる場合は修正を繰り返す <!-- 2026-03-17 12:18 JST -->
 
 ---
 
