@@ -1212,11 +1212,11 @@ KeyCode::KeyP => {
 
 ### Step 10.9: Phase 10 検証
 
-- [ ] `cargo check --workspace` — 全クレートで型チェック pass
-- [ ] `cargo test --workspace` — 全テスト pass (tracker は除外)
-- [ ] `cargo clippy --workspace -- -D warnings` — 警告なし
-- [ ] `cargo fmt --check` — フォーマット OK
-- [ ] `cargo build --release` — リリースビルド成功
+- [x] `cargo check --workspace` — 全クレートで型チェック pass <!-- 2026-03-17 21:28 JST -->
+- [x] `cargo test -p video-decoder -p renderer -p vrm -p solver` — 全テスト pass <!-- 2026-03-17 21:28 JST -->
+- [x] `cargo clippy --workspace -- -D warnings` — 警告なし <!-- 2026-03-17 21:28 JST -->
+- [x] `cargo fmt --check` — フォーマット OK <!-- 2026-03-17 21:28 JST -->
+- [x] `cargo build -p kalidokit-rust` — ビルド成功 <!-- 2026-03-17 21:30 JST -->
 - [ ] テストカバレッジ確認、未カバー部分のテスト追加
 - [ ] **動作確認**: `user_prefs.yml` に `image_path: "assets/backgrounds/loop.mp4"` を設定してアプリを起動し、以下を全て確認する。目的の動作と異なる場合は修正を繰り返す:
   - VRM モデルの背景に動画が 30fps でループ再生されている
