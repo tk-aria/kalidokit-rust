@@ -42,15 +42,38 @@ impl Default for SessionConfig {
 /// 3. When [`FrameStatus::NewFrame`] is returned, the texture has been updated
 /// 4. Drop to release all resources
 pub trait VideoSession: Send {
+    /// Returns metadata about the video (codec, resolution, fps, etc.).
     fn info(&self) -> &VideoInfo;
+
+    /// Returns the current playback position.
     fn position(&self) -> Duration;
+
+    /// Advance the decoder by `dt` and, if a new frame is due, decode it.
+    ///
+    /// Returns [`FrameStatus::NewFrame`] when a frame has been written to
+    /// the output texture, [`FrameStatus::Waiting`] if no frame is due yet,
+    /// or [`FrameStatus::EndOfStream`] when the video has ended.
     fn decode_frame(&mut self, dt: Duration) -> Result<FrameStatus>;
+
+    /// Seek to the nearest keyframe at or before `position`.
     fn seek(&mut self, position: Duration) -> Result<()>;
+
+    /// Enable or disable loop playback.
     fn set_looping(&mut self, looping: bool);
+
+    /// Returns `true` if looping is enabled.
     fn is_looping(&self) -> bool;
+
+    /// Pause playback. While paused, `decode_frame()` returns `Waiting`.
     fn pause(&mut self);
+
+    /// Resume playback after a pause.
     fn resume(&mut self);
+
+    /// Returns `true` if playback is paused.
     fn is_paused(&self) -> bool;
+
+    /// Returns the decoder backend in use.
     fn backend(&self) -> Backend;
 }
 

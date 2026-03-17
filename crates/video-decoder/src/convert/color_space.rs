@@ -13,6 +13,7 @@ pub struct ColorMatrix {
     pub bu: f32,
 }
 
+/// Returns the BT.709 (HD video) color conversion matrix.
 pub fn bt709() -> ColorMatrix {
     ColorMatrix {
         y_offset: 0.0,
@@ -23,6 +24,7 @@ pub fn bt709() -> ColorMatrix {
     }
 }
 
+/// Returns the BT.601 (SD video) color conversion matrix.
 pub fn bt601() -> ColorMatrix {
     ColorMatrix {
         y_offset: 0.0,

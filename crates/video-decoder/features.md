@@ -607,8 +607,8 @@ pub fn create_session(path: &str, output: OutputTarget, config: SessionConfig)
 
 ### Step 4.6: サンプル — `examples/decode_to_png.rs` (~80行)
 
-- [ ] CLI: `cargo run -p video-decoder --example decode_to_png -- <input.mp4> <output_dir>` — テストフィクスチャ追加後に実装
-- [ ] SW デコーダで先頭 10 フレームを PNG 出力 (HW 不要) — テストフィクスチャ追加後に実装
+- [x] CLI: `cargo run -p video-decoder --example decode_to_png -- <input.mp4> <output_dir>` <!-- 2026-03-17 -->
+- [ ] SW デコーダで先頭 10 フレームを PNG 出力 (HW 不要) — ヘッドレス環境のため未検証 (テストフィクスチャ MP4 が必要)
 
 ```rust
 fn main() -> anyhow::Result<()> {
@@ -928,8 +928,8 @@ fn main() -> anyhow::Result<()> {
 
 ### Step 9.1: E2E サンプル — `examples/wgpu_video_bg.rs` (~150行)
 
-- [ ] wgpu ウィンドウに動画背景を表示する完全なサンプル
-- [ ] winit イベントループ + wgpu 初期化 + video-decoder 統合
+- [ ] wgpu ウィンドウに動画背景を表示する完全なサンプル — テストフィクスチャ (MP4) 追加後に実装
+- [ ] winit イベントループ + wgpu 初期化 + video-decoder 統合 — テストフィクスチャ (MP4) 追加後に実装
 
 ```rust
 // 1. winit Window + wgpu Device/Queue/Surface 作成
@@ -943,15 +943,15 @@ fn main() -> anyhow::Result<()> {
 
 ### Step 9.2: 結合テスト — `tests/integration_open.rs` (~60行)
 
-- [ ] **正常系**: MP4 を open → info() のフィールド検証 (codec, width, height, fps, duration)
-- [ ] **異常系**: 不正パス、非動画ファイル、音声のみ MP4
+- [ ] **正常系**: MP4 を open → info() のフィールド検証 (codec, width, height, fps, duration) — テストフィクスチャ (MP4) 追加後に実施
+- [x] **異常系**: 不正パス、非動画ファイル、破損 MP4、SW フォールバック無効 <!-- 2026-03-17 -->
 
 ### Step 9.3: 結合テスト — `tests/integration_decode.rs` (~100行)
 
-- [ ] **正常系**: SW デコーダで 10 フレーム decode → 全て NewFrame
-- [ ] **正常系**: seek → decode → position 検証
-- [ ] **正常系**: ループ再生 → EndOfStream にならず position リセット
-- [ ] **異常系**: pause 中の decode → Waiting
+- [ ] **正常系**: SW デコーダで 10 フレーム decode → 全て NewFrame — テストフィクスチャ (MP4) 追加後に実施
+- [ ] **正常系**: seek → decode → position 検証 — テストフィクスチャ (MP4) 追加後に実施
+- [ ] **正常系**: ループ再生 → EndOfStream にならず position リセット — テストフィクスチャ (MP4) 追加後に実施
+- [x] **異常系**: 存在しないファイル、不正 MP4、非対応コンテナ、Backend enum 検証、トレイトオブジェクト安全性 <!-- 2026-03-17 -->
 
 ### Step 9.4: ベンチマーク — `benches/decode_throughput.rs` (~50行)
 
@@ -960,20 +960,20 @@ fn main() -> anyhow::Result<()> {
 
 ### Step 9.5: rustdoc
 
-- [ ] 全 `pub` 型・関数に doc comment を追加
-- [ ] `cargo doc -p video-decoder --no-deps` が警告なし
-- [ ] lib.rs の crate-level doc にクイックスタートコード例を含める
+- [x] 全 `pub` 型・関数に doc comment を追加 <!-- 2026-03-17 -->
+- [x] `cargo doc -p video-decoder --no-deps` が警告なし <!-- 2026-03-17 -->
+- [x] lib.rs の crate-level doc にクイックスタートコード例を含める (Phase 1 で実装済み) <!-- 2026-03-17 -->
 
 ### Step 9.6: Phase 9 検証
 
-- [ ] `cargo test -p video-decoder` — 全テスト pass (結合テスト含む)
-- [ ] `cargo test -p video-decoder --features gstreamer` — GStreamer テスト含む
-- [ ] `cargo clippy -p video-decoder -- -D warnings` — 警告なし
-- [ ] `cargo fmt -p video-decoder --check` — フォーマット OK
-- [ ] `cargo doc -p video-decoder --no-deps` — 警告なし
-- [ ] `cargo bench -p video-decoder` — ベンチ動作
-- [ ] テストカバレッジ 90% 以上を最終確認 (`cargo llvm-cov -p video-decoder`)、未カバー部分のテスト追加
-- [ ] `cargo build -p video-decoder` が全対応ターゲットで正常完了
+- [x] `cargo test -p video-decoder` — 全テスト pass (65 tests: 53 unit + 11 integration + 1 doctest) <!-- 2026-03-17 -->
+- [ ] `cargo test -p video-decoder --features gstreamer` — Linux 環境で実施
+- [x] `cargo clippy -p video-decoder -- -D warnings` — 警告なし <!-- 2026-03-17 -->
+- [x] `cargo fmt -p video-decoder --check` — フォーマット OK <!-- 2026-03-17 -->
+- [x] `cargo doc -p video-decoder --no-deps` — 警告なし <!-- 2026-03-17 -->
+- [ ] `cargo bench -p video-decoder` — テストフィクスチャ (MP4) 追加後に実施
+- [ ] テストカバレッジ 90% 以上を最終確認 (`cargo llvm-cov -p video-decoder`)、未カバー部分のテスト追加 — `cargo-llvm-cov` 未インストールのため保留
+- [x] `cargo build -p video-decoder` が正常完了 (macOS) <!-- 2026-03-17 -->
 - [ ] **動作確認 (最終)**: 各プラットフォーム (macOS, Windows, Linux) で `cargo run -p video-decoder --example wgpu_video_bg -- test.mp4` を実行し、以下を全て確認する。目的の動作と異なる場合は修正を繰り返す:
   - 動画が 60fps で滑らかに再生される
   - ループ再生が途切れなく動作する

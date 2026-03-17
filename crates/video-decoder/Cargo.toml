@@ -56,3 +56,4 @@ v4l2 = ["dep:nix"]
 pollster = { workspace = true }
 env_logger = { workspace = true }
 image = { workspace = true }
+anyhow = { workspace = true }

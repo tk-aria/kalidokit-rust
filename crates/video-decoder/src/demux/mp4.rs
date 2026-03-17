@@ -24,6 +24,7 @@ struct SampleEntry {
     is_sync: bool,
 }
 
+/// MP4/MOV container demuxer backed by `mp4parse`.
 pub struct Mp4Demuxer {
     reader: BufReader<File>,
     params: CodecParameters,
