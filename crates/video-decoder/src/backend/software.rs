@@ -78,10 +78,14 @@ impl SwVideoSession {
             return Ok(false);
         };
 
-        let yuv = self
-            .decoder
-            .decode(&packet.data)
-            .map_err(|e| VideoError::Decode(format!("openh264 decode error: {}", e)))?;
+        let yuv = match self.decoder.decode(&packet.data) {
+            Ok(yuv) => yuv,
+            Err(_) => {
+                // Non-fatal: skip corrupted or unsupported NAL units
+                // (e.g., B-frame reference errors). The next keyframe will recover.
+                return Ok(false);
+            }
+        };
 
         let Some(yuv) = yuv else {
             // Decoder consumed the NAL but hasn't produced a picture yet.
