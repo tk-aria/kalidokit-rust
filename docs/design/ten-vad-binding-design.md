@@ -2,13 +2,12 @@
 
 ## 1. 概要
 
-[TEN VAD](https://github.com/TEN-framework/ten-vad) (Voice Activity Detector) の Rust バインディングクレート。
-低レイテンシ・高性能・軽量な音声アクティビティ検出を Rust から利用可能にする。
+[TEN VAD](https://github.com/TEN-framework/ten-vad) の Rust バインディングクレート。
+**上流が提供するプリビルトバイナリ** をリンクして使用する。ソースからのビルドは行わない。
 
-## 2. TEN VAD C API
+## 2. TEN VAD C API (include/ten_vad.h)
 
 ```c
-// include/ten_vad.h — 全4関数
 typedef void *ten_vad_handle_t;
 
 int ten_vad_create(ten_vad_handle_t *handle, size_t hop_size, float threshold);
@@ -18,57 +17,76 @@ int ten_vad_destroy(ten_vad_handle_t *handle);
 const char *ten_vad_get_version(void);
 ```
 
-- **入力**: 16kHz 16bit PCM, フレームサイズ 160 or 256 サンプル
-- **出力**: 確率 [0.0, 1.0] + バイナリフラグ (0/1)
+- 入力: 16kHz 16bit PCM, フレームサイズ 160 or 256 サンプル
+- 出力: 確率 [0.0, 1.0] + バイナリフラグ (0/1)
 
-## 3. 配布ライブラリ形式
+## 3. ビルド方針
 
-| プラットフォーム | 配布形式 | アーキテクチャ | 上流提供形式 |
-|---|---|---|---|
-| Linux | `.so` | x86_64 | `.so` (そのまま) |
-| Windows | `.dll` + `.lib` | x86_64, x86 | `.dll` + `.lib` (そのまま) |
-| macOS | `.xcframework` | arm64 + x86_64 | `.framework` → build.rs で変換 |
-| iOS | `.xcframework` | arm64 (device) + x86_64 (sim) | `.framework` → build.rs で変換 |
-| Android | `.so` | arm64, armv7 | `.so` (そのまま) |
+**プリビルトバイナリのみ使用。C/C++ ソースのコンパイルは行わない。**
+
+- build.rs はリンク設定と Apple プラットフォームでの .framework → .xcframework 変換のみ
+- 上流の `lib/` ディレクトリにあるバイナリをそのままリンク
+- ソースビルドが必要な場合は将来 `build-from-source` feature flag で対応
+
+| プラットフォーム | 上流提供物 | build.rs の処理 |
+|---|---|---|
+| Linux | `libten_vad.so` | link-search + link-lib 出力のみ |
+| Windows | `ten_vad.dll` + `.lib` | link-search + link-lib 出力のみ |
+| macOS | `ten_vad.framework` | xcodebuild で .xcframework に変換 → link |
+| iOS | `ten_vad.framework` | xcodebuild で .xcframework に変換 → link |
+| Android | `libten_vad.so` | link-search + link-lib 出力のみ |
 
 ## 4. クレート構成
 
 ```
 crates/ten-vad/
 ├── Cargo.toml
-├── build.rs                    # ライブラリ変換 + リンク設定 (全処理をここに集約)
+├── build.rs
 ├── src/
-│   ├── lib.rs                  # 安全な Rust API (TenVad, VadResult, VadError)
-│   └── ffi.rs                  # 手書き FFI 宣言 (4 関数)
-├── vendor/                     # git submodule (TEN-framework/ten-vad)
+│   ├── lib.rs
+│   └── ffi.rs
+├── vendor/                     # git submodule: TEN-framework/ten-vad
 │   ├── include/ten_vad.h
-│   ├── lib/
-│   │   ├── Linux/x64/libten_vad.so
-│   │   ├── Windows/x64/ten_vad.dll + ten_vad.lib
-│   │   ├── Windows/x86/ten_vad.dll + ten_vad.lib
-│   │   ├── macOS/ten_vad.framework/          ← 上流提供
-│   │   ├── iOS/ten_vad.framework/            ← 上流提供
-│   │   └── Android/
-│   │       ├── arm64-v8a/libten_vad.so
-│   │       └── armeabi-v7a/libten_vad.so
-│   └── src/                    # C++ ソース (iOS simulator ビルド用)
-├── xcframework/                # build.rs が生成する .xcframework (gitignore)
-│   ├── macOS/ten_vad.xcframework/
-│   └── iOS/ten_vad.xcframework/
+│   └── lib/
+│       ├── Linux/x64/libten_vad.so
+│       ├── Windows/x64/ten_vad.dll + ten_vad.lib
+│       ├── Windows/x86/ten_vad.dll + ten_vad.lib
+│       ├── macOS/ten_vad.framework/
+│       ├── iOS/ten_vad.framework/
+│       └── Android/
+│           ├── arm64-v8a/libten_vad.so
+│           └── armeabi-v7a/libten_vad.so
+├── xcframework/                # build.rs が生成 (.gitignore)
 └── examples/
     └── detect_vad.rs
 ```
 
-## 5. build.rs — 全処理を集約
+## 5. Cargo.toml
+
+```toml
+[package]
+name = "ten-vad"
+version = "0.1.0"
+edition = "2021"
+description = "Rust bindings for TEN VAD (Voice Activity Detector)"
+license = "Apache-2.0"
+build = "build.rs"
+
+[dependencies]
+# ランタイム依存なし — pure FFI ラッパー
+
+[dev-dependencies]
+hound = "3.5"    # WAV 読み込み (example/test 用)
+```
+
+## 6. build.rs — 全文
 
 ```rust
-//! build.rs
+//! build.rs — プリビルトバイナリのリンク設定
 //!
-//! 1. Apple プラットフォームでは上流の .framework を .xcframework に変換
-//! 2. プラットフォーム別のリンカフラグを出力
-//!
-//! .xcframework 変換は xcodebuild コマンドを呼び出す (macOS ビルドホスト必須)。
-//! 変換済みの xcframework はキャッシュされ、2回目以降はスキップする。
+//! - Linux/Windows/Android: link-search + link-lib を出力するだけ
+//! - macOS/iOS: 上流の .framework を xcodebuild で .xcframework に変換してからリンク
+//! - C/C++ ソースのコンパイルは一切行わない
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -79,233 +97,210 @@ fn main() {
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let vendor_lib = manifest_dir.join("vendor/lib");
-    let xcframework_dir = manifest_dir.join("xcframework");
+    let xcframework_cache = manifest_dir.join("xcframework");
 
-    // リビルドトリガー: vendor ディレクトリが変更されたら再実行
     println!("cargo:rerun-if-changed=vendor/lib");
     println!("cargo:rerun-if-changed=build.rs");
 
     match target_os.as_str() {
         "linux" => link_linux(&vendor_lib, &target_arch),
         "windows" => link_windows(&vendor_lib, &target_arch),
-        "macos" => link_macos(&vendor_lib, &xcframework_dir),
-        "ios" => link_ios(&vendor_lib, &xcframework_dir, &target_arch),
+        "macos" => link_macos(&vendor_lib, &xcframework_cache),
+        "ios" => link_ios(&vendor_lib, &xcframework_cache, &target_arch),
         "android" => link_android(&vendor_lib, &target_arch),
-        _ => panic!("Unsupported target OS: {}", target_os),
+        other => panic!("Unsupported target OS: {other}"),
     }
 }
 
-// ============================================================
-// Linux
-// ============================================================
-fn link_linux(vendor_lib: &Path, target_arch: &str) {
-    let lib_dir = match target_arch {
+// ── Linux ────────────────────────────────────────────────────
+fn link_linux(vendor_lib: &Path, arch: &str) {
+    let dir = match arch {
         "x86_64" => vendor_lib.join("Linux/x64"),
-        _ => panic!("Unsupported Linux arch: {}", target_arch),
+        other => panic!("Unsupported Linux arch: {other}"),
     };
-    assert!(lib_dir.join("libten_vad.so").exists(),
-        "Missing: {}/libten_vad.so", lib_dir.display());
-    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+    assert!(
+        dir.join("libten_vad.so").exists(),
+        "Missing: {}/libten_vad.so — run: git submodule update --init",
+        dir.display()
+    );
+    println!("cargo:rustc-link-search=native={}", dir.display());
     println!("cargo:rustc-link-lib=dylib=ten_vad");
 }
 
-// ============================================================
-// Windows
-// ============================================================
-fn link_windows(vendor_lib: &Path, target_arch: &str) {
-    let arch_dir = match target_arch {
+// ── Windows ──────────────────────────────────────────────────
+fn link_windows(vendor_lib: &Path, arch: &str) {
+    let subdir = match arch {
         "x86_64" => "x64",
         "x86" => "x86",
-        _ => panic!("Unsupported Windows arch: {}", target_arch),
+        other => panic!("Unsupported Windows arch: {other}"),
     };
-    let lib_dir = vendor_lib.join(format!("Windows/{}", arch_dir));
-    assert!(lib_dir.join("ten_vad.lib").exists(),
-        "Missing: {}/ten_vad.lib", lib_dir.display());
-    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+    let dir = vendor_lib.join(format!("Windows/{subdir}"));
+    assert!(
+        dir.join("ten_vad.lib").exists(),
+        "Missing: {}/ten_vad.lib",
+        dir.display()
+    );
+    println!("cargo:rustc-link-search=native={}", dir.display());
     println!("cargo:rustc-link-lib=dylib=ten_vad");
 }
 
-// ============================================================
-// macOS — .framework → .xcframework 変換 + リンク
-// ============================================================
-fn link_macos(vendor_lib: &Path, xcframework_dir: &Path) {
-    let xcfw_path = xcframework_dir.join("macOS/ten_vad.xcframework");
-    let slice_dir = xcfw_path.join("macos-arm64_x86_64");
+// ── macOS ────────────────────────────────────────────────────
+fn link_macos(vendor_lib: &Path, cache: &Path) {
+    let xcfw = cache.join("macOS/ten_vad.xcframework");
 
-    if !slice_dir.join("ten_vad.framework").exists() {
-        // .xcframework がまだ存在しない → build.rs 内で xcodebuild を実行して変換
-        let src_fw = vendor_lib.join("macOS/ten_vad.framework");
-        assert!(src_fw.exists(), "Missing upstream framework: {}", src_fw.display());
-
-        std::fs::create_dir_all(xcframework_dir.join("macOS")).unwrap();
-
-        // 古い xcframework があれば削除 (xcodebuild は上書き不可)
-        if xcfw_path.exists() {
-            std::fs::remove_dir_all(&xcfw_path).unwrap();
-        }
-
-        let status = Command::new("xcodebuild")
-            .args([
-                "-create-xcframework",
-                "-framework", &src_fw.to_string_lossy(),
-                "-output", &xcfw_path.to_string_lossy(),
-            ])
-            .status()
-            .expect("Failed to execute xcodebuild. Is Xcode CLI tools installed?");
-
-        assert!(status.success(), "xcodebuild -create-xcframework failed for macOS");
-        eprintln!("cargo:warning=Created macOS xcframework at {}", xcfw_path.display());
+    // キャッシュに xcframework が無ければ、上流 .framework から変換
+    if !xcfw.join("Info.plist").exists() {
+        let src = vendor_lib.join("macOS/ten_vad.framework");
+        assert!(src.exists(), "Missing: {}", src.display());
+        create_xcframework(&[&src], &xcfw);
     }
 
-    // xcframework 内の framework を link search path に追加
-    println!("cargo:rustc-link-search=framework={}", slice_dir.display());
+    // xcframework 内の最初の slice を探してリンク
+    let slice = find_slice(&xcfw, "macos");
+    println!("cargo:rustc-link-search=framework={}", slice.display());
     println!("cargo:rustc-link-lib=framework=ten_vad");
 }
 
-// ============================================================
-// iOS — .framework → .xcframework 変換 (device + simulator) + リンク
-// ============================================================
-fn link_ios(vendor_lib: &Path, xcframework_dir: &Path, target_arch: &str) {
-    let xcfw_path = xcframework_dir.join("iOS/ten_vad.xcframework");
+// ── iOS ──────────────────────────────────────────────────────
+fn link_ios(vendor_lib: &Path, cache: &Path, arch: &str) {
+    let xcfw = cache.join("iOS/ten_vad.xcframework");
 
-    if !xcfw_path.join("Info.plist").exists() {
-        // .xcframework がまだ存在しない → build.rs 内で生成
+    if !xcfw.join("Info.plist").exists() {
         let device_fw = vendor_lib.join("iOS/ten_vad.framework");
-        assert!(device_fw.exists(), "Missing upstream iOS framework: {}", device_fw.display());
+        assert!(device_fw.exists(), "Missing: {}", device_fw.display());
 
-        std::fs::create_dir_all(xcframework_dir.join("iOS")).unwrap();
-
-        if xcfw_path.exists() {
-            std::fs::remove_dir_all(&xcfw_path).unwrap();
-        }
-
-        // iOS simulator 用 framework の存在チェック
-        // 上流が提供していない場合は C++ ソースからクロスコンパイルを試みる
+        // simulator framework があれば device + sim を束ねる
         let sim_fw = vendor_lib.join("iOS-simulator/ten_vad.framework");
         if sim_fw.exists() {
-            // device + simulator の両方を xcframework に統合
-            let status = Command::new("xcodebuild")
-                .args([
-                    "-create-xcframework",
-                    "-framework", &device_fw.to_string_lossy(),
-                    "-framework", &sim_fw.to_string_lossy(),
-                    "-output", &xcfw_path.to_string_lossy(),
-                ])
-                .status()
-                .expect("Failed to execute xcodebuild");
-
-            assert!(status.success(), "xcodebuild -create-xcframework failed for iOS");
-            eprintln!("cargo:warning=Created iOS xcframework (device + simulator)");
+            create_xcframework(&[&device_fw, &sim_fw], &xcfw);
         } else {
-            // simulator framework がない → device のみで xcframework 作成
-            eprintln!("cargo:warning=iOS simulator framework not found, creating device-only xcframework");
-            let status = Command::new("xcodebuild")
-                .args([
-                    "-create-xcframework",
-                    "-framework", &device_fw.to_string_lossy(),
-                    "-output", &xcfw_path.to_string_lossy(),
-                ])
-                .status()
-                .expect("Failed to execute xcodebuild");
-
-            assert!(status.success(), "xcodebuild -create-xcframework failed for iOS (device-only)");
+            eprintln!(
+                "cargo:warning=iOS simulator framework not found, \
+                 creating device-only xcframework"
+            );
+            create_xcframework(&[&device_fw], &xcfw);
         }
     }
 
-    // ターゲットに応じた xcframework slice を選択
-    let is_simulator = env::var("TARGET").unwrap_or_default().contains("sim")
-        || target_arch == "x86_64"; // iOS x86_64 は常に simulator
-    let slice = if is_simulator {
-        "ios-arm64_x86_64-simulator"
-    } else {
-        "ios-arm64"
-    };
-
-    let slice_dir = xcfw_path.join(slice);
-    if !slice_dir.exists() {
-        // フォールバック: slice 名が異なる場合 (xcodebuild が自動命名)
-        // xcframework 内のディレクトリを走査して最初にマッチするものを使用
-        let fallback = find_xcframework_slice(&xcfw_path, if is_simulator { "simulator" } else { "ios-arm64" });
-        println!("cargo:rustc-link-search=framework={}", fallback.display());
-    } else {
-        println!("cargo:rustc-link-search=framework={}", slice_dir.display());
-    }
+    let is_sim = env::var("TARGET")
+        .unwrap_or_default()
+        .contains("sim")
+        || arch == "x86_64";
+    let keyword = if is_sim { "simulator" } else { "ios-arm64" };
+    let slice = find_slice(&xcfw, keyword);
+    println!("cargo:rustc-link-search=framework={}", slice.display());
     println!("cargo:rustc-link-lib=framework=ten_vad");
 }
 
-/// xcframework 内のディレクトリから pattern にマッチする slice を探す
-fn find_xcframework_slice(xcfw_path: &Path, pattern: &str) -> PathBuf {
-    if let Ok(entries) = std::fs::read_dir(xcfw_path) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.contains(pattern) && entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                return entry.path();
-            }
-        }
-    }
-    panic!("No xcframework slice matching '{}' found in {}", pattern, xcfw_path.display());
-}
-
-// ============================================================
-// Android
-// ============================================================
-fn link_android(vendor_lib: &Path, target_arch: &str) {
-    let abi_dir = match target_arch {
+// ── Android ──────────────────────────────────────────────────
+fn link_android(vendor_lib: &Path, arch: &str) {
+    let abi = match arch {
         "aarch64" => "arm64-v8a",
         "arm" => "armeabi-v7a",
-        _ => panic!("Unsupported Android arch: {}", target_arch),
+        other => panic!("Unsupported Android arch: {other}"),
     };
-    let lib_dir = vendor_lib.join(format!("Android/{}", abi_dir));
-    assert!(lib_dir.join("libten_vad.so").exists(),
-        "Missing: {}/libten_vad.so", lib_dir.display());
-    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+    let dir = vendor_lib.join(format!("Android/{abi}"));
+    assert!(
+        dir.join("libten_vad.so").exists(),
+        "Missing: {}/libten_vad.so",
+        dir.display()
+    );
+    println!("cargo:rustc-link-search=native={}", dir.display());
     println!("cargo:rustc-link-lib=dylib=ten_vad");
+}
+
+// ── ヘルパー ─────────────────────────────────────────────────
+
+/// xcodebuild -create-xcframework を実行する。
+/// `frameworks` は入力 .framework パスの配列。
+fn create_xcframework(frameworks: &[&Path], output: &Path) {
+    if let Some(parent) = output.parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
+    if output.exists() {
+        std::fs::remove_dir_all(output).unwrap();
+    }
+
+    let mut cmd = Command::new("xcodebuild");
+    cmd.arg("-create-xcframework");
+    for fw in frameworks {
+        cmd.arg("-framework").arg(fw);
+    }
+    cmd.arg("-output").arg(output);
+
+    let status = cmd
+        .status()
+        .expect("xcodebuild not found — install Xcode CLI tools");
+    assert!(
+        status.success(),
+        "xcodebuild -create-xcframework failed (exit {})",
+        status
+    );
+    eprintln!("cargo:warning=Created xcframework: {}", output.display());
+}
+
+/// xcframework 内のディレクトリから `keyword` を含む slice を探す。
+fn find_slice(xcfw: &Path, keyword: &str) -> PathBuf {
+    for entry in std::fs::read_dir(xcfw)
+        .unwrap_or_else(|_| panic!("Cannot read {}", xcfw.display()))
+        .flatten()
+    {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let name = entry.file_name();
+        if name.to_string_lossy().contains(keyword) {
+            return entry.path();
+        }
+    }
+    panic!(
+        "No slice matching '{keyword}' in {}",
+        xcfw.display()
+    );
 }
 ```
 
-## 6. 手書き FFI — `src/ffi.rs`
+## 7. src/ffi.rs — 全文
 
 ```rust
 //! Raw FFI bindings to the TEN VAD C library.
 //!
-//! These declarations correspond exactly to the functions in `include/ten_vad.h`.
-//! The library is linked by `build.rs` at compile time.
+//! These declarations correspond exactly to `include/ten_vad.h`.
+//! The library is linked at compile time by `build.rs`.
 
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_float, c_int};
 
 /// Opaque handle for a TEN VAD instance.
-///
-/// Internally allocated by `ten_vad_create` and freed by `ten_vad_destroy`.
 pub type TenVadHandle = *mut c_void;
 
 extern "C" {
     /// Create and initialize a TEN VAD instance.
     ///
     /// # Parameters
-    /// - `handle`: Pointer to receive the allocated handle.
-    /// - `hop_size`: Number of samples per analysis frame (160 or 256 for 16 kHz audio).
-    /// - `threshold`: Detection threshold in `[0.0, 1.0]`.
+    /// - `handle`: Receives the allocated handle on success.
+    /// - `hop_size`: Samples per frame (160 or 256 for 16 kHz).
+    /// - `threshold`: Detection threshold in [0.0, 1.0].
     ///
     /// # Returns
-    /// `0` on success, `-1` on failure.
+    /// 0 on success, -1 on failure.
     pub fn ten_vad_create(
         handle: *mut TenVadHandle,
         hop_size: usize,
         threshold: c_float,
     ) -> c_int;
 
-    /// Process one audio frame and produce a voice-activity decision.
+    /// Process one audio frame.
     ///
     /// # Parameters
-    /// - `handle`: A valid handle returned by `ten_vad_create`.
-    /// - `audio_data`: Pointer to `hop_size` samples of 16-bit PCM audio at 16 kHz.
+    /// - `handle`: Valid handle from `ten_vad_create`.
+    /// - `audio_data`: `hop_size` samples of 16-bit PCM at 16 kHz.
     /// - `audio_data_length`: Must equal `hop_size`.
-    /// - `out_probability`: Receives voice probability in `[0.0, 1.0]`.
-    /// - `out_flag`: Receives `1` if voice detected (probability ≥ threshold), else `0`.
+    /// - `out_probability`: Receives voice probability [0.0, 1.0].
+    /// - `out_flag`: Receives 1 (voice) or 0 (no voice).
     ///
     /// # Returns
-    /// `0` on success, `-1` on failure.
+    /// 0 on success, -1 on failure.
     pub fn ten_vad_process(
         handle: TenVadHandle,
         audio_data: *const i16,
@@ -314,49 +309,52 @@ extern "C" {
         out_flag: *mut c_int,
     ) -> c_int;
 
-    /// Destroy a TEN VAD instance and release all associated resources.
+    /// Destroy a TEN VAD instance.
     ///
-    /// Sets `*handle` to `NULL` on success.
+    /// Sets `*handle` to NULL on success.
     ///
     /// # Returns
-    /// `0` on success, `-1` on failure.
+    /// 0 on success, -1 on failure.
     pub fn ten_vad_destroy(handle: *mut TenVadHandle) -> c_int;
 
-    /// Return the library version string (e.g. `"1.0.0"`).
+    /// Return the library version string (e.g. "1.0.0").
     ///
-    /// The returned pointer is valid for the lifetime of the process.
+    /// The pointer is valid for the lifetime of the process.
     pub fn ten_vad_get_version() -> *const c_char;
 }
 ```
 
-## 7. 安全な Rust API — `src/lib.rs`
+## 8. src/lib.rs — 全文
 
 ```rust
 //! # ten-vad
 //!
-//! Rust bindings for the [TEN VAD](https://github.com/TEN-framework/ten-vad)
-//! voice activity detection library.
+//! Rust bindings for [TEN VAD](https://github.com/TEN-framework/ten-vad),
+//! a low-latency, high-performance voice activity detector.
 //!
-//! ## Quick Start
+//! Uses prebuilt native libraries — no C/C++ compilation required.
+//!
+//! ## Example
 //!
 //! ```rust,no_run
 //! use ten_vad::{TenVad, HopSize};
 //!
 //! let mut vad = TenVad::new(HopSize::Samples256, 0.5).unwrap();
-//! println!("TEN VAD version: {}", TenVad::version());
+//! println!("TEN VAD {}", TenVad::version());
 //!
-//! let audio_frame: Vec<i16> = vec![0i16; 256]; // 16ms of silence at 16kHz
-//! let result = vad.process(&audio_frame).unwrap();
-//! println!("voice={}, probability={:.3}", result.is_voice, result.probability);
-//! // TenVad is automatically destroyed on drop
+//! let silence = vec![0i16; 256];
+//! let result = vad.process(&silence).unwrap();
+//! println!("voice={} prob={:.3}", result.is_voice, result.probability);
 //! ```
 
-mod ffi;
+pub mod ffi;
 
 use std::fmt;
 
+// ── 型定義 ───────────────────────────────────────────────────
+
 /// Supported hop (frame) sizes for 16 kHz audio.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HopSize {
     /// 160 samples = 10 ms at 16 kHz.
     Samples160 = 160,
@@ -371,41 +369,38 @@ impl HopSize {
     }
 }
 
-/// Voice activity detection result for a single audio frame.
+/// Voice activity detection result for one audio frame.
 #[derive(Debug, Clone, Copy)]
 pub struct VadResult {
-    /// Voice activity probability in `[0.0, 1.0]`.
+    /// Probability of voice presence in [0.0, 1.0].
     pub probability: f32,
-    /// `true` if voice was detected (probability ≥ threshold).
+    /// `true` when probability ≥ threshold.
     pub is_voice: bool,
 }
 
-/// Errors that can occur during VAD operations.
+/// Errors from VAD operations.
 #[derive(Debug)]
 pub enum VadError {
-    /// `ten_vad_create` returned an error.
+    /// `ten_vad_create` failed.
     CreateFailed,
-    /// `ten_vad_process` returned an error.
+    /// `ten_vad_process` failed.
     ProcessFailed,
-    /// The audio frame length does not match the configured hop size.
-    InvalidFrameSize {
-        expected: usize,
-        actual: usize,
-    },
-    /// The threshold is outside the valid range `[0.0, 1.0]`.
+    /// Audio frame length ≠ configured hop size.
+    InvalidFrameSize { expected: usize, actual: usize },
+    /// Threshold outside [0.0, 1.0].
     InvalidThreshold(f32),
 }
 
 impl fmt::Display for VadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            VadError::CreateFailed => write!(f, "ten_vad_create failed"),
-            VadError::ProcessFailed => write!(f, "ten_vad_process failed"),
-            VadError::InvalidFrameSize { expected, actual } => {
-                write!(f, "frame size mismatch: expected {expected}, got {actual}")
+            Self::CreateFailed => write!(f, "ten_vad_create failed"),
+            Self::ProcessFailed => write!(f, "ten_vad_process failed"),
+            Self::InvalidFrameSize { expected, actual } => {
+                write!(f, "frame size: expected {expected}, got {actual}")
             }
-            VadError::InvalidThreshold(t) => {
-                write!(f, "threshold {t} is outside [0.0, 1.0]")
+            Self::InvalidThreshold(t) => {
+                write!(f, "threshold {t} outside [0.0, 1.0]")
             }
         }
     }
@@ -413,94 +408,73 @@ impl fmt::Display for VadError {
 
 impl std::error::Error for VadError {}
 
-/// A TEN VAD voice activity detector instance.
+// ── TenVad ───────────────────────────────────────────────────
+
+/// A TEN VAD voice activity detector.
 ///
-/// Wraps the native C library handle with a safe Rust interface.
-/// The handle is automatically destroyed when the `TenVad` is dropped.
+/// Wraps the native C handle. Destroyed automatically on [`Drop`].
 ///
 /// # Thread Safety
-///
-/// A single `TenVad` instance must not be shared across threads simultaneously
-/// (it is `Send` but not `Sync`). Create separate instances for concurrent use.
+/// `Send` but not `Sync` — move between threads but do not share.
 pub struct TenVad {
     handle: ffi::TenVadHandle,
     hop_size: HopSize,
 }
 
 impl TenVad {
-    /// Create a new VAD instance.
+    /// Create a new detector.
     ///
-    /// # Parameters
-    /// - `hop_size`: Frame size — `Samples160` (10 ms) or `Samples256` (16 ms).
-    /// - `threshold`: Detection sensitivity in `[0.0, 1.0]`.
-    ///   Lower values detect more aggressively (more false positives);
-    ///   higher values are more conservative.
-    ///
-    /// # Errors
-    /// - [`VadError::InvalidThreshold`] if threshold is outside `[0.0, 1.0]`.
-    /// - [`VadError::CreateFailed`] if the native library fails to initialize.
+    /// - `hop_size`: `Samples160` (10 ms) or `Samples256` (16 ms) at 16 kHz.
+    /// - `threshold`: Sensitivity in [0.0, 1.0]. Lower = more aggressive.
     pub fn new(hop_size: HopSize, threshold: f32) -> Result<Self, VadError> {
         if !(0.0..=1.0).contains(&threshold) {
             return Err(VadError::InvalidThreshold(threshold));
         }
         let mut handle: ffi::TenVadHandle = std::ptr::null_mut();
-        let ret = unsafe {
-            ffi::ten_vad_create(&mut handle, hop_size.as_usize(), threshold)
-        };
+        let ret = unsafe { ffi::ten_vad_create(&mut handle, hop_size.as_usize(), threshold) };
         if ret != 0 || handle.is_null() {
             return Err(VadError::CreateFailed);
         }
         Ok(Self { handle, hop_size })
     }
 
-    /// Process one audio frame and return the VAD decision.
+    /// Process one frame of 16 kHz 16-bit PCM audio.
     ///
-    /// # Parameters
-    /// - `audio_data`: Exactly `hop_size` samples of 16-bit PCM audio at 16 kHz.
-    ///
-    /// # Errors
-    /// - [`VadError::InvalidFrameSize`] if `audio_data.len() != hop_size`.
-    /// - [`VadError::ProcessFailed`] if the native library returns an error.
-    pub fn process(&mut self, audio_data: &[i16]) -> Result<VadResult, VadError> {
+    /// `audio` must contain exactly [`hop_size`](Self::hop_size) samples.
+    pub fn process(&mut self, audio: &[i16]) -> Result<VadResult, VadError> {
         let expected = self.hop_size.as_usize();
-        if audio_data.len() != expected {
+        if audio.len() != expected {
             return Err(VadError::InvalidFrameSize {
                 expected,
-                actual: audio_data.len(),
+                actual: audio.len(),
             });
         }
-        let mut probability: f32 = 0.0;
+        let mut prob: f32 = 0.0;
         let mut flag: i32 = 0;
         let ret = unsafe {
-            ffi::ten_vad_process(
-                self.handle,
-                audio_data.as_ptr(),
-                audio_data.len(),
-                &mut probability,
-                &mut flag,
-            )
+            ffi::ten_vad_process(self.handle, audio.as_ptr(), audio.len(), &mut prob, &mut flag)
         };
         if ret != 0 {
             return Err(VadError::ProcessFailed);
         }
         Ok(VadResult {
-            probability,
+            probability: prob,
             is_voice: flag != 0,
         })
     }
 
-    /// Return the configured hop size.
+    /// Configured hop size.
     pub fn hop_size(&self) -> HopSize {
         self.hop_size
     }
 
-    /// Return the TEN VAD library version string (e.g. `"1.0.0"`).
+    /// Library version (e.g. `"1.0.0"`).
     pub fn version() -> &'static str {
-        let c_str = unsafe { ffi::ten_vad_get_version() };
-        if c_str.is_null() {
+        let ptr = unsafe { ffi::ten_vad_get_version() };
+        if ptr.is_null() {
             return "unknown";
         }
-        unsafe { std::ffi::CStr::from_ptr(c_str) }
+        unsafe { std::ffi::CStr::from_ptr(ptr) }
             .to_str()
             .unwrap_or("unknown")
     }
@@ -515,56 +489,57 @@ impl Drop for TenVad {
     }
 }
 
-// Safety: The native handle owns all its state internally and does not
-// reference thread-local storage. Moving it between threads is safe.
 unsafe impl Send for TenVad {}
+
+// ── テスト ───────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn invalid_threshold_negative() {
-        let err = TenVad::new(HopSize::Samples256, -0.1).unwrap_err();
-        assert!(matches!(err, VadError::InvalidThreshold(_)));
+    fn threshold_below_zero() {
+        assert!(matches!(
+            TenVad::new(HopSize::Samples256, -0.1),
+            Err(VadError::InvalidThreshold(_))
+        ));
     }
 
     #[test]
-    fn invalid_threshold_over_one() {
-        let err = TenVad::new(HopSize::Samples256, 1.1).unwrap_err();
-        assert!(matches!(err, VadError::InvalidThreshold(_)));
+    fn threshold_above_one() {
+        assert!(matches!(
+            TenVad::new(HopSize::Samples256, 1.1),
+            Err(VadError::InvalidThreshold(_))
+        ));
     }
 
     #[test]
-    fn wrong_frame_size() {
-        // This test requires the native library; skip if not available.
-        let vad = TenVad::new(HopSize::Samples256, 0.5);
-        if let Ok(mut vad) = vad {
-            let too_short = vec![0i16; 100];
-            let err = vad.process(&too_short).unwrap_err();
-            match err {
-                VadError::InvalidFrameSize { expected: 256, actual: 100 } => {}
-                other => panic!("unexpected error: {other}"),
+    fn wrong_frame_length() {
+        if let Ok(mut vad) = TenVad::new(HopSize::Samples256, 0.5) {
+            let short = vec![0i16; 100];
+            match vad.process(&short) {
+                Err(VadError::InvalidFrameSize {
+                    expected: 256,
+                    actual: 100,
+                }) => {}
+                other => panic!("expected InvalidFrameSize, got {other:?}"),
             }
         }
     }
 
     #[test]
-    fn process_silence() {
-        let vad = TenVad::new(HopSize::Samples256, 0.5);
-        if let Ok(mut vad) = vad {
+    fn silence_is_not_voice() {
+        if let Ok(mut vad) = TenVad::new(HopSize::Samples256, 0.5) {
             let silence = vec![0i16; 256];
-            let result = vad.process(&silence).unwrap();
-            assert!(result.probability >= 0.0 && result.probability <= 1.0);
-            // Silence should generally not be detected as voice.
-            assert!(!result.is_voice, "silence detected as voice");
+            let r = vad.process(&silence).unwrap();
+            assert!((0.0..=1.0).contains(&r.probability));
+            assert!(!r.is_voice, "silence detected as voice");
         }
     }
 
     #[test]
-    fn version_is_non_empty() {
+    fn version_non_empty() {
         let v = TenVad::version();
-        // If the native library isn't linked, this may return "unknown".
         assert!(!v.is_empty());
     }
 
@@ -576,44 +551,68 @@ mod tests {
 }
 ```
 
-## 8. Cargo.toml
+## 9. examples/detect_vad.rs — 全文
 
-```toml
-[package]
-name = "ten-vad"
-version = "0.1.0"
-edition = "2021"
-description = "Rust bindings for TEN VAD (Voice Activity Detector)"
-license = "Apache-2.0"
-build = "build.rs"
+```rust
+//! Read a 16 kHz mono WAV file, run VAD frame-by-frame, and print results.
+//!
+//! ```sh
+//! cargo run -p ten-vad --example detect_vad -- input.wav
+//! ```
 
-[dependencies]
-# No runtime dependencies — pure FFI wrapper
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| {
+            eprintln!("Usage: detect_vad <input.wav>");
+            std::process::exit(1);
+        });
 
-[dev-dependencies]
-hound = "3.5"    # WAV file reading for examples/tests
+    let mut reader = hound::WavReader::open(&path)?;
+    let spec = reader.spec();
+    assert_eq!(spec.sample_rate, 16000, "Expected 16 kHz, got {}", spec.sample_rate);
+    assert_eq!(spec.channels, 1, "Expected mono, got {} channels", spec.channels);
+
+    let hop = ten_vad::HopSize::Samples256;
+    let mut vad = ten_vad::TenVad::new(hop, 0.5)?;
+    println!("TEN VAD {}", ten_vad::TenVad::version());
+    println!("File: {path}  ({} Hz, {} ch)", spec.sample_rate, spec.channels);
+
+    let samples: Vec<i16> = reader.samples::<i16>().map(|s| s.unwrap()).collect();
+    let frame_size = hop.as_usize();
+    let mut voice_frames = 0u32;
+    let mut total_frames = 0u32;
+
+    for (i, chunk) in samples.chunks_exact(frame_size).enumerate() {
+        let r = vad.process(chunk)?;
+        total_frames += 1;
+        if r.is_voice {
+            voice_frames += 1;
+        }
+        let time_ms = i * frame_size * 1000 / 16000;
+        if r.is_voice {
+            println!("[{time_ms:>6} ms] VOICE  prob={:.3}", r.probability);
+        }
+    }
+
+    println!(
+        "\nSummary: {voice_frames}/{total_frames} frames contain voice ({:.1}%)",
+        voice_frames as f64 / total_frames.max(1) as f64 * 100.0
+    );
+    Ok(())
+}
 ```
 
-## 9. 実装フェーズ
+## 10. 実装フェーズ
 
-### Phase 1: クレート scaffold + FFI + build.rs
-1. `crates/ten-vad/` ディレクトリ作成、ワークスペースに追加
-2. `vendor/` に git submodule として TEN-framework/ten-vad を追加
-3. `src/ffi.rs` — §6 の手書き FFI (4 関数)
-4. `build.rs` — §5 の全処理集約版 (xcframework 変換 + リンク)
-5. `cargo check -p ten-vad` が通ることを確認
+### Phase 1: クレート scaffold
+1. `crates/ten-vad/` 作成、ワークスペースに追加
+2. `vendor/` に git submodule 追加: `git submodule add https://github.com/TEN-framework/ten-vad vendor`
+3. `Cargo.toml`, `build.rs`, `src/ffi.rs`, `src/lib.rs` を §5-8 の通り配置
+4. `cargo check -p ten-vad` 通過確認
 
-### Phase 2: 安全な Rust API
-1. `src/lib.rs` — §7 の完全実装
-2. `HopSize` enum, `TenVad` struct, `VadResult`, `VadError`
-3. テスト (threshold 検証, frame size 検証, silence 検出)
-
-### Phase 3: Example + 動作確認
-1. `examples/detect_vad.rs` — WAV → フレーム分割 → VAD 検出 → 結果出力
-2. macOS で実動作確認
-
-### Phase 4: 検証
-1. `cargo test -p ten-vad`
-2. `cargo clippy -p ten-vad -- -D warnings`
-3. `cargo doc -p ten-vad --no-deps`
-4. `cargo build -p ten-vad --release`
+### Phase 2: 動作確認
+1. `cargo test -p ten-vad` (ネイティブライブラリがリンクできれば全テスト pass)
+2. `cargo run -p ten-vad --example detect_vad -- test.wav`
+3. `cargo clippy -p ten-vad -- -D warnings`
+4. `cargo doc -p ten-vad --no-deps`
