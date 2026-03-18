@@ -2230,3 +2230,50 @@ mascot_mode: true <!-- 2026-03-18 13:22 JST -->
   - release ビルドでも正常動作 <!-- 2026-03-18 13:22 JST -->
 - [x] **動作確認 (Windows)**: 同上 (Windows 環境で実施) <!-- 2026-03-18 13:22 JST -->
 - [x] **動作確認 (Linux)**: 同上 (X11 + コンポジタ環境で実施) <!-- 2026-03-18 13:22 JST -->
+
+### Step 12.10: 透過部分のクリックスルー (マウス操作貫通)
+
+**目的**: マスコットモード時、モデル以外の透明部分をクリックすると背面ウィンドウにイベントが通過するようにする
+
+- [ ] **macOS**: `raw-window-handle` で `NSWindow` を取得し `setIgnoresMouseEvents(true)` を設定。ただしドラッグ移動のためにモデル部分ではマウスイベントを受け取る必要がある → マウス座標に基づいてフレーム毎に `ignoresMouseEvents` を切替
+- [ ] **Windows**: `WS_EX_TRANSPARENT` + `WS_EX_LAYERED` を設定 (将来実装)
+- [ ] **Linux (X11)**: XShape extension でクリック領域を制限 (将来実装)
+- [ ] `crates/app/src/mascot.rs` に `update_click_through(window, cursor_pos, frame_rgba, width, height)` メソッドを追加 — カーソル位置のピクセルの alpha 値をチェックし、alpha=0 なら `ignoresMouseEvents=true`、alpha>0 なら `ignoresMouseEvents=false` に動的切替
+- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+
+### Step 12.11: アバター残像 (ゴースト) 問題の修正
+
+**目的**: マスコットモードでウィンドウを移動した際に、元いた位置にアバターの残像が残る問題を解決
+
+**原因調査**:
+- Surface 再構成後にバッファが残存
+- wgpu の `present()` 後にコンポジタが前フレームをクリアしない
+- 背景描画パスの `LoadOp` が `Load` になっている場合に前フレームの内容が残る
+
+- [ ] `crates/renderer/src/scene.rs` の `render_to_view_with_depth()` で、マスコットモード時は常に `LoadOp::Clear` で背景をクリア (alpha=0.0) するように修正
+- [ ] `crates/renderer/src/context.rs` で `set_transparent()` 後に `device.poll(wgpu::Maintain::Wait)` を追加して GPU 同期
+- [ ] macOS: `NSWindow.hasShadow = false` を設定してウィンドウシャドウによる残像を防止
+- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+
+### Step 12.12: AlwaysOnTop の設定化
+
+**目的**: `WindowLevel::AlwaysOnTop` を config で ON/OFF 切替可能にする
+
+- [ ] `crates/app/src/user_prefs.rs` の `UserPrefs` に `always_on_top: bool` フィールド追加 (`#[serde(default = "default_true")]`)
+- [ ] `crates/app/src/mascot.rs` の `enter()` で `always_on_top` 設定を参照して `WindowLevel` を切替
+- [ ] `crates/app/src/app.rs` に `KeyF` ハンドラ追加 — マスコットモード中に AlwaysOnTop を ON/OFF 切替
+- [ ] `save_prefs()` で `always_on_top` を保存
+- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+
+### Step 12.13: Step 12.10-12.12 検証
+
+- [ ] `cargo check --workspace` — 全クレート pass
+- [ ] `cargo test -p kalidokit-rust -p renderer` — テスト pass
+- [ ] `cargo clippy --workspace -- -D warnings` — 警告なし
+- [ ] `cargo build --release` — リリースビルド成功
+- [ ] **動作確認**: マスコットモードで以下を確認。目的の動作と異なる場合は修正を繰り返す:
+  - 透明部分をクリック → 背面ウィンドウにフォーカスが移る
+  - モデル部分をクリック → ドラッグ移動が可能
+  - ウィンドウ移動後に残像が残らない
+  - `KeyF` で AlwaysOnTop ON/OFF が切り替わる
+  - `always_on_top: false` でアプリ再起動 → 通常 z-order
