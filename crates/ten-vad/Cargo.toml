@@ -1,0 +1,12 @@
+[package]
+name = "ten-vad"
+version = "0.1.0"
+edition = "2021"
+description = "Rust bindings for TEN VAD (Voice Activity Detector)"
+license = "Apache-2.0"
+build = "build.rs"
+
+[dependencies]
+
+[dev-dependencies]
+hound = "3.5"
