@@ -2277,3 +2277,49 @@ mascot_mode: true <!-- 2026-03-18 13:22 JST -->
   - ウィンドウ移動後に残像が残らない
   - `KeyF` で AlwaysOnTop ON/OFF が切り替わる
   - `always_on_top: false` でアプリ再起動 → 通常 z-order
+
+### Step 12.14: キャラ描画部分のみ操作可能 (ピクセルアルファベースのヒットテスト)
+
+**目的**: マスコットモードで、キャラクター (alpha > 0 の描画部分) ではマウス操作 (ドラッグ、スクロール、キー操作) が可能で、透明部分 (alpha = 0) のみクリックスルーにする。Altキー不要で直感的に操作できるようにする。
+
+**実装方針**: 毎フレーム、レンダリング済みフレームの RGBA データを CPU に保持し、カーソル位置のピクセルの alpha 値をチェックして `set_cursor_hittest()` を動的に切り替える。
+
+```
+CursorMoved イベント:
+  1. カーソル座標を取得 (physical pixels)
+  2. 直近の描画フレームから、カーソル位置のピクセル alpha を参照
+  3. alpha > 0 → set_cursor_hittest(true)  ← 操作可能 (ドラッグ, スクロール等)
+  4. alpha = 0 → set_cursor_hittest(false) ← クリックスルー (背面ウィンドウへ)
+```
+
+- [ ] `crates/renderer/src/scene.rs` に `pub fn last_frame_alpha_at(&self, x: u32, y: u32) -> Option<u8>` メソッド追加 — CPU 側にキャッシュしたフレームデータからピクセルの alpha 値を返す
+- [ ] `crates/renderer/src/scene.rs` に `frame_alpha_buffer: Vec<u8>` フィールド追加 — 毎フレーム描画後に GPU → CPU 読み戻し、または描画コマンド前のクリア済みバッファからアルファを保持
+  - **注意**: GPU readback は高コスト。代替案として Scene のジオメトリ (モデルの画面上バウンディングボックス) を使った簡易判定も検討
+  - **推奨実装**: レンダリング結果を `render_to_capture()` (既存の仮想カメラ用) で取得し、そのバッファの alpha を参照する
+- [ ] `crates/app/src/app.rs` の `CursorMoved` ハンドラを変更 — `ModifiersChanged` による Alt キー制御を廃止し、ピクセルアルファベースの動的ヒットテストに置換
+
+```rust
+// app.rs CursorMoved ハンドラ (変更後)
+WindowEvent::CursorMoved { position, .. } => {
+    state.last_cursor_pos = position;
+    if state.mascot.enabled {
+        // ピクセルの alpha をチェックして hit-test を切り替え
+        let x = position.x as u32;
+        let y = position.y as u32;
+        let alpha = state.scene.last_frame_alpha_at(x, y).unwrap_or(0);
+        let on_model = alpha > 0;
+        let _ = state.render_ctx.window.set_cursor_hittest(on_model);
+    }
+    if state.mascot.is_dragging() {
+        state.mascot.update_drag(&state.render_ctx.window, position);
+    }
+}
+```
+
+- [ ] `crates/app/src/app.rs` の `ModifiersChanged` ハンドラを削除または Alt 制御をフォールバックとして残す
+- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+- [ ] **テスト**: マスコットモードで以下を確認。目的の動作と異なる場合は修正を繰り返す:
+  - キャラ部分にカーソル → ドラッグ移動可能、スクロール (ズーム) 可能
+  - 透明部分にカーソル → クリックが背面ウィンドウに通過
+  - キャラの輪郭に沿ってスムーズに切り替わる
+  - パフォーマンスへの影響が最小限 (alpha チェックは O(1) のバッファ参照)
