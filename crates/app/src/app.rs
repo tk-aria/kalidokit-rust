@@ -306,9 +306,7 @@ impl ApplicationHandler for App {
                         let _ = state.render_ctx.window.set_cursor_hittest(false);
                     }
                 }
-                if state.mascot.is_dragging() {
-                    state.mascot.update_drag(&state.render_ctx.window, position);
-                }
+                // Note: drag is handled by OS-native drag_window(), no manual update needed.
             }
             WindowEvent::MouseInput {
                 state: btn_state,
@@ -318,12 +316,15 @@ impl ApplicationHandler for App {
                 if state.mascot.enabled {
                     match btn_state {
                         ElementState::Pressed => {
-                            state
-                                .mascot
-                                .start_drag(&state.render_ctx.window, state.last_cursor_pos);
+                            // Use OS-native window drag to avoid cursor feedback loop.
+                            // This hands control to the OS compositor, which handles
+                            // drag smoothly without jitter.
+                            if let Err(e) = state.render_ctx.window.drag_window() {
+                                log::warn!("drag_window failed: {e}");
+                            }
                         }
                         ElementState::Released => {
-                            state.mascot.end_drag();
+                            // OS-native drag ends automatically; nothing to do.
                         }
                     }
                 }
