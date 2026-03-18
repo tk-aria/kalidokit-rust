@@ -66,6 +66,13 @@ pub struct AppState {
     pub mascot: MascotState,
     /// Last known cursor position (physical pixels), used for mascot drag.
     pub last_cursor_pos: winit::dpi::PhysicalPosition<f64>,
+    /// Cached alpha map from rendered frame for mascot pixel-alpha hit-testing.
+    /// One byte per pixel (alpha channel only), dimensions match `mascot_alpha_width` x `mascot_alpha_height`.
+    pub mascot_alpha_map: Vec<u8>,
+    /// Width of the cached mascot alpha map in pixels.
+    pub mascot_alpha_width: u32,
+    /// Height of the cached mascot alpha map in pixels.
+    pub mascot_alpha_height: u32,
 }
 
 /// Current rig solver results (face/pose/hand).

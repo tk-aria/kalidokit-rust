@@ -284,18 +284,28 @@ impl ApplicationHandler for App {
                     }
                 }
             }
-            WindowEvent::ModifiersChanged(modifiers) => {
-                // In mascot mode, hold Alt/Option to temporarily disable click-through
-                // so the user can drag the window. Release Alt to re-enable click-through.
-                if state.mascot.enabled {
-                    let alt_pressed = modifiers.state().alt_key();
-                    state
-                        .mascot
-                        .set_click_through(&state.render_ctx.window, !alt_pressed);
-                }
-            }
             WindowEvent::CursorMoved { position, .. } => {
                 state.last_cursor_pos = position;
+                // Pixel-alpha hit-testing for mascot mode: if the cursor is over a
+                // rendered pixel (alpha > 0) the window captures mouse events (drag,
+                // scroll, click). Over transparent areas (alpha == 0) clicks pass
+                // through to background windows. No modifier key needed.
+                if state.mascot.enabled && !state.mascot_alpha_map.is_empty() {
+                    // Convert physical cursor position to alpha map coordinates.
+                    // The alpha map uses the mascot window's logical size; the cursor
+                    // position is in physical pixels, so scale by the window's scale factor.
+                    let scale = state.render_ctx.window.scale_factor();
+                    let lx = (position.x / scale) as u32;
+                    let ly = (position.y / scale) as u32;
+                    if lx < state.mascot_alpha_width && ly < state.mascot_alpha_height {
+                        let idx = (ly * state.mascot_alpha_width + lx) as usize;
+                        let alpha = state.mascot_alpha_map.get(idx).copied().unwrap_or(0);
+                        let on_model = alpha > 0;
+                        let _ = state.render_ctx.window.set_cursor_hittest(on_model);
+                    } else {
+                        let _ = state.render_ctx.window.set_cursor_hittest(false);
+                    }
+                }
                 if state.mascot.is_dragging() {
                     state.mascot.update_drag(&state.render_ctx.window, position);
                 }

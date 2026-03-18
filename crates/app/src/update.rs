@@ -414,6 +414,38 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         }
     }
 
+    // 7. Mascot mode: capture alpha map for pixel-level hit-testing.
+    // Piggybacks on the frame capture system (same as vcam) but uses the
+    // mascot window dimensions. The alpha channel is extracted from the BGRA
+    // readback data and cached for CursorMoved hit-test lookups.
+    if state.mascot.enabled {
+        let w = state.mascot.mascot_size.width;
+        let h = state.mascot.mascot_size.height;
+        state
+            .scene
+            .ensure_frame_capture(&state.render_ctx.device, w, h);
+        state.scene.render_to_capture(&state.render_ctx);
+        if let Some(bgra_data) = state
+            .scene
+            .capture_frame_async(&state.render_ctx.device, &state.render_ctx.queue)
+        {
+            // Extract alpha channel (byte offset 3 in each BGRA pixel)
+            let pixel_count = (w * h) as usize;
+            let mut alpha_map = Vec::with_capacity(pixel_count);
+            for i in 0..pixel_count {
+                alpha_map.push(bgra_data[i * 4 + 3]);
+            }
+            state.mascot_alpha_map = alpha_map;
+            state.mascot_alpha_width = w;
+            state.mascot_alpha_height = h;
+        }
+    } else if !state.mascot_alpha_map.is_empty() {
+        // Clear alpha map when mascot mode is off to free memory
+        state.mascot_alpha_map.clear();
+        state.mascot_alpha_width = 0;
+        state.mascot_alpha_height = 0;
+    }
+
     Ok(())
 }
 

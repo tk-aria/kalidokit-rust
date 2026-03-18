@@ -38,7 +38,9 @@ impl MascotState {
         }
     }
 
-    /// Enter mascot mode: no decorations, always on top, smaller size, click-through.
+    /// Enter mascot mode: no decorations, always on top, smaller size.
+    /// Click-through is controlled per-pixel via the alpha map in the CursorMoved handler
+    /// rather than a blanket enable here.
     pub fn enter(&mut self, window: &Window, always_on_top: bool) {
         let size = window.inner_size();
         self.normal_size = LogicalSize::new(size.width, size.height);
@@ -52,8 +54,8 @@ impl MascotState {
         window.set_window_level(level);
         let _ = window.request_inner_size(self.mascot_size);
 
-        // Enable click-through: mouse events pass through to windows behind.
-        // Hold Alt/Option to temporarily disable click-through for drag.
+        // Start with click-through enabled; the alpha-based hit-test in CursorMoved
+        // will enable interaction when the cursor is over non-transparent pixels.
         let _ = window.set_cursor_hittest(false);
 
         // Disable window shadow to prevent ghost artifacts when moving.
@@ -114,15 +116,6 @@ impl MascotState {
             };
             window.set_window_level(level);
         }
-    }
-
-    /// Set click-through state. When `pass_through` is true, mouse events
-    /// pass through the window. When false, the window captures mouse events.
-    pub fn set_click_through(&self, window: &Window, pass_through: bool) {
-        if !self.enabled {
-            return;
-        }
-        let _ = window.set_cursor_hittest(!pass_through);
     }
 
     /// Begin window drag on left mouse button press (only in mascot mode).

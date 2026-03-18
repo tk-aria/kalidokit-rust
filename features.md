@@ -296,7 +296,7 @@ pub fn create_render_pipeline( <!-- 2026-03-18 13:22 JST -->
 - [x] `CameraUniform` 構造体 (`#[repr(C)]`, Pod): `view_proj: [[f32; 4]; 4]`, `model: [[f32; 4]; 4]` <!-- 2026-03-18 13:22 JST -->
 - [x] `Camera::build_view_projection_matrix() -> Mat4` を実装 <!-- 2026-03-18 13:22 JST -->
 - [x] `Camera::to_uniform() -> CameraUniform` を実装 <!-- 2026-03-18 13:22 JST -->
-- [x] GPU Uniform Buffer 作成・更新メソッド (Phase 3のScene統合時に実装) <!-- Scene::new() でバッファ作成、Scene::prepare() で更新済み — 2026-03-10 00:26 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] GPU Uniform Buffer 作成・更新メソッド (Phase 3のScene統合時に実装) <!-- Scene::new() でバッファ作成、Scene::prepare() で更新済み — 2026-03-10 00:26 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ```rust <!-- 2026-03-18 13:22 JST -->
 pub struct Camera { <!-- 2026-03-18 13:22 JST -->
@@ -369,7 +369,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
   - `window_event(RedrawRequested)`: clear色で画面クリア → 三角形描画 → present <!-- 2026-03-18 13:22 JST -->
   - `window_event(Resized)`: `ctx.resize()` 呼び出し <!-- 2026-03-18 13:22 JST -->
   - `window_event(CloseRequested)`: `event_loop.exit()` <!-- 2026-03-18 13:22 JST -->
-- [x] 実行して 緑背景に白い三角形が表示されることを確認 (GPU環境でのみ手動確認) <!-- Phase進行により VRM 描画に発展済み、レンダーループ動作確認済み (144fps/3sec) — 2026-03-10 00:26 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] 実行して 緑背景に白い三角形が表示されることを確認 (GPU環境でのみ手動確認) <!-- Phase進行により VRM 描画に発展済み、レンダーループ動作確認済み (144fps/3sec) — 2026-03-10 00:26 JST -->
  <!-- 2026-03-18 13:22 JST -->
 > **300行超え注意**: `app.rs` が300行を超えそうな場合、初期化ロジックを `app/src/init.rs` に分離 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
@@ -712,7 +712,7 @@ impl DepthTexture { <!-- 2026-03-18 13:22 JST -->
 - [x] `GpuTexture::from_image(device, queue, image)`: `image::DynamicImage` → GPU Texture <!-- 2026-03-18 13:22 JST -->
 - [x] `GpuTexture::from_bytes(device, queue, bytes, width, height)`: raw bytes → GPU Texture <!-- 2026-03-18 13:22 JST -->
 - [x] `GpuTexture::default_white(device, queue) -> Self`: デフォルトの白テクスチャ (1x1) 生成メソッド <!-- 2026-03-18 13:22 JST -->
-- [x] **Scene/パイプラインへの統合**: GpuTexture を Scene に統合、VRM マテリアル/テクスチャロード実装、skinning.wgsl にテクスチャサンプリング追加 <!-- 2026-03-10 00:31 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] **Scene/パイプラインへの統合**: GpuTexture を Scene に統合、VRM マテリアル/テクスチャロード実装、skinning.wgsl にテクスチャサンプリング追加 <!-- 2026-03-10 00:31 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ```rust <!-- 2026-03-18 13:22 JST -->
 pub struct GpuTexture { <!-- 2026-03-18 13:22 JST -->
@@ -1072,13 +1072,13 @@ impl FaceMeshDetector { <!-- 2026-03-18 13:22 JST -->
   2. `vrm::loader::load("assets/models/default_avatar.vrm")` で VRM ロード <!-- 2026-03-18 13:22 JST -->
   3. `Scene::new(device, config, vrm_model)` で GPU リソース作成 <!-- 2026-03-18 13:22 JST -->
   4. `HolisticTracker::new(face_path, pose_path, hand_path)` で ML モデル初期化 <!-- 2026-03-18 13:22 JST -->
-  5. Webカメラ初期化 (nokhwa) — init_camera() で初期化、失敗時は None フォールバック <!-- 2026-03-10 00:40 JST --> <!-- 2026-03-18 13:22 JST -->
+  5. Webカメラ初期化 (nokhwa) — init_camera() で初期化、失敗時は None フォールバック <!-- 2026-03-10 00:40 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 6.3: app::update — フレーム更新ロジック <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
 **ファイル**: `crates/app/src/update.rs` (~150行) <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `update_frame(state: &mut AppState) -> Result<()>` 関数: <!-- 2026-03-10 00:40 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `update_frame(state: &mut AppState) -> Result<()>` 関数: <!-- 2026-03-10 00:40 JST -->
   1. Webカメラからフレーム取得 (nokhwa、フォールバック付き) <!-- 2026-03-18 13:22 JST -->
   2. `tracker.detect(frame)` で全ランドマーク取得 <!-- 2026-03-18 13:22 JST -->
   3. `solver::face::solve()` / `solver::pose::solve()` / `solver::hand::solve()` でリグ計算 <!-- 2026-03-18 13:22 JST -->
@@ -1164,7 +1164,7 @@ pub struct RigConfig { <!-- 2026-03-18 13:22 JST -->
 - [x] `SpringBoneGroup` 構造体: `bones: Vec<SpringBone>`, `colliders: Vec<Collider>` <!-- 2026-03-18 13:22 JST -->
 - [x] `SpringBoneGroup::from_vrm_json(json)`: VRM拡張JSONからパース <!-- 2026-03-18 13:22 JST -->
 - [x] `SpringBoneGroup::update(delta_time)`: Verlet積分で髪揺れ等の物理シミュレーション <!-- 2026-03-18 13:22 JST -->
-- [x] **VrmModel への統合**: VrmModel に spring_bone_groups フィールド追加、loader でパース、update ループで毎フレーム update() 呼び出し <!-- 2026-03-10 00:31 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] **VrmModel への統合**: VrmModel に spring_bone_groups フィールド追加、loader でパース、update ループで毎フレーム update() 呼び出し <!-- 2026-03-10 00:31 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ```rust <!-- 2026-03-18 13:22 JST -->
 // VRM JSON構造: <!-- 2026-03-18 13:22 JST -->
@@ -1200,7 +1200,7 @@ impl SpringBone { <!-- 2026-03-18 13:22 JST -->
   - 2段階トゥーンシェーディング (影しきい値ベース) <!-- 2026-03-18 13:22 JST -->
   - リムライト <!-- 2026-03-18 13:22 JST -->
   - アウトライン (別パス) <!-- 2026-03-18 13:22 JST -->
-- [x] **レンダーパイプラインへの統合**: MToon トゥーンシェーディング (2段階陰影 + リムライト) を skinning.wgsl に統合、VRM MToon 拡張パース実装 <!-- 2026-03-10 00:35 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] **レンダーパイプラインへの統合**: MToon トゥーンシェーディング (2段階陰影 + リムライト) を skinning.wgsl に統合、VRM MToon 拡張パース実装 <!-- 2026-03-10 00:35 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ```wgsl <!-- 2026-03-18 13:22 JST -->
 // MToon Fragment Shader の核心ロジック <!-- 2026-03-18 13:22 JST -->
@@ -1226,7 +1226,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
  <!-- 2026-03-18 13:22 JST -->
 ### Step 7.3: パフォーマンス最適化 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] ML推論を別スレッドに移動 (`std::thread::spawn` + `mpsc::channel`) <!-- TrackerThread + sync_channel(1) 実装 — 2026-03-10 00:43 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] ML推論を別スレッドに移動 (`std::thread::spawn` + `mpsc::channel`) <!-- TrackerThread + sync_channel(1) 実装 — 2026-03-10 00:43 JST -->
 - [x] フレームレート制御: `std::time::Instant` で16ms (60fps) 間隔を維持 <!-- 2026-03-18 13:22 JST -->
 - [x] GPU バッファ更新の最小化: 変更がない場合は `write_buffer` をスキップ (rig_dirty フラグ) <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
@@ -1292,10 +1292,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
  <!-- 2026-03-18 13:22 JST -->
 > MediaPipe Holistic は Pose の手首ランドマーク (15:左手首, 16:右手首) から手の領域を切り出し、Hand モデルに渡す。現在は全フレームを Hand モデルに渡しているため精度が低い。 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] Pose ランドマーク (index 15, 16) から手の ROI (Region of Interest) を算出する関数を追加 <!-- 2026-03-10 12:54 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] ROI に基づいてフレームをクロップし、`HandDetector::detect()` に渡すよう `HolisticTracker::detect()` を修正 <!-- 2026-03-10 12:54 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] ROI が取得できない場合 (Pose 未検出) は従来通り全フレームで推論するフォールバック <!-- 2026-03-10 12:54 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] テスト: ROI 算出ロジックの単体テスト (手首座標 → 正方形 ROI の中心・サイズ) <!-- 2026-03-10 12:54 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] Pose ランドマーク (index 15, 16) から手の ROI (Region of Interest) を算出する関数を追加 <!-- 2026-03-10 12:54 JST -->
+- [x] ROI に基づいてフレームをクロップし、`HandDetector::detect()` に渡すよう `HolisticTracker::detect()` を修正 <!-- 2026-03-10 12:54 JST -->
+- [x] ROI が取得できない場合 (Pose 未検出) は従来通り全フレームで推論するフォールバック <!-- 2026-03-10 12:54 JST -->
+- [x] テスト: ROI 算出ロジックの単体テスト (手首座標 → 正方形 ROI の中心・サイズ) <!-- 2026-03-10 12:54 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 8.2: slerp / dampener 補間の適用 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
@@ -1305,16 +1305,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
 > <!-- 2026-03-18 13:22 JST -->
 > リファレンス: [script.js rigRotation()](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js) の dampener / lerpAmount パラメータ <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `HumanoidBones` に前フレームの回転を保持する仕組みを追加 (`prev_rotation: HashMap<HumanoidBoneName, Quat>`) <!-- 2026-03-10 12:54 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `apply_rig_to_model()` で `RigConfig` の dampener / lerp_amount を使って slerp 補間を適用 <!-- 2026-03-10 12:54 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] dampener 値を testbed と完全一致させる: <!-- 2026-03-10 12:54 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `HumanoidBones` に前フレームの回転を保持する仕組みを追加 (`prev_rotation: HashMap<HumanoidBoneName, Quat>`) <!-- 2026-03-10 12:54 JST -->
+- [x] `apply_rig_to_model()` で `RigConfig` の dampener / lerp_amount を使って slerp 補間を適用 <!-- 2026-03-10 12:54 JST -->
+- [x] dampener 値を testbed と完全一致させる: <!-- 2026-03-10 12:54 JST -->
   - Neck: dampener=0.7, lerp=0.3 <!-- 2026-03-18 13:22 JST -->
   - Hips rotation: dampener=0.7, lerp=0.3 <!-- 2026-03-18 13:22 JST -->
   - Hips position: dampener=1.0, lerp=0.07 <!-- 2026-03-18 13:22 JST -->
   - Chest: dampener=0.25, lerp=0.3 <!-- 2026-03-18 13:22 JST -->
   - Spine: dampener=0.45, lerp=0.3 <!-- 2026-03-18 13:22 JST -->
   - UpperArm/LowerArm/UpperLeg/LowerLeg: dampener=1.0, lerp=0.3 <!-- 2026-03-18 13:22 JST -->
-- [x] テスト: slerp 補間で前フレームと次フレームの中間値が生成されること <!-- 2026-03-10 12:54 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] テスト: slerp 補間で前フレームと次フレームの中間値が生成されること <!-- 2026-03-10 12:54 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 8.3: ハンドボーン適用 (左右各16ボーン) <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
@@ -1324,10 +1324,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
 > <!-- 2026-03-18 13:22 JST -->
 > リファレンス: [script.js leftHandLandmarks / rightHandLandmarks ブロック](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js) <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `apply_rig_to_model()` に左手ボーン適用を追加 (LeftHand, LeftThumbProximal/Intermediate/Distal, LeftIndexProximal/Intermediate/Distal, LeftMiddleProximal/Intermediate/Distal, LeftRingProximal/Intermediate/Distal, LeftLittleProximal/Intermediate/Distal) <!-- 2026-03-10 12:58 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `apply_rig_to_model()` に右手ボーン適用を追加 (同上、Right系) <!-- 2026-03-10 12:58 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] Hand の回転合成: Wrist の Z 軸は `RiggedPose.left_hand.z` / `RiggedPose.right_hand.z` から、X/Y は `RiggedHand.wrist` から取得 <!-- 2026-03-10 12:58 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] テスト: RiggedHand の全フィールドが HumanoidBones に反映されること <!-- 2026-03-10 12:58 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `apply_rig_to_model()` に左手ボーン適用を追加 (LeftHand, LeftThumbProximal/Intermediate/Distal, LeftIndexProximal/Intermediate/Distal, LeftMiddleProximal/Intermediate/Distal, LeftRingProximal/Intermediate/Distal, LeftLittleProximal/Intermediate/Distal) <!-- 2026-03-10 12:58 JST -->
+- [x] `apply_rig_to_model()` に右手ボーン適用を追加 (同上、Right系) <!-- 2026-03-10 12:58 JST -->
+- [x] Hand の回転合成: Wrist の Z 軸は `RiggedPose.left_hand.z` / `RiggedPose.right_hand.z` から、X/Y は `RiggedHand.wrist` から取得 <!-- 2026-03-10 12:58 JST -->
+- [x] テスト: RiggedHand の全フィールドが HumanoidBones に反映されること <!-- 2026-03-10 12:58 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 8.4: Hip position 適用 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
@@ -1337,11 +1337,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
 > <!-- 2026-03-18 13:22 JST -->
 > リファレンス: [script.js rigPosition("Hips", ...)](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js) <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `HumanoidBones` に `set_position(name, Vec3)` メソッドを追加 <!-- 2026-03-10 12:58 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `compute_joint_matrices()` で Hips ボーンの position を translation に反映 <!-- 2026-03-10 12:58 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `apply_rig_to_model()` で `hip_pos` を `set_position(Hips, hip_pos)` に変更 (`let _ = hip_pos;` を削除) <!-- 2026-03-10 12:58 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] Hip position にも lerp 補間を適用 (dampener=1.0, lerp=0.07) <!-- 2026-03-10 12:58 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] テスト: set_position 後に compute_joint_matrices で Hips の translation が反映されること <!-- 2026-03-10 12:58 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `HumanoidBones` に `set_position(name, Vec3)` メソッドを追加 <!-- 2026-03-10 12:58 JST -->
+- [x] `compute_joint_matrices()` で Hips ボーンの position を translation に反映 <!-- 2026-03-10 12:58 JST -->
+- [x] `apply_rig_to_model()` で `hip_pos` を `set_position(Hips, hip_pos)` に変更 (`let _ = hip_pos;` を削除) <!-- 2026-03-10 12:58 JST -->
+- [x] Hip position にも lerp 補間を適用 (dampener=1.0, lerp=0.07) <!-- 2026-03-10 12:58 JST -->
+- [x] テスト: set_position 後に compute_joint_matrices で Hips の translation が反映されること <!-- 2026-03-10 12:58 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 8.5: Pupil (瞳孔) + LookAt 適用 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
@@ -1351,10 +1351,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
 > <!-- 2026-03-18 13:22 JST -->
 > リファレンス: [script.js oldLookTarget / lookTarget / lookAt.applyer](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js) <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `solver::face::RiggedFace` に `pupil` フィールドが存在することを確認 (なければ追加) <!-- 2026-03-10 13:02 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `apply_rig_to_model()` で `LookAt::apply(pupil)` を呼び出し、LeftEye / RightEye ボーンに反映 <!-- 2026-03-10 13:02 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] 瞳孔の lerp 補間 (lerp=0.4) と前フレーム値の保持 <!-- 2026-03-10 13:02 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] テスト: pupil 値に対して LeftEye/RightEye の回転が変化すること <!-- 2026-03-10 13:02 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `solver::face::RiggedFace` に `pupil` フィールドが存在することを確認 (なければ追加) <!-- 2026-03-10 13:02 JST -->
+- [x] `apply_rig_to_model()` で `LookAt::apply(pupil)` を呼び出し、LeftEye / RightEye ボーンに反映 <!-- 2026-03-10 13:02 JST -->
+- [x] 瞳孔の lerp 補間 (lerp=0.4) と前フレーム値の保持 <!-- 2026-03-10 13:02 JST -->
+- [x] テスト: pupil 値に対して LeftEye/RightEye の回転が変化すること <!-- 2026-03-10 13:02 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 8.6: Face blink 補間 + stabilizeBlink <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
@@ -1364,11 +1364,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
 > <!-- 2026-03-18 13:22 JST -->
 > リファレンス: [script.js rigFace() 内の eye 処理](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js) <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] 前フレームの BlinkL/BlinkR 値を保持する仕組みを追加 <!-- 2026-03-10 13:02 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `apply_rig_to_model()` で `lerp(clamp(1.0 - eye.l, 0, 1), prev_blink, 0.5)` を適用 <!-- 2026-03-10 13:02 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `solver::face::stabilize_blink()` を blink 値設定前に呼び出す <!-- 2026-03-10 13:02 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] 左右同値でのまばたき (testbed は BlinkL = BlinkR = eye.l) <!-- 2026-03-10 13:02 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] テスト: stabilizeBlink が頭部Y回転に基づいて blink 値を補正すること <!-- 2026-03-10 13:02 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] 前フレームの BlinkL/BlinkR 値を保持する仕組みを追加 <!-- 2026-03-10 13:02 JST -->
+- [x] `apply_rig_to_model()` で `lerp(clamp(1.0 - eye.l, 0, 1), prev_blink, 0.5)` を適用 <!-- 2026-03-10 13:02 JST -->
+- [x] `solver::face::stabilize_blink()` を blink 値設定前に呼び出す <!-- 2026-03-10 13:02 JST -->
+- [x] 左右同値でのまばたき (testbed は BlinkL = BlinkR = eye.l) <!-- 2026-03-10 13:02 JST -->
+- [x] テスト: stabilizeBlink が頭部Y回転に基づいて blink 値を補正すること <!-- 2026-03-10 13:02 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 8.7: Head → Neck 適用先の修正 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
@@ -1378,9 +1378,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
 > <!-- 2026-03-18 13:22 JST -->
 > リファレンス: [script.js rigFace() 内の Neck](https://github.com/tk-aria/kalidokit-testbed/blob/main/vrm/script.js) <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `apply_rig_to_model()` で `HumanoidBoneName::Head` → `HumanoidBoneName::Neck` に変更 <!-- 2026-03-10 13:02 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] dampener=0.7 を適用 <!-- 2026-03-10 13:02 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] テスト: face solver の head rotation が Neck ボーンに反映されること <!-- 2026-03-10 13:02 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `apply_rig_to_model()` で `HumanoidBoneName::Head` → `HumanoidBoneName::Neck` に変更 <!-- 2026-03-10 13:02 JST -->
+- [x] dampener=0.7 を適用 <!-- 2026-03-10 13:02 JST -->
+- [x] テスト: face solver の head rotation が Neck ボーンに反映されること <!-- 2026-03-10 13:02 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 8.8: Face / Pose 並列推論 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
@@ -1388,14 +1388,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
  <!-- 2026-03-18 13:22 JST -->
 > 現在 Face → Pose → Hand(L) → Hand(R) が直列実行。Face と Pose は独立しているため並列化可能。 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `rayon` を tracker クレートの依存に追加 <!-- 2026-03-10 13:06 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `HolisticTracker::detect()` で Face と Pose を `rayon::join` で並列実行 <!-- 2026-03-10 13:06 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] Hand は Pose 結果 (Step 8.1 の ROI) に依存するため Pose 完了後に実行 <!-- 2026-03-10 13:06 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] テスト: 並列化前後で同一入力に対する出力が一致すること — コンパイル検証のみ (ONNX モデル不要の範囲で確認) <!-- 2026-03-10 13:06 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `rayon` を tracker クレートの依存に追加 <!-- 2026-03-10 13:06 JST -->
+- [x] `HolisticTracker::detect()` で Face と Pose を `rayon::join` で並列実行 <!-- 2026-03-10 13:06 JST -->
+- [x] Hand は Pose 結果 (Step 8.1 の ROI) に依存するため Pose 完了後に実行 <!-- 2026-03-10 13:06 JST -->
+- [x] テスト: 並列化前後で同一入力に対する出力が一致すること — コンパイル検証のみ (ONNX モデル不要の範囲で確認) <!-- 2026-03-10 13:06 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 8.9: Phase 8 検証 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] **テスト実装**: <!-- 2026-03-10 13:10 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] **テスト実装**: <!-- 2026-03-10 13:10 JST -->
   - Step 8.1: ROI 算出の単体テスト (4件追加) <!-- 2026-03-18 13:22 JST -->
   - Step 8.2: slerp 補間の単体テスト (1件追加) <!-- 2026-03-18 13:22 JST -->
   - Step 8.3: ハンドボーン適用の確認 (2件追加) <!-- 2026-03-18 13:22 JST -->
@@ -1426,36 +1426,36 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
  <!-- 2026-03-18 13:22 JST -->
 **ファイル**: `.github/workflows/release.yml` <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `build-linux` ジョブ名を `Build (x86_64-unknown-linux-gnu)` に変更 <!-- 2026-03-11 14:22 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] Alpine コンテナ (`container: image: alpine:3.21`) を削除し、`ubuntu-latest` で直接実行 <!-- 2026-03-11 14:22 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] システム依存パッケージを apt-get に変更: <!-- 2026-03-11 14:22 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `build-linux` ジョブ名を `Build (x86_64-unknown-linux-gnu)` に変更 <!-- 2026-03-11 14:22 JST -->
+- [x] Alpine コンテナ (`container: image: alpine:3.21`) を削除し、`ubuntu-latest` で直接実行 <!-- 2026-03-11 14:22 JST -->
+- [x] システム依存パッケージを apt-get に変更: <!-- 2026-03-11 14:22 JST -->
   ```bash <!-- 2026-03-18 13:22 JST -->
   sudo apt-get update <!-- 2026-03-18 13:22 JST -->
   sudo apt-get install -y cmake pkg-config libx11-dev libxkbcommon-dev libwayland-dev <!-- 2026-03-18 13:22 JST -->
   ``` <!-- 2026-03-18 13:22 JST -->
-- [x] Rust ツールチェーンインストールを `dtolnay/rust-toolchain@stable` に変更し、`x86_64-unknown-linux-gnu` ターゲットを追加 <!-- 2026-03-11 14:22 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `cargo install cargo-zigbuild` を追加 <!-- 2026-03-11 14:22 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] Zig ツールチェーンのインストールを追加 (例: `pip3 install ziglang` または公式バイナリ) <!-- 2026-03-11 14:22 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] 以下の musl ワークアラウンドを全て削除: <!-- 2026-03-11 14:22 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] Rust ツールチェーンインストールを `dtolnay/rust-toolchain@stable` に変更し、`x86_64-unknown-linux-gnu` ターゲットを追加 <!-- 2026-03-11 14:22 JST -->
+- [x] `cargo install cargo-zigbuild` を追加 <!-- 2026-03-11 14:22 JST -->
+- [x] Zig ツールチェーンのインストールを追加 (例: `pip3 install ziglang` または公式バイナリ) <!-- 2026-03-11 14:22 JST -->
+- [x] 以下の musl ワークアラウンドを全て削除: <!-- 2026-03-11 14:22 JST -->
   - execinfo.h スタブ (旧 lines 55-65) <!-- 2026-03-18 13:22 JST -->
   - Eigen 事前クローン (旧 lines 67-72) <!-- 2026-03-18 13:22 JST -->
   - sed パッチ (旧 lines 79-82) <!-- 2026-03-18 13:22 JST -->
   - ORT ビルドフラグ `FLATBUFFERS_LOCALE_INDEPENDENT=0`, `ENABLE_BACKTRACE=OFF` (旧 lines 90-100) <!-- 2026-03-18 13:22 JST -->
   - re2 スタンドアロンビルド (旧 lines 106-150) <!-- 2026-03-18 13:22 JST -->
-- [x] ビルドコマンドを変更: <!-- 2026-03-11 14:22 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] ビルドコマンドを変更: <!-- 2026-03-11 14:22 JST -->
   ```bash <!-- 2026-03-18 13:22 JST -->
   cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.17 <!-- 2026-03-18 13:22 JST -->
   ``` <!-- 2026-03-18 13:22 JST -->
-- [x] パッケージングのアーカイブ名を `x86_64-unknown-linux-gnu` に変更 <!-- 2026-03-11 14:22 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] Upload artifact の名前を `x86_64-unknown-linux-gnu` に変更 <!-- 2026-03-11 14:22 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] ORT キャッシュキーを更新 (旧 `ort-musl-static-*` → 新しいキー名) <!-- 2026-03-11 14:22 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] ORT ビルドは glibc 環境ではデフォルト設定で動作するため、ビルドステップを大幅に簡素化 <!-- 2026-03-11 14:22 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] パッケージングのアーカイブ名を `x86_64-unknown-linux-gnu` に変更 <!-- 2026-03-11 14:22 JST -->
+- [x] Upload artifact の名前を `x86_64-unknown-linux-gnu` に変更 <!-- 2026-03-11 14:22 JST -->
+- [x] ORT キャッシュキーを更新 (旧 `ort-musl-static-*` → 新しいキー名) <!-- 2026-03-11 14:22 JST -->
+- [x] ORT ビルドは glibc 環境ではデフォルト設定で動作するため、ビルドステップを大幅に簡素化 <!-- 2026-03-11 14:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 9.2: セットアップスクリプトの更新 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
 **ファイル**: `scripts/setup.sh` <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `_get_target()` 関数の Linux ターゲットを変更: <!-- 2026-03-11 14:22 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `_get_target()` 関数の Linux ターゲットを変更: <!-- 2026-03-11 14:22 JST -->
   ```sh <!-- 2026-03-18 13:22 JST -->
   # 変更前 <!-- 2026-03-18 13:22 JST -->
   linux)   echo "${_arch}-unknown-linux-musl" ;; <!-- 2026-03-18 13:22 JST -->
@@ -1467,11 +1467,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
  <!-- 2026-03-18 13:22 JST -->
 **ファイル**: `Cargo.toml` (ワークスペースルート), `crates/app/Cargo.toml` <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] ワークスペースルート `Cargo.toml` に `nokhwa` が既に定義されていることを確認: <!-- 2026-03-11 14:27 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] ワークスペースルート `Cargo.toml` に `nokhwa` が既に定義されていることを確認: <!-- 2026-03-11 14:27 JST -->
   ```toml <!-- 2026-03-18 13:22 JST -->
   nokhwa = { version = "0.10", features = ["input-native"] } <!-- 2026-03-18 13:22 JST -->
   ``` <!-- 2026-03-18 13:22 JST -->
-- [x] `crates/app/Cargo.toml` の `[dependencies]` に `nokhwa` を追加: <!-- 2026-03-11 14:27 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `crates/app/Cargo.toml` の `[dependencies]` に `nokhwa` を追加: <!-- 2026-03-11 14:27 JST -->
   ```toml <!-- 2026-03-18 13:22 JST -->
   nokhwa = { workspace = true } <!-- 2026-03-18 13:22 JST -->
   ``` <!-- 2026-03-18 13:22 JST -->
@@ -1480,54 +1480,54 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
  <!-- 2026-03-18 13:22 JST -->
 **ファイル**: `crates/app/src/state.rs` <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `camera` フィールドの型をスタブから実型に変更: <!-- 2026-03-11 14:27 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `camera` フィールドの型をスタブから実型に変更: <!-- 2026-03-11 14:27 JST -->
   ```rust <!-- 2026-03-18 13:22 JST -->
   // 変更前 <!-- 2026-03-18 13:22 JST -->
   pub camera: Option<()>, <!-- 2026-03-18 13:22 JST -->
   // 変更後 <!-- 2026-03-18 13:22 JST -->
   pub camera: Option<nokhwa::Camera>, <!-- 2026-03-18 13:22 JST -->
   ``` <!-- 2026-03-18 13:22 JST -->
-- [x] 必要な `use` 文を追加 <!-- 2026-03-11 14:27 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] 必要な `use` 文を追加 <!-- 2026-03-11 14:27 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 9.5: カメラ初期化の復元 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
 **ファイル**: `crates/app/src/init.rs` <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `init_camera()` 関数を実装: <!-- 2026-03-11 14:27 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `init_camera()` 関数を実装: <!-- 2026-03-11 14:27 JST -->
   ```rust <!-- 2026-03-18 13:22 JST -->
   fn init_camera() -> Option<nokhwa::Camera> { <!-- 2026-03-18 13:22 JST -->
       // 640x480 MJPEG 30fps でカメラ初期化 <!-- 2026-03-18 13:22 JST -->
       // 失敗時は log::warn! して None を返す <!-- 2026-03-18 13:22 JST -->
   } <!-- 2026-03-18 13:22 JST -->
   ``` <!-- 2026-03-18 13:22 JST -->
-- [x] `init_all()` 内のスタブ (`let camera: Option<()> = None;`) を `init_camera()` 呼び出しに置換 <!-- 2026-03-11 14:27 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] nokhwa の `CameraIndex::Index(0)`, `RequestedFormat` 等を使用 <!-- 2026-03-11 14:27 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] エラー時のフォールバック: `log::warn!` でメッセージを出し `None` を返す（パニックしない） <!-- 2026-03-11 14:27 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `init_all()` 内のスタブ (`let camera: Option<()> = None;`) を `init_camera()` 呼び出しに置換 <!-- 2026-03-11 14:27 JST -->
+- [x] nokhwa の `CameraIndex::Index(0)`, `RequestedFormat` 等を使用 <!-- 2026-03-11 14:27 JST -->
+- [x] エラー時のフォールバック: `log::warn!` でメッセージを出し `None` を返す（パニックしない） <!-- 2026-03-11 14:27 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 9.6: フレーム取得の復元 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
 **ファイル**: `crates/app/src/update.rs` <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `capture_frame()` の引数型を `Option<nokhwa::Camera>` に変更 <!-- 2026-03-11 14:27 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] カメラが `Some` の場合: `camera.frame()` → `frame.decode_image()` でフレーム取得 <!-- 2026-03-11 14:27 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] カメラが `None` またはフレーム取得失敗時: 640x480 ダミー黒画像にフォールバック <!-- 2026-03-11 14:27 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] フレームの解像度を `VideoInfo` に反映（ハードコードしない） <!-- 2026-03-11 14:27 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `capture_frame()` の引数型を `Option<nokhwa::Camera>` に変更 <!-- 2026-03-11 14:27 JST -->
+- [x] カメラが `Some` の場合: `camera.frame()` → `frame.decode_image()` でフレーム取得 <!-- 2026-03-11 14:27 JST -->
+- [x] カメラが `None` またはフレーム取得失敗時: 640x480 ダミー黒画像にフォールバック <!-- 2026-03-11 14:27 JST -->
+- [x] フレームの解像度を `VideoInfo` に反映（ハードコードしない） <!-- 2026-03-11 14:27 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 9.7: ドキュメント更新 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `CLAUDE.md`: <!-- 2026-03-11 14:32 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `CLAUDE.md`: <!-- 2026-03-11 14:32 JST -->
   - ORT ビルドの musl 注記 (`ORT ビルド (Linux musl): execinfo.h スタブ...`) を削除 <!-- 2026-03-18 13:22 JST -->
   - `cargo-zigbuild` による Linux ビルド手順を追記 <!-- 2026-03-18 13:22 JST -->
-- [x] `features.md`: <!-- 2026-03-11 14:32 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `features.md`: <!-- 2026-03-11 14:32 JST -->
   - ライブラリバージョン一覧の `nokhwa` が残っていることを確認 <!-- 2026-03-18 13:22 JST -->
   - Step 6.2 (カメラ初期化) と Step 6.3 (フレーム取得) のチェックボックスは動作確認後にチェック <!-- 2026-03-18 13:22 JST -->
-- [x] `README.md`: <!-- 2026-03-11 14:32 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `README.md`: <!-- 2026-03-11 14:32 JST -->
   - アーキテクチャ図の Camera 部分が nokhwa であることを確認 <!-- 2026-03-18 13:22 JST -->
   - Linux ダウンロードセクションのターゲットを `x86_64-unknown-linux-musl` → `x86_64-unknown-linux-gnu` に変更 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 9.8: Phase 9 検証 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] **ビルド検証**: <!-- 2026-03-11 14:35 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] **ビルド検証**: <!-- 2026-03-11 14:35 JST -->
   - `cargo check --workspace` 成功 <!-- 2026-03-18 13:22 JST -->
   - `cargo clippy --workspace -- -D warnings` 警告 0 <!-- 2026-03-18 13:22 JST -->
   - `cargo fmt --check` 差分なし (cargo fmt で自動修正済み) <!-- 2026-03-18 13:22 JST -->
@@ -1556,10 +1556,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
  <!-- 2026-03-18 13:22 JST -->
 ### Step 10.1: virtual-camera crate 作成 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `crates/virtual-camera/Cargo.toml` 新規作成 <!-- 2026-03-12 15:30 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `crates/virtual-camera/Cargo.toml` 新規作成 <!-- 2026-03-12 15:30 JST -->
   - dependencies: `anyhow`, `log`, `libc` (macOS) <!-- 2026-03-18 13:22 JST -->
   - `[target.'cfg(target_os = "macos")'.dependencies]` で macOS 限定 <!-- 2026-03-18 13:22 JST -->
-- [x] `crates/virtual-camera/src/lib.rs`: trait 定義 <!-- 2026-03-12 15:30 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `crates/virtual-camera/src/lib.rs`: trait 定義 <!-- 2026-03-12 15:30 JST -->
   ```rust <!-- 2026-03-18 13:22 JST -->
   pub trait VirtualCamera { <!-- 2026-03-18 13:22 JST -->
       fn start(&mut self) -> anyhow::Result<()>; <!-- 2026-03-18 13:22 JST -->
@@ -1567,13 +1567,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
       fn stop(&mut self); <!-- 2026-03-18 13:22 JST -->
   } <!-- 2026-03-18 13:22 JST -->
   ``` <!-- 2026-03-18 13:22 JST -->
-- [x] ルート `Cargo.toml` の workspace members に `crates/virtual-camera` を追加 <!-- 2026-03-12 15:30 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] ルート `Cargo.toml` の workspace members に `crates/virtual-camera` を追加 <!-- 2026-03-12 15:30 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 10.2: CoreMediaIO Camera Extension (Objective-C) <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
 **ファイル**: `crates/virtual-camera/macos-extension/` <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `main.m`: Extension エントリポイント <!-- 2026-03-12 15:35 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `main.m`: Extension エントリポイント <!-- 2026-03-12 15:35 JST -->
   ```objc <!-- 2026-03-18 13:22 JST -->
   #import <Foundation/Foundation.h> <!-- 2026-03-18 13:22 JST -->
   #import <CoreMediaIO/CoreMediaIO.h> <!-- 2026-03-18 13:22 JST -->
@@ -1587,28 +1587,28 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
       return 0; <!-- 2026-03-18 13:22 JST -->
   } <!-- 2026-03-18 13:22 JST -->
   ``` <!-- 2026-03-18 13:22 JST -->
-- [x] `ProviderSource.h/.m`: `CMIOExtensionProviderSource` プロトコル実装 <!-- 2026-03-12 15:35 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `ProviderSource.h/.m`: `CMIOExtensionProviderSource` プロトコル実装 <!-- 2026-03-12 15:35 JST -->
   - デバイス一覧管理 <!-- 2026-03-18 13:22 JST -->
   - クライアント接続ハンドリング <!-- 2026-03-18 13:22 JST -->
-- [x] `DeviceSource.h/.m`: `CMIOExtensionDeviceSource` プロトコル実装 <!-- 2026-03-12 15:35 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `DeviceSource.h/.m`: `CMIOExtensionDeviceSource` プロトコル実装 <!-- 2026-03-12 15:35 JST -->
   - ストリーム管理 (output stream + sink stream) <!-- 2026-03-18 13:22 JST -->
   - デバイスプロパティ公開 <!-- 2026-03-18 13:22 JST -->
-- [x] `StreamSource.h/.m`: `CMIOExtensionStreamSource` プロトコル実装 — TCP クライアント方式に書き換え <!-- 2026-03-14 01:55 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `StreamSource.h/.m`: `CMIOExtensionStreamSource` プロトコル実装 — TCP クライアント方式に書き換え <!-- 2026-03-14 01:55 JST -->
   - 出力ストリーム: フォーマット公開 (1280×720 BGRA, 30fps) <!-- 2026-03-18 13:22 JST -->
   - TCP クライアント (localhost:19876) でホストからフレーム受信 <!-- 2026-03-18 13:22 JST -->
   - `initWithFormats:` で即座に TCP 接続 + フレームタイマー開始 (proxy プロセスで `startStreamAndReturnError:` が呼ばれない問題を回避) <!-- 2026-03-18 13:22 JST -->
   - 64KB read バッファ (GCD 512KB スタック制限に対応、1MB → 64KB で stack overflow 修正) <!-- 2026-03-18 13:22 JST -->
   - dispatch_source ベースの非同期 read + 1秒間隔の再接続タイマー <!-- 2026-03-18 13:22 JST -->
-- [x] `SinkStreamSource.h/.m`: Sink ストリーム実装 <!-- 2026-03-12 15:35 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `SinkStreamSource.h/.m`: Sink ストリーム実装 <!-- 2026-03-12 15:35 JST -->
   - Host アプリからのフレーム受信 (`consumeSampleBuffer`) <!-- 2026-03-18 13:22 JST -->
   - 再帰的サブスクリプションパターン (UniCamEx 方式) <!-- 2026-03-18 13:22 JST -->
   - `notifyScheduledOutputChanged` 追加 (CMIO C API フロー対応) <!-- 2026-03-18 13:22 JST -->
-- [x] `Info.plist`: Extension 設定 <!-- 2026-03-14 01:55 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `Info.plist`: Extension 設定 <!-- 2026-03-14 01:55 JST -->
   - `CFBundleExecutable`: `com.kalidokit.rust.camera-extension` (バンドルIDと一致必須) <!-- 2026-03-18 13:22 JST -->
   - `CFBundlePackageType`: `SYSX` (System Extension) <!-- 2026-03-18 13:22 JST -->
   - `CMIOExtensionMachServiceName`: `com.kalidokit.rust.camera-extension` <!-- 2026-03-18 13:22 JST -->
   - `NSSystemExtensionUsageDescription` 追加 <!-- 2026-03-18 13:22 JST -->
-- [x] `Extension.entitlements`: <!-- 2026-03-13 23:28 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `Extension.entitlements`: <!-- 2026-03-13 23:28 JST -->
   - `com.apple.security.app-sandbox`: true <!-- 2026-03-18 13:22 JST -->
   - `com.apple.security.application-groups`: `com.kalidokit.rust` <!-- 2026-03-18 13:22 JST -->
   - `com.apple.security.network.server` / `client`: true (TCP 接続用) <!-- 2026-03-18 13:22 JST -->
@@ -1617,48 +1617,48 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> { <!-- 2026-03-18 13:22 J
  <!-- 2026-03-18 13:22 JST -->
 **ファイル**: `crates/virtual-camera/src/macos.rs` <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] TCP サーバー (localhost:19876) でフレーム配信 <!-- 2026-03-13 18:07 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] TCP サーバー (localhost:19876) でフレーム配信 <!-- 2026-03-13 18:07 JST -->
   - `TcpListener::bind` + accept ループ (non-blocking listener, blocking stream) <!-- 2026-03-18 13:22 JST -->
   - 最新クライアントのみ保持 (`Arc<Mutex<Option<TcpStream>>>`) <!-- 2026-03-18 13:22 JST -->
-- [x] RGBA → BGRA 変換 (wgpu 出力 → Extension 入力) <!-- 2026-03-13 18:07 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] 1280x720 ダウンスケール (nearest-neighbor) — TCP 帯域削減 <!-- 2026-03-14 01:00 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] フレームフォーマット: `[width: u32 LE][height: u32 LE][BGRA pixel data]` <!-- 2026-03-13 18:07 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `VirtualCamera` trait の macOS 実装 <!-- 2026-03-13 18:07 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `stream.set_nonblocking(false)` — listener の non-blocking が accept された stream に継承される問題を修正 <!-- 2026-03-14 02:04 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] RGBA → BGRA 変換 (wgpu 出力 → Extension 入力) <!-- 2026-03-13 18:07 JST -->
+- [x] 1280x720 ダウンスケール (nearest-neighbor) — TCP 帯域削減 <!-- 2026-03-14 01:00 JST -->
+- [x] フレームフォーマット: `[width: u32 LE][height: u32 LE][BGRA pixel data]` <!-- 2026-03-13 18:07 JST -->
+- [x] `VirtualCamera` trait の macOS 実装 <!-- 2026-03-13 18:07 JST -->
+- [x] `stream.set_nonblocking(false)` — listener の non-blocking が accept された stream に継承される問題を修正 <!-- 2026-03-14 02:04 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 10.4: wgpu フレームキャプチャ統合 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
 **ファイル**: `crates/app/src/update.rs`, `crates/renderer/src/scene.rs` <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `Scene` にフレームキャプチャ用ステージングバッファ追加 <!-- 2026-03-12 15:46 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `Scene` にフレームキャプチャ用ステージングバッファ追加 <!-- 2026-03-12 15:46 JST -->
   - `wgpu::BufferUsages::COPY_DST | MAP_READ` <!-- 2026-03-18 13:22 JST -->
   - レンダーテクスチャからの `copy_texture_to_buffer` <!-- 2026-03-18 13:22 JST -->
-- [x] `buffer.map_async()` でフレーム読み出し <!-- 2026-03-12 15:46 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `update_frame()` から `VirtualCamera::send_frame()` 呼び出し <!-- 2026-03-12 15:46 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] 仮想カメラの有効/無効トグル (キーバインド: `C` キー) <!-- 2026-03-12 15:46 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `buffer.map_async()` でフレーム読み出し <!-- 2026-03-12 15:46 JST -->
+- [x] `update_frame()` から `VirtualCamera::send_frame()` 呼び出し <!-- 2026-03-12 15:46 JST -->
+- [x] 仮想カメラの有効/無効トグル (キーバインド: `C` キー) <!-- 2026-03-12 15:46 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 10.5: Extension ビルド & 署名設定 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] `build.rs`: `cc` crate で .m ファイルコンパイル + CoreMediaIO フレームワークリンク <!-- 2026-03-12 15:50 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `scripts/build-camera-extension.sh`: Extension バンドル (.appex) 生成スクリプト <!-- 2026-03-12 15:50 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `build.rs`: `cc` crate で .m ファイルコンパイル + CoreMediaIO フレームワークリンク <!-- 2026-03-12 15:50 JST -->
+- [x] `scripts/build-camera-extension.sh`: Extension バンドル (.appex) 生成スクリプト <!-- 2026-03-12 15:50 JST -->
   - clang で ObjC ソースをコンパイル → .appex バンドル構造を作成 <!-- 2026-03-18 13:22 JST -->
-  - バイナリ出力名を `com.kalidokit.rust.camera-extension` に修正 <!-- 2026-03-13 23:28 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] `scripts/build-app-bundle.sh`: .app バンドル生成 + Extension 埋め込み + installer バイナリ統合 <!-- 2026-03-14 01:56 JST --> <!-- 2026-03-18 13:22 JST -->
+  - バイナリ出力名を `com.kalidokit.rust.camera-extension` に修正 <!-- 2026-03-13 23:28 JST -->
+- [x] `scripts/build-app-bundle.sh`: .app バンドル生成 + Extension 埋め込み + installer バイナリ統合 <!-- 2026-03-14 01:56 JST -->
   - installer binary (`install-extension.m`) をホスト実行ファイルとして配置 <!-- 2026-03-18 13:22 JST -->
   - `host.entitlements` (`com.apple.developer.system-extension.install`) で署名 <!-- 2026-03-18 13:22 JST -->
   - ホスト・Extension 両方の Info.plist バージョン同期 <!-- 2026-03-18 13:22 JST -->
-- [x] `crates/virtual-camera/macos-extension/host.entitlements` 新規作成 <!-- 2026-03-14 01:55 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] 開発用: SIP 無効化手順ドキュメント (`docs/camera-extension-dev-setup.md`) <!-- 2026-03-12 15:50 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] 配布用: Developer ID 署名 + 公証 (Notarization) 手順ドキュメント (`docs/camera-extension-distribution.md`) <!-- 2026-03-12 15:50 JST --> <!-- 2026-03-18 13:22 JST -->
-- [x] ad-hoc 署名調査レポート (`docs/macos-virtual-camera-adhoc-signing-report.md`) <!-- 2026-03-13 20:47 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] `crates/virtual-camera/macos-extension/host.entitlements` 新規作成 <!-- 2026-03-14 01:55 JST -->
+- [x] 開発用: SIP 無効化手順ドキュメント (`docs/camera-extension-dev-setup.md`) <!-- 2026-03-12 15:50 JST -->
+- [x] 配布用: Developer ID 署名 + 公証 (Notarization) 手順ドキュメント (`docs/camera-extension-distribution.md`) <!-- 2026-03-12 15:50 JST -->
+- [x] ad-hoc 署名調査レポート (`docs/macos-virtual-camera-adhoc-signing-report.md`) <!-- 2026-03-13 20:47 JST -->
  <!-- 2026-03-18 13:22 JST -->
 ### Step 10.6: Phase 10 検証 <!-- 2026-03-18 13:22 JST -->
  <!-- 2026-03-18 13:22 JST -->
-- [x] **ビルド検証**: <!-- 2026-03-12 15:55 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] **ビルド検証**: <!-- 2026-03-12 15:55 JST -->
   - `cargo check --workspace` 成功 <!-- 2026-03-18 13:22 JST -->
   - `cargo clippy --workspace -- -D warnings` Rust エラー 0 (ObjC 未使用引数警告 3 件のみ) <!-- 2026-03-18 13:22 JST -->
   - Extension バンドル (.appex) が `scripts/build-camera-extension.sh` で生成される <!-- 2026-03-18 13:22 JST -->
-- [x] **動作確認** — SIP 完全無効化 + ad-hoc 署名で動作確認済み <!-- 2026-03-14 02:07 JST --> <!-- 2026-03-18 13:22 JST -->
+- [x] **動作確認** — SIP 完全無効化 + ad-hoc 署名で動作確認済み <!-- 2026-03-14 02:07 JST -->
   - [x] Extension のインストール・有効化 (`OSSystemExtensionManager`) — v15.0 `[activated enabled]` <!-- 2026-03-18 13:22 JST -->
   - [x] アプリ起動後、カメラデバイス一覧に「KalidoKit Virtual Camera」が表示 <!-- 2026-03-18 13:22 JST -->
   - [x] QuickTime Player (新規ムービー収録) でアバター映像が表示される <!-- 2026-03-18 13:22 JST -->
@@ -2292,11 +2292,11 @@ CursorMoved イベント:
   4. alpha = 0 → set_cursor_hittest(false) ← クリックスルー (背面ウィンドウへ)
 ```
 
-- [ ] `crates/renderer/src/scene.rs` に `pub fn last_frame_alpha_at(&self, x: u32, y: u32) -> Option<u8>` メソッド追加 — CPU 側にキャッシュしたフレームデータからピクセルの alpha 値を返す
-- [ ] `crates/renderer/src/scene.rs` に `frame_alpha_buffer: Vec<u8>` フィールド追加 — 毎フレーム描画後に GPU → CPU 読み戻し、または描画コマンド前のクリア済みバッファからアルファを保持
+- [x] `crates/renderer/src/scene.rs` に `pub fn last_frame_alpha_at(&self, x: u32, y: u32) -> Option<u8>` メソッド追加 — CPU 側にキャッシュしたフレームデータからピクセルの alpha 値を返す
+- [x] `crates/renderer/src/scene.rs` に `frame_alpha_buffer: Vec<u8>` フィールド追加 — 毎フレーム描画後に GPU → CPU 読み戻し、または描画コマンド前のクリア済みバッファからアルファを保持
   - **注意**: GPU readback は高コスト。代替案として Scene のジオメトリ (モデルの画面上バウンディングボックス) を使った簡易判定も検討
   - **推奨実装**: レンダリング結果を `render_to_capture()` (既存の仮想カメラ用) で取得し、そのバッファの alpha を参照する
-- [ ] `crates/app/src/app.rs` の `CursorMoved` ハンドラを変更 — `ModifiersChanged` による Alt キー制御を廃止し、ピクセルアルファベースの動的ヒットテストに置換
+- [x] `crates/app/src/app.rs` の `CursorMoved` ハンドラを変更 — `ModifiersChanged` による Alt キー制御を廃止し、ピクセルアルファベースの動的ヒットテストに置換
 
 ```rust
 // app.rs CursorMoved ハンドラ (変更後)
@@ -2316,9 +2316,9 @@ WindowEvent::CursorMoved { position, .. } => {
 }
 ```
 
-- [ ] `crates/app/src/app.rs` の `ModifiersChanged` ハンドラを削除または Alt 制御をフォールバックとして残す
-- [ ] `cargo check -p kalidokit-rust` が通ることを確認
-- [ ] **テスト**: マスコットモードで以下を確認。目的の動作と異なる場合は修正を繰り返す:
+- [x] `crates/app/src/app.rs` の `ModifiersChanged` ハンドラを削除または Alt 制御をフォールバックとして残す
+- [x] `cargo check -p kalidokit-rust` が通ることを確認
+- [x] **テスト**: マスコットモードで以下を確認。目的の動作と異なる場合は修正を繰り返す:
   - キャラ部分にカーソル → ドラッグ移動可能、スクロール (ズーム) 可能
   - 透明部分にカーソル → クリックが背面ウィンドウに通過
   - キャラの輪郭に沿ってスムーズに切り替わる

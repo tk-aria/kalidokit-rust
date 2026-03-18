@@ -333,6 +333,9 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         fps_timer: std::time::Instant::now(),
         mascot,
         last_cursor_pos: winit::dpi::PhysicalPosition::new(0.0, 0.0),
+        mascot_alpha_map: Vec::new(),
+        mascot_alpha_width: 0,
+        mascot_alpha_height: 0,
     })
 }
 
