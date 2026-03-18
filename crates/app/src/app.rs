@@ -28,7 +28,8 @@ impl ApplicationHandler for App {
 
         let attrs = Window::default_attributes()
             .with_title("KalidoKit Rust - VRM Motion Capture")
-            .with_inner_size(winit::dpi::LogicalSize::new(1280, 720));
+            .with_inner_size(winit::dpi::LogicalSize::new(1280, 720))
+            .with_transparent(true);
         let window = Arc::new(event_loop.create_window(attrs).unwrap());
 
         match pollster::block_on(crate::init::init_all(window)) {
@@ -87,9 +88,17 @@ impl ApplicationHandler for App {
                     state.fps_decode_counter = 0;
                     state.fps_timer = std::time::Instant::now();
 
-                    let video_info = state.video_session.as_ref().map(|s| {
-                        format!(" | video decode: {} fps ({:?})", decode_fps, s.info().backend)
-                    }).unwrap_or_default();
+                    let video_info = state
+                        .video_session
+                        .as_ref()
+                        .map(|s| {
+                            format!(
+                                " | video decode: {} fps ({:?})",
+                                decode_fps,
+                                s.info().backend
+                            )
+                        })
+                        .unwrap_or_default();
 
                     let title = format!(
                         "KalidoKit Rust | render: {:.0} fps{}",
@@ -253,7 +262,42 @@ impl ApplicationHandler for App {
                                     state.rig_dirty = true;
                                 }
                             }
+                            KeyCode::KeyM => {
+                                state.mascot.toggle(&state.render_ctx.window);
+                                if state.mascot.enabled {
+                                    state.render_ctx.set_transparent(true);
+                                    state.scene.set_clear_alpha(0.0);
+                                    state.scene.remove_background_video();
+                                } else {
+                                    state.render_ctx.set_transparent(false);
+                                    state.scene.set_clear_alpha(1.0);
+                                }
+                            }
                             _ => {}
+                        }
+                    }
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                state.last_cursor_pos = position;
+                if state.mascot.is_dragging() {
+                    state.mascot.update_drag(&state.render_ctx.window, position);
+                }
+            }
+            WindowEvent::MouseInput {
+                state: btn_state,
+                button: winit::event::MouseButton::Left,
+                ..
+            } => {
+                if state.mascot.enabled {
+                    match btn_state {
+                        ElementState::Pressed => {
+                            state
+                                .mascot
+                                .start_drag(&state.render_ctx.window, state.last_cursor_pos);
+                        }
+                        ElementState::Released => {
+                            state.mascot.end_drag();
                         }
                     }
                 }
@@ -270,6 +314,7 @@ fn save_prefs(state: &AppState) {
         stage_lighting: state.stage_lighting.clone(),
         animation_path: state.animation_path.clone(),
         background: state.background.clone(),
+        mascot_mode: state.mascot.enabled,
     }
     .save();
 }

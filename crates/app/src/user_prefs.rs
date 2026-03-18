@@ -20,6 +20,9 @@ pub struct UserPrefs {
     /// Background configuration (color and optional image).
     #[serde(default)]
     pub background: BackgroundConfig,
+    /// Whether mascot (desktop overlay) mode was active.
+    #[serde(default)]
+    pub mascot_mode: bool,
 }
 
 impl Default for UserPrefs {
@@ -30,6 +33,7 @@ impl Default for UserPrefs {
             stage_lighting: StageLighting::default(),
             animation_path: None,
             background: BackgroundConfig::default(),
+            mascot_mode: false,
         }
     }
 }
@@ -91,6 +95,7 @@ mod tests {
             stage_lighting: StageLighting::default(),
             animation_path: None,
             background: BackgroundConfig::default(),
+            mascot_mode: false,
         };
         let yaml = serde_yaml::to_string(&prefs).unwrap();
         let loaded: UserPrefs = serde_yaml::from_str(&yaml).unwrap();

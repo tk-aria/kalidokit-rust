@@ -6,6 +6,7 @@ pub struct RenderContext {
     pub surface: wgpu::Surface<'static>,
     pub config: wgpu::SurfaceConfiguration,
     pub window: Arc<winit::window::Window>,
+    adapter: wgpu::Adapter,
 }
 
 impl RenderContext {
@@ -34,7 +35,36 @@ impl RenderContext {
             surface,
             config,
             window,
+            adapter,
         })
+    }
+
+    /// Enable or disable transparent compositing on the surface.
+    ///
+    /// When `transparent` is true, the surface alpha mode is set to
+    /// `PostMultiplied` or `PreMultiplied` (whichever is supported),
+    /// allowing the desktop to show through transparent pixels.
+    pub fn set_transparent(&mut self, transparent: bool) {
+        if transparent {
+            let caps = self.surface.get_capabilities(&self.adapter);
+            self.config.alpha_mode = if caps
+                .alpha_modes
+                .contains(&wgpu::CompositeAlphaMode::PostMultiplied)
+            {
+                wgpu::CompositeAlphaMode::PostMultiplied
+            } else if caps
+                .alpha_modes
+                .contains(&wgpu::CompositeAlphaMode::PreMultiplied)
+            {
+                wgpu::CompositeAlphaMode::PreMultiplied
+            } else {
+                log::warn!("No transparent alpha mode available, using Auto");
+                wgpu::CompositeAlphaMode::Auto
+            };
+        } else {
+            self.config.alpha_mode = wgpu::CompositeAlphaMode::Auto;
+        }
+        self.surface.configure(&self.device, &self.config);
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {

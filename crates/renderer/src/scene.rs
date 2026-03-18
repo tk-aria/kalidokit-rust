@@ -517,6 +517,12 @@ impl Scene {
         self.clear_color = color;
     }
 
+    /// Set the alpha component of the background clear color.
+    /// Use 0.0 for transparent (mascot mode) and 1.0 for opaque (normal mode).
+    pub fn set_clear_alpha(&mut self, alpha: f64) {
+        self.clear_color.a = alpha;
+    }
+
     /// Set a background from an image file path.
     /// Supports static images (PNG/JPEG) and animated GIFs.
     /// Pass None to remove the background image.

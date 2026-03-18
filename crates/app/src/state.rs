@@ -9,6 +9,7 @@ use tracker::HolisticResult;
 use vrm::model::VrmModel;
 
 use crate::auto_blink::{AutoBlink, BlinkMode};
+use crate::mascot::MascotState;
 use crate::rig_config::RigConfig;
 use crate::tracker_thread::TrackerThread;
 use vrm::animation_player::AnimationPlayer;
@@ -61,6 +62,10 @@ pub struct AppState {
     pub fps_decode_counter: u32,
     /// FPS counter: timestamp of last reset.
     pub fps_timer: Instant,
+    /// Desktop mascot overlay state.
+    pub mascot: MascotState,
+    /// Last known cursor position (physical pixels), used for mascot drag.
+    pub last_cursor_pos: winit::dpi::PhysicalPosition<f64>,
 }
 
 /// Current rig solver results (face/pose/hand).

@@ -79,7 +79,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
     check_model_files()?;
 
     // 1. wgpu initialization
-    let render_ctx = RenderContext::new(window).await?;
+    let mut render_ctx = RenderContext::new(window).await?;
 
     // 2. Load VRM model
     let vrm_model = vrm::loader::load(DEFAULT_VRM_PATH)
@@ -293,6 +293,14 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         .unwrap_or(DEFAULT_ANIMATION_PATH);
     let idle_animation = load_idle_animation(&vrm_model, anim_path);
 
+    // Restore mascot mode if it was active in previous session
+    let mut mascot = crate::mascot::MascotState::new();
+    if prefs.mascot_mode {
+        mascot.enter(&render_ctx.window);
+        render_ctx.set_transparent(true);
+        scene.set_clear_alpha(0.0);
+    }
+
     Ok(AppState {
         render_ctx,
         scene,
@@ -322,6 +330,8 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         fps_counter: 0,
         fps_decode_counter: 0,
         fps_timer: std::time::Instant::now(),
+        mascot,
+        last_cursor_pos: winit::dpi::PhysicalPosition::new(0.0, 0.0),
     })
 }
 

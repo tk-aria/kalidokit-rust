@@ -1,6 +1,7 @@
 mod app;
 mod auto_blink;
 mod init;
+mod mascot;
 mod rig_config;
 mod state;
 mod tracker_thread;
