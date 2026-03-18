@@ -2323,3 +2323,70 @@ WindowEvent::CursorMoved { position, .. } => {
   - 透明部分にカーソル → クリックが背面ウィンドウに通過
   - キャラの輪郭に沿ってスムーズに切り替わる
   - パフォーマンスへの影響が最小限 (alpha チェックは O(1) のバッファ参照)
+
+---
+
+## Phase 13: ten-vad Rust バインディングクレート
+
+**目的**: TEN VAD (Voice Activity Detector) のプリビルトバイナリを Rust から利用可能にする独立ライブラリクレート
+
+**設計書**: `docs/design/ten-vad-binding-design.md`
+
+**ビルド方針**: プリビルトバイナリのみ使用。C/C++ ソースのコンパイルは行わない。
+
+### Step 13.1: クレート scaffold + git submodule
+
+- [ ] `crates/ten-vad/` ディレクトリ作成
+- [ ] ルート `Cargo.toml` の `members` に `"crates/ten-vad"` を追加
+- [ ] `git submodule add https://github.com/TEN-framework/ten-vad crates/ten-vad/vendor`
+- [ ] `crates/ten-vad/Cargo.toml` を作成 (設計書 §5)
+- [ ] `crates/ten-vad/xcframework/` を `.gitignore` に追加
+
+### Step 13.2: build.rs
+
+- [ ] `crates/ten-vad/build.rs` を作成 (設計書 §6 全文)
+  - Linux: `link_linux()` — libten_vad.so をリンク
+  - Windows: `link_windows()` — ten_vad.lib をリンク
+  - macOS: `link_macos()` — .framework → .xcframework 変換 + リンク
+  - iOS: `link_ios()` — .framework → .xcframework 変換 (device + sim) + リンク
+  - Android: `link_android()` — libten_vad.so をリンク
+  - `create_xcframework()` ヘルパー — `xcodebuild -create-xcframework` 実行
+  - `find_slice()` ヘルパー — xcframework 内の slice 検索
+- [ ] `cargo check -p ten-vad` が通ることを確認 (macOS)
+
+### Step 13.3: 手書き FFI
+
+- [ ] `crates/ten-vad/src/ffi.rs` を作成 (設計書 §7 全文)
+  - `TenVadHandle` 型定義
+  - `ten_vad_create()` FFI 宣言
+  - `ten_vad_process()` FFI 宣言
+  - `ten_vad_destroy()` FFI 宣言
+  - `ten_vad_get_version()` FFI 宣言
+- [ ] `cargo check -p ten-vad` が通ることを確認
+
+### Step 13.4: 安全な Rust API
+
+- [ ] `crates/ten-vad/src/lib.rs` を作成 (設計書 §8 全文)
+  - `HopSize` enum (Samples160, Samples256)
+  - `VadResult` struct (probability, is_voice)
+  - `VadError` enum (CreateFailed, ProcessFailed, InvalidFrameSize, InvalidThreshold)
+  - `TenVad` struct (new, process, hop_size, version)
+  - `Drop` 実装 (ten_vad_destroy)
+  - `unsafe impl Send`
+  - 6 テスト (threshold 検証, frame size, silence, version, hop_size)
+- [ ] `cargo check -p ten-vad` が通ることを確認
+
+### Step 13.5: Example
+
+- [ ] `crates/ten-vad/examples/detect_vad.rs` を作成 (設計書 §9 全文)
+  - WAV 読み込み (hound)
+  - フレーム分割 → VAD 検出 → voice フレーム表示
+  - 使い方: `cargo run -p ten-vad --example detect_vad -- input.wav`
+
+### Step 13.6: テスト + 動作確認
+
+- [ ] `cargo test -p ten-vad` — テスト pass
+- [ ] `cargo clippy -p ten-vad -- -D warnings` — 警告なし
+- [ ] `cargo fmt -p ten-vad --check` — フォーマット OK
+- [ ] `cargo doc -p ten-vad --no-deps` — 警告なし
+- [ ] **動作確認**: macOS で 16kHz WAV ファイルに対して `detect_vad` example を実行し、voice/non-voice の検出結果が妥当であることを確認する。目的の動作と異なる場合は修正を繰り返す
