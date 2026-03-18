@@ -28,30 +28,77 @@ const char *ten_vad_get_version(void);
 | Linux | `lib/Linux/x64/libten_vad.so` | x86_64 |
 | Windows | `lib/Windows/x64/ten_vad.dll` + `ten_vad.lib` | x86_64 |
 | Windows | `lib/Windows/x86/ten_vad.dll` + `ten_vad.lib` | x86 |
-| macOS | `lib/macOS/ten_vad.framework/` | arm64 + x86_64 (universal) |
+| macOS | `lib/macOS/ten_vad.xcframework/` | arm64 + x86_64 (universal) |
 | Android | `lib/Android/arm64-v8a/libten_vad.so` | arm64 |
 | Android | `lib/Android/armeabi-v7a/libten_vad.so` | armv7 |
-| iOS | `lib/iOS/ten_vad.framework/` | arm64 |
+| iOS | `lib/iOS/ten_vad.xcframework/` | arm64 (device) + x86_64 (simulator) |
+
+### .xcframework について
+
+上流の TEN VAD は `.framework` 形式で提供しているが、本クレートでは `.xcframework` に変換して使用する。
+
+**理由:**
+- `.xcframework` は Apple 推奨の配布形式 (Xcode 11+)
+- 複数アーキテクチャ・プラットフォーム (device + simulator) を1パッケージに格納可能
+- iOS: arm64 (device) と x86_64 (simulator) を同一 xcframework で管理
+- macOS: arm64 と x86_64 を同一 xcframework で管理
+- lipo universal binary の「同一アーキテクチャ重複」問題を回避
+
+**変換スクリプト (`scripts/build_xcframeworks.sh`):**
+```bash
+#!/bin/bash
+# 上流 .framework → .xcframework 変換
+
+# macOS: 元の framework がすでに universal (arm64 + x86_64) の場合そのまま
+xcodebuild -create-xcframework \
+  -framework lib/macOS/ten_vad.framework \
+  -output lib/macOS/ten_vad.xcframework
+
+# iOS: device (arm64) と simulator (x86_64) を分離して結合
+# ※上流が arm64 のみ提供の場合、simulator 用は別途ビルドまたは
+#   ソースからクロスコンパイルが必要
+xcodebuild -create-xcframework \
+  -framework lib/iOS/ten_vad.framework \
+  -framework lib/iOS-simulator/ten_vad.framework \
+  -output lib/iOS/ten_vad.xcframework
+```
+
+**iOS x86_64 (Simulator) バイナリの取得方法:**
+1. 上流が提供していれば使用
+2. 提供していなければ `src/` の C++ ソースから `x86_64-apple-ios-simulator` ターゲットでクロスコンパイル
+3. いずれも不可の場合、iOS simulator 対応は feature flag でオプション化
 
 ## 4. クレート構成
 
 ```
 crates/ten-vad/
 ├── Cargo.toml
-├── build.rs              # プリビルトライブラリのリンク設定
+├── build.rs                    # プリビルトライブラリのリンク設定
 ├── src/
-│   ├── lib.rs            # 安全な Rust API (TenVad struct)
-│   └── ffi.rs            # bindgen 生成 or 手書き FFI 宣言
-├── ten-vad-vendor/       # git submodule or ダウンロードスクリプト
+│   ├── lib.rs                  # 安全な Rust API (TenVad struct)
+│   └── ffi.rs                  # 手書き FFI 宣言 (4 関数)
+├── ten-vad-vendor/             # git submodule or ダウンロードスクリプト
 │   ├── include/
 │   │   └── ten_vad.h
 │   └── lib/
 │       ├── Linux/x64/libten_vad.so
-│       ├── Windows/x64/ten_vad.dll
-│       ├── macOS/ten_vad.framework/
-│       └── ...
+│       ├── Windows/x64/ten_vad.dll + ten_vad.lib
+│       ├── Windows/x86/ten_vad.dll + ten_vad.lib
+│       ├── macOS/ten_vad.xcframework/
+│       │   ├── Info.plist
+│       │   ├── macos-arm64_x86_64/ten_vad.framework/
+│       │   └── (universal binary)
+│       ├── iOS/ten_vad.xcframework/
+│       │   ├── Info.plist
+│       │   ├── ios-arm64/ten_vad.framework/
+│       │   └── ios-arm64_x86_64-simulator/ten_vad.framework/
+│       └── Android/
+│           ├── arm64-v8a/libten_vad.so
+│           └── armeabi-v7a/libten_vad.so
+├── scripts/
+│   └── build_xcframeworks.sh   # .framework → .xcframework 変換
 └── examples/
-    └── detect_vad.rs     # WAV ファイルから VAD 検出
+    └── detect_vad.rs           # WAV ファイルから VAD 検出
 ```
 
 ## 5. アプローチ: bindgen vs 手書き FFI
@@ -177,42 +224,74 @@ impl Drop for TenVad {
 unsafe impl Send for TenVad {}
 ```
 
-## 7. build.rs — プリビルトライブラリリンク
+## 7. build.rs — プリビルトライブラリリンク (.xcframework 対応)
 
 ```rust
 // build.rs
 fn main() {
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let vendor = format!("{}/ten-vad-vendor/lib", manifest_dir);
 
-    let lib_dir = match (target_os.as_str(), target_arch.as_str()) {
-        ("linux", "x86_64") => format!("{}/ten-vad-vendor/lib/Linux/x64", manifest_dir),
-        ("windows", "x86_64") => format!("{}/ten-vad-vendor/lib/Windows/x64", manifest_dir),
-        ("windows", "x86") => format!("{}/ten-vad-vendor/lib/Windows/x86", manifest_dir),
-        ("macos", _) => format!("{}/ten-vad-vendor/lib/macOS", manifest_dir),
-        ("android", "aarch64") => format!("{}/ten-vad-vendor/lib/Android/arm64-v8a", manifest_dir),
-        ("android", "arm") => format!("{}/ten-vad-vendor/lib/Android/armeabi-v7a", manifest_dir),
-        ("ios", "aarch64") => format!("{}/ten-vad-vendor/lib/iOS", manifest_dir),
-        _ => panic!("Unsupported target: {}-{}", target_os, target_arch),
-    };
+    match (target_os.as_str(), target_arch.as_str()) {
+        // --- Linux ---
+        ("linux", "x86_64") => {
+            println!("cargo:rustc-link-search=native={}/Linux/x64", vendor);
+            println!("cargo:rustc-link-lib=dylib=ten_vad");
+        }
 
-    match target_os.as_str() {
-        "macos" | "ios" => {
-            println!("cargo:rustc-link-search=framework={}", lib_dir);
+        // --- Windows ---
+        ("windows", arch) => {
+            let dir = if arch == "x86_64" { "x64" } else { "x86" };
+            println!("cargo:rustc-link-search=native={}/Windows/{}", vendor, dir);
+            println!("cargo:rustc-link-lib=dylib=ten_vad");
+        }
+
+        // --- macOS (.xcframework) ---
+        ("macos", _) => {
+            // xcframework 内の macOS 用 framework を探す
+            // 構造: ten_vad.xcframework/macos-arm64_x86_64/ten_vad.framework/
+            let fw_dir = format!("{}/macOS/ten_vad.xcframework/macos-arm64_x86_64", vendor);
+            println!("cargo:rustc-link-search=framework={}", fw_dir);
             println!("cargo:rustc-link-lib=framework=ten_vad");
         }
-        "windows" => {
-            println!("cargo:rustc-link-search=native={}", lib_dir);
+
+        // --- iOS (.xcframework) ---
+        ("ios", _) => {
+            // iOS simulator は target_env="sim" or target triple に "sim" が含まれる
+            let is_simulator = target_env.contains("sim")
+                || std::env::var("TARGET").unwrap_or_default().contains("sim");
+            let slice = if is_simulator {
+                "ios-arm64_x86_64-simulator"
+            } else {
+                "ios-arm64"
+            };
+            let fw_dir = format!("{}/iOS/ten_vad.xcframework/{}", vendor, slice);
+            println!("cargo:rustc-link-search=framework={}", fw_dir);
+            println!("cargo:rustc-link-lib=framework=ten_vad");
+        }
+
+        // --- Android ---
+        ("android", "aarch64") => {
+            println!("cargo:rustc-link-search=native={}/Android/arm64-v8a", vendor);
             println!("cargo:rustc-link-lib=dylib=ten_vad");
         }
-        _ => {
-            println!("cargo:rustc-link-search=native={}", lib_dir);
+        ("android", "arm") => {
+            println!("cargo:rustc-link-search=native={}/Android/armeabi-v7a", vendor);
             println!("cargo:rustc-link-lib=dylib=ten_vad");
         }
+
+        _ => panic!("Unsupported target: {}-{}", target_os, target_arch),
     }
 }
 ```
+
+**xcframework リンクのポイント:**
+- `.xcframework` は直接リンクできない。内部の platform slice (e.g. `macos-arm64_x86_64/ten_vad.framework/`) を `framework` search path に指定する
+- iOS: device (`ios-arm64`) と simulator (`ios-arm64_x86_64-simulator`) を `TARGET` 環境変数で判定
+- macOS: universal binary は1つの slice に arm64 + x86_64 両方が入っている
 
 ## 8. 実装フェーズ
 
