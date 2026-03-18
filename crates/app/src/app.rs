@@ -273,9 +273,25 @@ impl ApplicationHandler for App {
                                     state.scene.set_clear_alpha(1.0);
                                 }
                             }
+                            KeyCode::KeyF => {
+                                if state.mascot.enabled {
+                                    state.mascot.toggle_always_on_top(&state.render_ctx.window);
+                                    log::info!("Always on top: {}", state.mascot.always_on_top);
+                                }
+                            }
                             _ => {}
                         }
                     }
+                }
+            }
+            WindowEvent::ModifiersChanged(modifiers) => {
+                // In mascot mode, hold Alt/Option to temporarily disable click-through
+                // so the user can drag the window. Release Alt to re-enable click-through.
+                if state.mascot.enabled {
+                    let alt_pressed = modifiers.state().alt_key();
+                    state
+                        .mascot
+                        .set_click_through(&state.render_ctx.window, !alt_pressed);
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
@@ -315,6 +331,7 @@ fn save_prefs(state: &AppState) {
         animation_path: state.animation_path.clone(),
         background: state.background.clone(),
         mascot_mode: state.mascot.enabled,
+        always_on_top: state.mascot.always_on_top,
     }
     .save();
 }

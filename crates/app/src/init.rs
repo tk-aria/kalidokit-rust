@@ -295,8 +295,9 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
 
     // Restore mascot mode if it was active in previous session
     let mut mascot = crate::mascot::MascotState::new();
+    mascot.always_on_top = prefs.always_on_top;
     if prefs.mascot_mode {
-        mascot.enter(&render_ctx.window);
+        mascot.enter(&render_ctx.window, prefs.always_on_top);
         render_ctx.set_transparent(true);
         scene.set_clear_alpha(0.0);
     }

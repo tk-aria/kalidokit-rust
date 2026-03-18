@@ -5,6 +5,8 @@ use winit::window::{Window, WindowLevel};
 pub struct MascotState {
     /// Whether mascot (transparent overlay) mode is active.
     pub enabled: bool,
+    /// Whether the window stays above all other windows.
+    pub always_on_top: bool,
     /// Whether the user is currently dragging the window.
     dragging: bool,
     /// Cursor position at drag start (physical pixels).
@@ -27,6 +29,7 @@ impl MascotState {
     pub fn new() -> Self {
         Self {
             enabled: false,
+            always_on_top: true,
             dragging: false,
             drag_start_cursor: PhysicalPosition::new(0.0, 0.0),
             drag_start_window: PhysicalPosition::new(0, 0),
@@ -35,18 +38,37 @@ impl MascotState {
         }
     }
 
-    /// Enter mascot mode: no decorations, always on top, smaller size.
-    pub fn enter(&mut self, window: &Window) {
+    /// Enter mascot mode: no decorations, always on top, smaller size, click-through.
+    pub fn enter(&mut self, window: &Window, always_on_top: bool) {
         let size = window.inner_size();
         self.normal_size = LogicalSize::new(size.width, size.height);
+        self.always_on_top = always_on_top;
         window.set_decorations(false);
-        window.set_window_level(WindowLevel::AlwaysOnTop);
+        let level = if always_on_top {
+            WindowLevel::AlwaysOnTop
+        } else {
+            WindowLevel::Normal
+        };
+        window.set_window_level(level);
         let _ = window.request_inner_size(self.mascot_size);
+
+        // Enable click-through: mouse events pass through to windows behind.
+        // Hold Alt/Option to temporarily disable click-through for drag.
+        let _ = window.set_cursor_hittest(false);
+
+        // Disable window shadow to prevent ghost artifacts when moving.
+        #[cfg(target_os = "macos")]
+        {
+            use winit::platform::macos::WindowExtMacOS;
+            window.set_has_shadow(false);
+        }
+
         self.enabled = true;
         log::info!(
-            "Mascot mode: ON ({}x{})",
+            "Mascot mode: ON ({}x{}, always_on_top={})",
             self.mascot_size.width,
-            self.mascot_size.height
+            self.mascot_size.height,
+            always_on_top,
         );
     }
 
@@ -55,6 +77,17 @@ impl MascotState {
         window.set_decorations(true);
         window.set_window_level(WindowLevel::Normal);
         let _ = window.request_inner_size(self.normal_size);
+
+        // Restore normal cursor hit-testing.
+        let _ = window.set_cursor_hittest(true);
+
+        // Re-enable window shadow.
+        #[cfg(target_os = "macos")]
+        {
+            use winit::platform::macos::WindowExtMacOS;
+            window.set_has_shadow(true);
+        }
+
         self.enabled = false;
         self.dragging = false;
         log::info!("Mascot mode: OFF");
@@ -65,8 +98,31 @@ impl MascotState {
         if self.enabled {
             self.leave(window);
         } else {
-            self.enter(window);
+            let on_top = self.always_on_top;
+            self.enter(window, on_top);
         }
+    }
+
+    /// Toggle always-on-top state while in mascot mode.
+    pub fn toggle_always_on_top(&mut self, window: &Window) {
+        self.always_on_top = !self.always_on_top;
+        if self.enabled {
+            let level = if self.always_on_top {
+                WindowLevel::AlwaysOnTop
+            } else {
+                WindowLevel::Normal
+            };
+            window.set_window_level(level);
+        }
+    }
+
+    /// Set click-through state. When `pass_through` is true, mouse events
+    /// pass through the window. When false, the window captures mouse events.
+    pub fn set_click_through(&self, window: &Window, pass_through: bool) {
+        if !self.enabled {
+            return;
+        }
+        let _ = window.set_cursor_hittest(!pass_through);
     }
 
     /// Begin window drag on left mouse button press (only in mascot mode).

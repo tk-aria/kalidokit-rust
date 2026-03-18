@@ -449,8 +449,10 @@ impl Scene {
         };
         // Main 3D scene pass
         {
-            let clear_or_load = if has_background {
-                wgpu::LoadOp::Load // preserve background image
+            // When the clear color is transparent (alpha < 1.0, i.e. mascot mode),
+            // always clear to prevent stale/ghost pixels from previous frames.
+            let clear_or_load = if has_background && self.clear_color.a >= 1.0 {
+                wgpu::LoadOp::Load // preserve background image (opaque mode only)
             } else {
                 wgpu::LoadOp::Clear(self.clear_color)
             };

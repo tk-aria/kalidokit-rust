@@ -65,6 +65,9 @@ impl RenderContext {
             self.config.alpha_mode = wgpu::CompositeAlphaMode::Auto;
         }
         self.surface.configure(&self.device, &self.config);
+        // Force GPU to finish pending work before the new config takes effect.
+        // This prevents ghost artifacts when switching to/from transparent mode.
+        self.device.poll(wgpu::Maintain::Wait);
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
