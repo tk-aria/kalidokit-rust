@@ -29,7 +29,7 @@ impl MascotState {
     pub fn new() -> Self {
         Self {
             enabled: false,
-            always_on_top: true,
+            always_on_top: false,
             dragging: false,
             drag_start_cursor: PhysicalPosition::new(0.0, 0.0),
             drag_start_window: PhysicalPosition::new(0, 0),

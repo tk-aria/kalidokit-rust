@@ -24,12 +24,8 @@ pub struct UserPrefs {
     #[serde(default)]
     pub mascot_mode: bool,
     /// Whether the mascot window stays above all other windows.
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub always_on_top: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 impl Default for UserPrefs {
@@ -41,7 +37,7 @@ impl Default for UserPrefs {
             animation_path: None,
             background: BackgroundConfig::default(),
             mascot_mode: false,
-            always_on_top: true,
+            always_on_top: false,
         }
     }
 }
@@ -104,7 +100,7 @@ mod tests {
             animation_path: None,
             background: BackgroundConfig::default(),
             mascot_mode: false,
-            always_on_top: true,
+            always_on_top: false,
         };
         let yaml = serde_yaml::to_string(&prefs).unwrap();
         let loaded: UserPrefs = serde_yaml::from_str(&yaml).unwrap();
