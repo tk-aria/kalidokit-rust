@@ -2515,3 +2515,260 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - [ ] `cargo clippy -p speech-capture -- -D warnings` — 警告なし
 - [ ] `cargo fmt -p speech-capture --check` — フォーマット OK
 - [ ] **動作確認**: `speech_events` example を実行し、マイクに向かって話しかけて VoiceStart/VoiceEnd イベントが正しく検出されることを確認。無音時は VoiceEnd が silence_timeout_ms 後に発火すること。短い雑音 (< min_speech_duration_ms) が無視されること。目的の動作と異なる場合は修正を繰り返す
+
+---
+
+## Phase 16: speech-capture に Whisper STT 統合 (streaming + batch)
+
+**目的**: speech-capture クレートに whisper-rs (whisper.cpp) を統合し、VAD で検出した音声区間をリアルタイム文字起こしする。ストリーミング (逐次) と一括処理の両方をライブラリ利用者が選択可能にする。
+
+**依存関係**: Phase 15 (speech-capture) が完了していること
+
+### 設計方針
+
+ライブラリ利用者は `SttMode` enum で動作モードを選択する:
+
+```rust
+pub enum SttMode {
+    /// STT 無効 — VoiceEnd に audio のみ返す (既存動作)
+    Disabled,
+    /// 一括処理 — VoiceEnd 時に全音声を一度に Whisper で文字起こし
+    Batch,
+    /// ストリーミング — Speaking 中に interim_interval_ms ごとに中間結果を返し、
+    /// VoiceEnd 時に確定結果を返す
+    Streaming { interim_interval_ms: u32 },
+}
+```
+
+### SpeechEvent の拡張
+
+```rust
+pub enum SpeechEvent {
+    VoiceStart { timestamp: Duration },
+
+    /// ストリーミング中間結果 (SttMode::Streaming 時のみ発火)
+    TranscriptInterim {
+        timestamp: Duration,
+        text: String,
+    },
+
+    /// 発話終了
+    VoiceEnd {
+        timestamp: Duration,
+        audio: Vec<i16>,
+        duration: Duration,
+        /// 確定テキスト (SttMode::Batch or Streaming 時のみ Some)
+        transcript: Option<String>,
+    },
+
+    VadStatus { timestamp: Duration, probability: f32, is_voice: bool },
+}
+```
+
+### データフロー
+
+```
+SttMode::Disabled (既存動作):
+  マイク → VAD → VoiceStart / VoiceEnd(audio)
+
+SttMode::Batch (一括処理):
+  マイク → VAD → VoiceStart → (audio 蓄積) → VoiceEnd
+                                                 ↓
+                                           Whisper.full(全audio)
+                                                 ↓
+                                     VoiceEnd { transcript: Some("...") }
+
+SttMode::Streaming (逐次処理):
+  マイク → VAD → VoiceStart → Speaking 中...
+                    ↓ (2秒ごと)
+              Whisper.full(蓄積audio)
+                    ↓
+              TranscriptInterim { text: "途中..." }
+                    ↓ (VoiceEnd)
+              Whisper.full(全audio)
+                    ↓
+              VoiceEnd { transcript: Some("確定テキスト") }
+```
+
+### Step 16.1: Cargo.toml に whisper-rs 依存追加
+
+- [ ] `crates/speech-capture/Cargo.toml` に `whisper-rs = { version = "0.16", optional = true }` 追加
+- [ ] feature flag: `stt = ["dep:whisper-rs"]`
+- [ ] `cargo check -p speech-capture` が通ることを確認 (stt feature なしで)
+- [ ] `cargo check -p speech-capture --features stt` が通ることを確認
+
+### Step 16.2: SttConfig + SttMode 型定義
+
+- [ ] `src/stt.rs` を作成 (cfg(feature = "stt") gated)
+
+```rust
+#[cfg(feature = "stt")]
+pub struct SttConfig {
+    /// Whisper モデルファイルパス (ggml-base.bin 等)
+    pub model_path: String,
+    /// 言語指定 (None = 自動検出, Some("ja") = 日本語)
+    pub language: Option<String>,
+    /// STT 動作モード
+    pub mode: SttMode,
+}
+
+pub enum SttMode {
+    Disabled,
+    Batch,
+    Streaming { interim_interval_ms: u32 },
+}
+```
+
+- [ ] `SpeechConfig` に `stt: Option<SttConfig>` フィールドを追加 (cfg(feature = "stt"))
+- [ ] `SpeechEvent` に `TranscriptInterim` バリアントと `VoiceEnd.transcript` フィールドを追加
+- [ ] `cargo check -p speech-capture --features stt` が通ることを確認
+
+### Step 16.3: Whisper ラッパー実装
+
+- [ ] `src/whisper_engine.rs` を作成 (cfg(feature = "stt") gated)
+
+```rust
+/// Whisper STT エンジンラッパー
+pub struct WhisperEngine {
+    state: whisper_rs::WhisperState<'static>,
+    language: Option<String>,
+}
+
+impl WhisperEngine {
+    pub fn new(model_path: &str, language: Option<String>) -> Result<Self, SpeechError>;
+
+    /// 一括文字起こし: f32 16kHz mono audio → テキスト
+    pub fn transcribe(&mut self, audio_i16: &[i16]) -> Result<String, SpeechError>;
+
+    /// ストリーミング文字起こし: セグメントコールバック付き
+    pub fn transcribe_with_callback<F>(
+        &mut self,
+        audio_i16: &[i16],
+        on_segment: F,
+    ) -> Result<String, SpeechError>
+    where
+        F: FnMut(&str);  // 新しいセグメントが認識される度に呼ばれる
+}
+```
+
+- [ ] i16 → f32 変換 (`/ 32768.0`) を内部で実行
+- [ ] `FullParams` に language, `new_segment_callback` を設定
+- [ ] `cargo check -p speech-capture --features stt` が通ることを確認
+
+### Step 16.4: SpeechCapture の VAD ワーカーに STT 統合
+
+- [ ] `src/lib.rs` の `vad_worker()` を拡張
+  - `SttMode::Disabled`: 既存動作 (変更なし)
+  - `SttMode::Batch`: VoiceEnd 時に `whisper_engine.transcribe(audio)` → transcript に設定
+  - `SttMode::Streaming`: Speaking 中に `interim_interval_ms` ごとに蓄積音声を `transcribe()` → `TranscriptInterim` イベント発火。VoiceEnd 時に全音声で最終 `transcribe()` → transcript に設定
+
+```rust
+// vad_worker 内 (Streaming モード)
+if speaking && elapsed_since_last_interim >= interim_interval {
+    let text = whisper_engine.transcribe(&accumulated_audio)?;
+    callback(SpeechEvent::TranscriptInterim { timestamp, text });
+    elapsed_since_last_interim = Duration::ZERO;
+}
+```
+
+- [ ] `cargo check -p speech-capture --features stt` が通ることを確認
+
+### Step 16.5: Example — streaming_stt.rs
+
+- [ ] `examples/streaming_stt.rs` を作成
+
+```rust
+// cargo run -p speech-capture --features stt --example streaming_stt -- models/ggml-base.bin
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let model_path = std::env::args().nth(1).unwrap_or("models/ggml-base.bin".into());
+
+    let config = speech_capture::SpeechConfig {
+        stt: Some(speech_capture::SttConfig {
+            model_path,
+            language: Some("ja".into()),
+            mode: speech_capture::SttMode::Streaming { interim_interval_ms: 2000 },
+        }),
+        ..Default::default()
+    };
+
+    let mut sc = speech_capture::SpeechCapture::new(config)?;
+    sc.start(|event| match event {
+        speech_capture::SpeechEvent::TranscriptInterim { text, .. } => {
+            print!("\r[interim] {text}");
+            std::io::Write::flush(&mut std::io::stdout()).ok();
+        }
+        speech_capture::SpeechEvent::VoiceEnd { transcript, duration, .. } => {
+            println!("\n[final] ({:.1}s) {}", duration.as_secs_f64(),
+                     transcript.as_deref().unwrap_or("(no transcript)"));
+        }
+        _ => {}
+    })?;
+
+    loop { std::thread::sleep(std::time::Duration::from_secs(1)); }
+}
+```
+
+### Step 16.6: Example — batch_stt.rs
+
+- [ ] `examples/batch_stt.rs` を作成
+
+```rust
+// cargo run -p speech-capture --features stt --example batch_stt -- models/ggml-base.bin
+// 発話終了後に一括で文字起こし
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let model_path = std::env::args().nth(1).unwrap_or("models/ggml-base.bin".into());
+
+    let config = speech_capture::SpeechConfig {
+        stt: Some(speech_capture::SttConfig {
+            model_path,
+            language: Some("ja".into()),
+            mode: speech_capture::SttMode::Batch,
+        }),
+        ..Default::default()
+    };
+
+    let mut sc = speech_capture::SpeechCapture::new(config)?;
+    sc.start(|event| match event {
+        speech_capture::SpeechEvent::VoiceStart { timestamp } => {
+            println!("[{:.1}s] Listening...", timestamp.as_secs_f64());
+        }
+        speech_capture::SpeechEvent::VoiceEnd { transcript, duration, .. } => {
+            println!("[{:.1}s] {}", duration.as_secs_f64(),
+                     transcript.as_deref().unwrap_or("(no transcript)"));
+        }
+        _ => {}
+    })?;
+
+    loop { std::thread::sleep(std::time::Duration::from_secs(1)); }
+}
+```
+
+### Step 16.7: テスト
+
+- [ ] **正常系テスト (stt feature なし)**:
+  - 既存の speech_events テストが引き続き pass
+  - `SpeechEvent::VoiceEnd { transcript: None }` が返る
+- [ ] **正常系テスト (stt feature あり)**:
+  - `WhisperEngine::new()` でモデルロード成功
+  - `transcribe()` が非空テキストを返す (テスト用 WAV)
+  - `SttMode::Batch` → VoiceEnd に transcript が含まれる
+  - `SttMode::Streaming` → TranscriptInterim が発火 + VoiceEnd に確定 transcript
+- [ ] **異常系テスト**:
+  - モデルファイル不在 → `SpeechError`
+  - 極短音声 (< 0.1s) → 空テキスト or エラーなし
+  - stt feature なしで SttConfig 指定 → コンパイルエラー (型が存在しない)
+
+### Step 16.8: 検証
+
+- [ ] `cargo test -p speech-capture` — テスト pass (stt feature なし)
+- [ ] `cargo test -p speech-capture --features stt` — テスト pass
+- [ ] `cargo clippy -p speech-capture --features stt -- -D warnings` — 警告なし
+- [ ] `cargo fmt -p speech-capture --check` — フォーマット OK
+- [ ] **動作確認 (Streaming)**: `streaming_stt` example を実行し、マイクに向かって話しかけて:
+  - 話している途中で `[interim]` テキストがリアルタイム表示される
+  - 話し終わると `[final]` 確定テキストが表示される
+  - 日本語が正しく認識される
+  - 目的の動作と異なる場合は修正を繰り返す
+- [ ] **動作確認 (Batch)**: `batch_stt` example を実行し:
+  - 話し終わった後に一括でテキストが表示される
+  - interim イベントは発火しない
