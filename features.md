@@ -2390,3 +2390,128 @@ WindowEvent::CursorMoved { position, .. } => {
 - [x] `cargo fmt -p ten-vad --check` — フォーマット OK
 - [x] `cargo doc -p ten-vad --no-deps` — 警告なし
 - [x] **動作確認**: macOS で 16kHz WAV ファイルに対して `detect_vad` example を実行し、voice/non-voice の検出結果が妥当であることを確認する。目的の動作と異なる場合は修正を繰り返す
+
+---
+
+## Phase 14: audio-capture クレート (マイク音声キャプチャ)
+
+**目的**: OS マイクから 16kHz mono i16 のオーディオストリームを提供する独立ライブラリクレート
+
+**設計書**: `docs/design/audio-crate-architecture.md`
+
+### Step 14.1: クレート scaffold
+
+- [ ] `crates/audio-capture/` ディレクトリ作成
+- [ ] ルート `Cargo.toml` の `members` に追加
+- [ ] `Cargo.toml` 作成 (依存: `cpal = "0.17"`, `log = workspace`)
+- [ ] `cargo check -p audio-capture` が通ることを確認
+
+### Step 14.2: AudioFrame + AudioConfig 型定義
+
+- [ ] `src/lib.rs` に `AudioFrame`, `AudioConfig`, `AudioError` を定義
+- [ ] `AudioFrame { samples: Vec<i16>, sample_rate: u32, timestamp: Duration }`
+- [ ] `AudioConfig { device_name: Option<String>, frame_size: usize }`
+- [ ] `AudioError` enum (DeviceNotFound, StreamError, FormatError)
+- [ ] `cargo check -p audio-capture` が通ることを確認
+
+### Step 14.3: リサンプリング + フォーマット変換
+
+- [ ] `src/resample.rs` を作成
+  - `downmix_to_mono(data: &[f32], channels: usize) -> Vec<f32>`
+  - `resample_nearest(data: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32>`
+  - `f32_to_i16(data: &[f32]) -> Vec<i16>`
+- [ ] テスト: mono 変換、リサンプリング比率、i16 変換のクリッピング
+- [ ] `cargo check -p audio-capture` が通ることを確認
+
+### Step 14.4: AudioCapture 実装
+
+- [ ] `src/lib.rs` に `AudioCapture` struct を実装
+  - `new(config: AudioConfig) -> Result<Self, AudioError>`
+  - `start<F: FnMut(AudioFrame) + Send + 'static>(&mut self, callback: F) -> Result<(), AudioError>`
+  - `stop(&mut self)`
+  - `is_running(&self) -> bool`
+  - `list_devices() -> Result<Vec<String>, AudioError>`
+- [ ] cpal 入力ストリーム → リサンプル → フレーム化 → コールバック呼び出し
+- [ ] `cargo check -p audio-capture` が通ることを確認
+
+### Step 14.5: テスト + 動作確認
+
+- [ ] `cargo test -p audio-capture` — テスト pass
+- [ ] `cargo clippy -p audio-capture -- -D warnings` — 警告なし
+- [ ] `cargo fmt -p audio-capture --check` — フォーマット OK
+- [ ] **動作確認**: example で 5 秒間マイクキャプチャし、フレーム数と sample_rate=16000 を確認。目的の動作と異なる場合は修正を繰り返す
+
+---
+
+## Phase 15: speech-capture クレート (音声文字キャプチャ)
+
+**目的**: audio-capture + ten-vad を組み合わせ、マイクから音声区間を検出・セグメント化する独立ライブラリクレート
+
+**設計書**: `docs/design/audio-crate-architecture.md`
+
+### Step 15.1: クレート scaffold
+
+- [ ] `crates/speech-capture/` ディレクトリ作成
+- [ ] ルート `Cargo.toml` の `members` に追加
+- [ ] `Cargo.toml` 作成 (依存: `audio-capture = { path = "../audio-capture" }`, `ten-vad = { path = "../ten-vad" }`, `log = workspace`)
+- [ ] `cargo check -p speech-capture` が通ることを確認
+
+### Step 15.2: SpeechEvent + SpeechConfig 型定義
+
+- [ ] `src/lib.rs` に型定義
+  - `SpeechEvent` enum (VoiceStart, VoiceEnd, VadStatus)
+  - `SpeechConfig` struct (vad_threshold, hop_size, min_speech_duration_ms, silence_timeout_ms, emit_vad_status, audio_config)
+  - `SpeechError` enum
+- [ ] `cargo check -p speech-capture` が通ることを確認
+
+### Step 15.3: 音声区間セグメンター
+
+- [ ] `src/segmenter.rs` を作成
+  - `VadSegmenter` struct — VAD フレーム結果から音声区間の開始/終了を判定
+  - 状態: Idle → Speaking → Trailing Silence → VoiceEnd 発火
+  - `min_speech_duration_ms`: 短すぎる発話を無視
+  - `silence_timeout_ms`: 無音がこの時間続いたら発話終了
+  - Speaking 中は audio サンプルを `Vec<i16>` に蓄積
+- [ ] テスト: 正常系 (voice 開始→継続→終了), 異常系 (短すぎる発話を無視)
+- [ ] `cargo check -p speech-capture` が通ることを確認
+
+### Step 15.4: SpeechCapture 実装
+
+- [ ] `src/lib.rs` に `SpeechCapture` struct を実装
+  - `new(config: SpeechConfig) -> Result<Self, SpeechError>`
+  - `start<F: FnMut(SpeechEvent) + Send + 'static>(&mut self, callback: F) -> Result<(), SpeechError>`
+  - `stop(&mut self)`
+  - `is_running(&self) -> bool`
+- [ ] 内部: AudioCapture → フレーム受信 → TenVad.process() → VadSegmenter → SpeechEvent コールバック
+- [ ] `cargo check -p speech-capture` が通ることを確認
+
+### Step 15.5: Example
+
+- [ ] `examples/speech_events.rs` — マイクから音声区間を検出してイベントを表示
+
+```rust
+// 使い方: cargo run -p speech-capture --example speech_events
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut sc = speech_capture::SpeechCapture::new(Default::default())?;
+    sc.start(|event| match event {
+        speech_capture::SpeechEvent::VoiceStart { timestamp } => {
+            println!("[{timestamp:?}] 🎤 Voice start");
+        }
+        speech_capture::SpeechEvent::VoiceEnd { duration, audio, .. } => {
+            println!("🔇 Voice end ({duration:?}, {} samples)", audio.len());
+        }
+        speech_capture::SpeechEvent::VadStatus { probability, is_voice, .. } => {
+            if is_voice { print!("."); }
+        }
+    })?;
+    std::thread::park(); // wait forever
+    Ok(())
+}
+```
+
+### Step 15.6: テスト + 動作確認
+
+- [ ] `cargo test -p speech-capture` — テスト pass
+- [ ] `cargo clippy -p speech-capture -- -D warnings` — 警告なし
+- [ ] `cargo fmt -p speech-capture --check` — フォーマット OK
+- [ ] **動作確認**: `speech_events` example を実行し、マイクに向かって話しかけて VoiceStart/VoiceEnd イベントが正しく検出されることを確認。無音時は VoiceEnd が silence_timeout_ms 後に発火すること。短い雑音 (< min_speech_duration_ms) が無視されること。目的の動作と異なる場合は修正を繰り返す
