@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         emit_vad_status: false,
         stt: Some(speech_capture::SttConfig {
             model_path,
-            language: None,
+            language: Some("ja".to_string()),
             mode: speech_capture::SttMode::Streaming {
                 interim_interval_ms: 1000,
             },
