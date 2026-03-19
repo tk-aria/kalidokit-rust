@@ -17,5 +17,11 @@ whisper-rs = { version = "0.16", optional = true }
 default = []
 stt = ["dep:whisper-rs"]
 
+[dependencies.serde]
+workspace = true
+
+[dependencies.serde_json]
+workspace = true
+
 [dev-dependencies]
 env_logger = { workspace = true }

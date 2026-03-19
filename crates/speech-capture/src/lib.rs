@@ -3,6 +3,7 @@
 //! Combines `audio-capture` and `ten-vad` (vad) to detect speech segments
 //! from microphone input in real time.
 
+pub mod json_log;
 mod segmenter;
 pub mod stt_types;
 
