@@ -26,3 +26,5 @@ workspace = true
 
 [dev-dependencies]
 env_logger = { workspace = true }
+hound = "3.5"
+whisper-rs = "0.16"
