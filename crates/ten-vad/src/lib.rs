@@ -8,7 +8,7 @@
 //! ## Example
 //!
 //! ```rust,no_run
-//! use ten_vad::{TenVad, HopSize};
+//! use vad::{TenVad, HopSize};
 //!
 //! let mut vad = TenVad::new(HopSize::Samples256, 0.5).unwrap();
 //! println!("TEN VAD {}", TenVad::version());

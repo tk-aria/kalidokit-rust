@@ -6,6 +6,9 @@ description = "Rust bindings for TEN VAD (Voice Activity Detector)"
 license = "Apache-2.0"
 build = "build.rs"
 
+[lib]
+name = "vad"
+
 [dependencies]
 
 [dev-dependencies]

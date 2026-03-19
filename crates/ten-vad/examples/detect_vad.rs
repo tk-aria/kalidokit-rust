@@ -23,9 +23,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         spec.channels
     );
 
-    let hop = ten_vad::HopSize::Samples256;
-    let mut vad = ten_vad::TenVad::new(hop, 0.5)?;
-    println!("TEN VAD {}", ten_vad::TenVad::version());
+    let hop = vad::HopSize::Samples256;
+    let mut vad = vad::TenVad::new(hop, 0.5)?;
+    println!("TEN VAD {}", vad::TenVad::version());
     println!(
         "File: {path}  ({} Hz, {} ch)",
         spec.sample_rate, spec.channels
