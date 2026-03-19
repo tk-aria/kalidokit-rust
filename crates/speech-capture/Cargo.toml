@@ -16,6 +16,7 @@ whisper-rs = { version = "0.16", optional = true }
 [features]
 default = []
 stt = ["dep:whisper-rs"]
+stt-metal = ["stt", "whisper-rs/metal"]
 
 [dependencies.serde]
 workspace = true

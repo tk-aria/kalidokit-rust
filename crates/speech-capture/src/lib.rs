@@ -229,7 +229,15 @@ impl SpeechCapture {
                             if let Some(engine) = &whisper_engine {
                                 match &stt_mode {
                                     SttMode::Batch | SttMode::Streaming { .. } => {
+                                        let stt_start = std::time::Instant::now();
                                         let transcript = engine.transcribe(audio).ok();
+                                        let stt_elapsed = stt_start.elapsed();
+                                        log::info!(
+                                            "STT latency: {:.0}ms (audio: {:.1}s, {:.1}x realtime)",
+                                            stt_elapsed.as_millis(),
+                                            duration.as_secs_f64(),
+                                            stt_elapsed.as_secs_f64() / duration.as_secs_f64(),
+                                        );
                                         callback(SpeechEvent::VoiceEnd {
                                             timestamp: *timestamp,
                                             audio: audio.clone(),
