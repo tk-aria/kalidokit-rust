@@ -15,10 +15,16 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
+    let model_path = std::env::args().nth(1).unwrap_or_else(|| {
+        eprintln!("Usage: streaming_stt <model_path>");
+        eprintln!("  e.g.: streaming_stt /path/to/ggml-base.bin");
+        std::process::exit(1);
+    });
+
     let config = speech_capture::SpeechConfig {
         emit_vad_status: false,
         stt: Some(speech_capture::SttConfig {
-            model_path: "models/ggml-base.bin".to_string(),
+            model_path,
             language: None,
             mode: speech_capture::SttMode::Streaming {
                 interim_interval_ms: 1000,
