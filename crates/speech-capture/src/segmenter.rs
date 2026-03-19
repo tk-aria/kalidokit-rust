@@ -33,6 +33,18 @@ impl VadSegmenter {
         }
     }
 
+    /// Returns true if currently in a speaking or trailing-silence state.
+    #[allow(dead_code)]
+    pub fn is_speaking(&self) -> bool {
+        matches!(self.state, State::Speaking | State::TrailingSilence { .. })
+    }
+
+    /// Returns accumulated audio for the current speech segment.
+    #[allow(dead_code)]
+    pub fn accumulated_audio(&self) -> &[i16] {
+        &self.audio_buffer
+    }
+
     /// Feed one frame of VAD results. Returns 0-2 events.
     pub fn feed(
         &mut self,
@@ -75,6 +87,7 @@ impl VadSegmenter {
                                 timestamp,
                                 audio: std::mem::take(&mut self.audio_buffer),
                                 duration: speech_dur,
+                                transcript: None,
                             });
                         } else {
                             // Too short, discard
@@ -116,8 +129,11 @@ mod tests {
         let evts = seg.feed(false, &samples, Duration::from_millis(250));
         assert_eq!(evts.len(), 1);
         match &evts[0] {
-            SpeechEvent::VoiceEnd { audio, .. } => {
+            SpeechEvent::VoiceEnd {
+                audio, transcript, ..
+            } => {
                 assert_eq!(audio.len(), 256 * 4); // 4 frames accumulated
+                assert!(transcript.is_none());
             }
             _ => panic!("expected VoiceEnd"),
         }
