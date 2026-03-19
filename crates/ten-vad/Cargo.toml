@@ -13,3 +13,4 @@ name = "vad"
 
 [dev-dependencies]
 hound = "3.5"
+cpal = "0.17"
