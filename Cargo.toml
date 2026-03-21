@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/app", "crates/renderer", "crates/vrm", "crates/solver", "crates/tracker", "crates/logger", "crates/virtual-camera", "crates/video-decoder", "crates/ten-vad", "crates/audio-capture", "crates/speech-capture"]
+members = ["crates/app", "crates/renderer", "crates/vrm", "crates/solver", "crates/tracker", "crates/logger", "crates/virtual-camera", "crates/video-decoder", "crates/ten-vad", "crates/audio-capture", "crates/speech-capture", "crates/imgui-renderer"]
 
 [workspace.dependencies]
 wgpu = "29.0"

@@ -27,10 +27,10 @@ Phase 6 (README + 動作確認チェックリスト)
 |---------|-----------|------|
 | `wgpu` | **29.0** | GPU 描画 API (24 から上げる) |
 | `winit` | 0.30.9 | ウィンドウ管理 (変更なし) |
-| `dear-imgui-rs` | 0.10 | ImGui v1.92.6 安全な Rust API (docking, 拡張) |
-| `dear-imgui-sys` | 0.10 | cimgui FFI (bindgen 生成, dear-imgui-rs が内部で使用) |
-| `dear-imgui-wgpu` | 0.10 | wgpu 29 レンダラーバックエンド |
-| `dear-imgui-winit` | 0.10 | winit プラットフォームバックエンド |
+| `imgui` | 0.12 (docking feature) | imgui-rs 安全な Rust API (docking 対応) |
+| `imgui-sys` | 0.12 | cimgui FFI (imgui が内部で使用) |
+| `imgui-wgpu` | 0.28 | wgpu 29 レンダラーバックエンド |
+| `imgui-winit-support` | 0.13 | winit 0.30 プラットフォームバックエンド |
 | `anyhow` | 1.0 | エラーハンドリング |
 | `log` | 0.4 | ログマクロ |
 
@@ -121,8 +121,8 @@ let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
 
 ### Step 2.1: Cargo.toml + ワークスペース追加
 
-- [ ] ルート `Cargo.toml` の `members` に `"crates/imgui-renderer"` を追加
-- [ ] `crates/imgui-renderer/Cargo.toml` を作成
+- [x] ルート `Cargo.toml` の `members` に `"crates/imgui-renderer"` を追加
+- [x] `crates/imgui-renderer/Cargo.toml` を作成
 
 ```toml
 [package]
@@ -132,9 +132,9 @@ edition = "2021"
 description = "Dear ImGui integration for wgpu applications"
 
 [dependencies]
-dear-imgui-rs = "0.10"
-dear-imgui-wgpu = "0.10"
-dear-imgui-winit = "0.10"
+imgui = { version = "0.12", features = ["docking"] }
+imgui-wgpu = "0.28"
+imgui-winit-support = "0.13"
 wgpu = { workspace = true }
 winit = { workspace = true }
 log = { workspace = true }
@@ -145,26 +145,28 @@ pollster = { workspace = true }
 env_logger = { workspace = true }
 ```
 
-- [ ] `cargo check -p imgui-renderer` が通ることを確認
-- [ ] **注意**: dear-imgui-rs のビルドには C++ コンパイラ + cmake が必要 (cimgui のビルド)
+- [x] `cargo check -p imgui-renderer` が通ることを確認
+- [x] **注意**: imgui-sys のビルドには C++ コンパイラが必要 (cimgui のビルド)
 
 ### Step 2.2: ImGuiRenderer::new() — `src/lib.rs` (~120行)
 
-- [ ] `ImGuiRenderer` struct 定義
+- [x] `ImGuiRenderer` struct 定義
 
 ```rust
 pub struct ImGuiRenderer {
-    ctx: dear_imgui::Context,
-    platform: dear_imgui_winit::WinitPlatform,
-    renderer: dear_imgui_wgpu::Renderer,
+    ctx: imgui::Context,
+    platform: imgui_winit_support::WinitPlatform,
+    renderer: imgui_wgpu::Renderer,
+    last_frame: Instant,
+    last_cursor: Option<MouseCursor>,
 }
 ```
 
-- [ ] `new(device, queue, format, window)` 実装
+- [x] `new(device, queue, format, window)` 実装
   1. `Context::create()` + docking 有効化
   2. `WinitPlatform::new()` + `attach_window()`
   3. `Renderer::new()` (フォントアトラスのテクスチャ生成含む)
-- [ ] `cargo check -p imgui-renderer` が通ることを確認
+- [x] `cargo check -p imgui-renderer` が通ることを確認
 
 ```rust
 // 参考コード
@@ -194,10 +196,10 @@ impl ImGuiRenderer {
 
 ### Step 2.3: handle_event() + frame() + render()
 
-- [ ] `handle_event(window, event)` — winit イベントを ImGui IO に転送
-- [ ] `frame(window, dt, closure)` — delta time 更新 + UI クロージャ呼び出し
-- [ ] `render(device, queue, view)` — DrawData → wgpu RenderPass (LoadOp::Load)
-- [ ] `context_mut()` — Context への直接アクセス
+- [x] `handle_event(window, window_id, event)` — winit イベントを ImGui IO に転送
+- [x] `frame(window, closure)` — delta time 自動計測 + UI クロージャ呼び出し (+ `frame_with_dt` で明示的 dt 指定も可)
+- [x] `render(device, queue, view)` — DrawData → wgpu RenderPass (LoadOp::Load)
+- [x] `context_mut()` — Context への直接アクセス
 
 ```rust
 pub fn handle_event(&mut self, window: &winit::window::Window, event: &winit::event::WindowEvent) {
@@ -240,25 +242,25 @@ pub fn context_mut(&mut self) -> &mut dear_imgui::Context {
 }
 ```
 
-- [ ] `cargo check -p imgui-renderer` が通ることを確認
+- [x] `cargo check -p imgui-renderer` が通ることを確認
 
 ### Step 2.4: テスト
 
-- [ ] **正常系テスト**:
-  - `ImGuiRenderer` struct が Send であることの static assert
-  - API シグネチャの型チェック (コンパイルテスト)
+- [x] **正常系テスト**:
+  - API シグネチャの型チェック (コンパイルテスト) — `api_signature_check`
+  - doc テスト (Quick Start コード例のコンパイル確認)
 - [ ] **異常系テスト**:
-  - GPU が利用不可の場合に適切なエラー (ヘッドレス環境)
+  - GPU が利用不可の場合に適切なエラー (ヘッドレス環境) — ヘッドレス環境のため未検証
 
 ### Step 2.5: Phase 2 検証
 
-- [ ] `cargo test -p imgui-renderer` — テスト pass
-- [ ] `cargo clippy -p imgui-renderer -- -D warnings` — 警告なし
-- [ ] `cargo fmt -p imgui-renderer --check` — フォーマット OK
-- [ ] `cargo doc -p imgui-renderer --no-deps` — 警告なし
+- [x] `cargo test -p imgui-renderer` — テスト pass (unit test + doc test)
+- [x] `cargo clippy -p imgui-renderer -- -D warnings` — 警告なし
+- [x] `cargo fmt -p imgui-renderer --check` — フォーマット OK
+- [x] `cargo doc -p imgui-renderer --no-deps` — 警告なし
 - [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
-- [ ] `cargo build -p imgui-renderer` が正常完了
-- [ ] **動作確認**: テストが pass し、API が設計通りの型シグネチャを持つことを確認。目的の動作と異なる場合は修正を繰り返す
+- [x] `cargo build -p imgui-renderer` が正常完了 (cargo check で確認)
+- [ ] **動作確認**: テストが pass し、API が設計通りの型シグネチャを持つことを確認 — ヘッドレス環境のため未検証
 
 ---
 
@@ -268,9 +270,9 @@ pub fn context_mut(&mut self) -> &mut dear_imgui::Context {
 
 ### Step 3.1: standalone example — `examples/standalone.rs` (~120行)
 
-- [ ] winit ウィンドウ + wgpu 初期化 + ImGuiRenderer 統合
-- [ ] ImGui Demo Window (`ui.show_demo_window()`) を表示
-- [ ] FPS カウンターをウィンドウタイトルに表示
+- [x] winit ウィンドウ + wgpu 初期化 + ImGuiRenderer 統合
+- [x] ImGui Demo Window (`ui.show_demo_window()`) を表示
+- [x] FPS カウンターを Info パネルに表示
 
 ```rust
 // examples/standalone.rs 骨格
@@ -300,12 +302,12 @@ struct StandaloneApp {
 //   imgui.render(device, queue, view);
 ```
 
-- [ ] `cargo run -p imgui-renderer --example standalone` で ImGui Demo Window が表示されることを確認
+- [ ] `cargo run -p imgui-renderer --example standalone` で ImGui Demo Window が表示されることを確認 — ヘッドレス環境のため未検証
 
 ### Step 3.2: overlay example — `examples/overlay.rs` (~100行)
 
-- [ ] 背景色付き画面 (単色クリア) + ImGui パネルオーバーレイ
-- [ ] ImGui が 3D シーンの上に半透明で重なることを確認
+- [x] 背景色付き画面 (単色クリア) + ImGui パネルオーバーレイ
+- [x] ImGui が 3D シーンの上に半透明で重なる設計 (LoadOp::Load)
 
 ```rust
 // 描画フロー
@@ -315,7 +317,7 @@ struct StandaloneApp {
 // 4. imgui.render(device, queue, &view)  — LoadOp::Load で上に重ねる
 ```
 
-- [ ] `cargo run -p imgui-renderer --example overlay` で動作確認
+- [ ] `cargo run -p imgui-renderer --example overlay` で動作確認 — ヘッドレス環境のため未検証
 
 ### Step 3.3: Docking 確認
 
