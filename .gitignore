@@ -2,6 +2,7 @@
 Cargo.lock
 *.onnx
 *.vrm
+*.bin
 
 # Build artifacts
 kalidokit-rust
