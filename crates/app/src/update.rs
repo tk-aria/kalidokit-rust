@@ -406,6 +406,22 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         .debug_overlay
         .render(&state.render_ctx, &view, &overlay_input)?;
 
+    // 5c. ImGui overlay render
+    if state.show_imgui {
+        if let Some(imgui) = &mut state.imgui {
+            imgui.frame(&state.render_ctx.window, |ui| {
+                ui.window("Debug").build(|| {
+                    ui.text(format!("Render FPS: {}", state.fps_counter));
+                    ui.text(format!("Decode FPS: {}", state.fps_decode_counter));
+                    ui.separator();
+                    ui.text(format!("Mascot: {}", state.mascot.enabled));
+                    ui.text(format!("Always on top: {}", state.mascot.always_on_top));
+                });
+            });
+            imgui.render(&state.render_ctx.device, &state.render_ctx.queue, &view);
+        }
+    }
+
     output.present();
 
     // 6. Virtual camera: capture and send frame (throttled to 30fps)

@@ -280,7 +280,21 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         }
     };
 
-    // 6. Initialize debug overlay
+    // 6. Initialize ImGui renderer (optional — app works without it)
+    let imgui = match imgui_renderer::ImGuiRenderer::new(
+        &render_ctx.device,
+        &render_ctx.queue,
+        render_ctx.config.format,
+        &render_ctx.window,
+    ) {
+        Ok(r) => Some(r),
+        Err(e) => {
+            log::warn!("Failed to initialize ImGui: {e}");
+            None
+        }
+    };
+
+    // 7. Initialize debug overlay
     let debug_overlay = DebugOverlay::new(
         &render_ctx.device,
         &render_ctx.queue,
@@ -336,6 +350,8 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         mascot_alpha_map: Vec::new(),
         mascot_alpha_width: 0,
         mascot_alpha_height: 0,
+        imgui,
+        show_imgui: false,
     })
 }
 

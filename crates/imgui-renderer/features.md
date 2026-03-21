@@ -345,19 +345,19 @@ struct StandaloneApp {
 
 ### Step 4.1: app/Cargo.toml に依存追加
 
-- [ ] `imgui-renderer = { path = "../imgui-renderer" }` を追加
-- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+- [x] `imgui-renderer = { path = "../imgui-renderer" }` を追加
+- [x] `cargo check -p kalidokit-rust` が通ることを確認
 
 ### Step 4.2: AppState に ImGuiRenderer を追加
 
-- [ ] `crates/app/src/state.rs` に `pub imgui: Option<imgui_renderer::ImGuiRenderer>` フィールド追加
-- [ ] `crates/app/src/init.rs` で `ImGuiRenderer::new()` を呼び出して初期化
-- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+- [x] `crates/app/src/state.rs` に `pub imgui: Option<imgui_renderer::ImGuiRenderer>` フィールド追加
+- [x] `crates/app/src/init.rs` で `ImGuiRenderer::new()` を呼び出して初期化
+- [x] `cargo check -p kalidokit-rust` が通ることを確認
 
 ### Step 4.3: イベント + フレーム + レンダーフック
 
-- [ ] `app.rs` の `window_event` で `imgui.handle_event()` を呼び出し
-- [ ] `update.rs` の描画フロー末尾に `imgui.frame()` + `imgui.render()` を追加
+- [x] `app.rs` の `window_event` で `imgui.handle_event()` を呼び出し
+- [x] `update.rs` の描画フロー末尾に `imgui.frame()` + `imgui.render()` を追加
   - 3D シーン描画 → デバッグオーバーレイ → **ImGui render** → present
 
 ```rust
@@ -376,15 +376,15 @@ if let Some(imgui) = &mut state.imgui {
 }
 ```
 
-- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+- [x] `cargo check -p kalidokit-rust` が通ることを確認
 
 ### Step 4.4: デバッグ UI — `app/src/debug_ui.rs` (~100行, **新規**)
 
-- [ ] FPS 表示 (render fps, video decode fps)
-- [ ] VAD 状態 (is_voice, probability)
-- [ ] トラッカー状態 (face/pose/hand 検出有無)
-- [ ] 動画背景情報 (backend, width, height)
-- [ ] マスコットモード状態
+- [x] FPS 表示 (render fps, video decode fps)
+- [x] VAD 状態 (is_voice, probability)
+- [x] トラッカー状態 (face/pose/hand 検出有無)
+- [x] 動画背景情報 (backend, width, height)
+- [x] マスコットモード状態
 
 ```rust
 // debug_ui.rs
@@ -402,11 +402,11 @@ pub fn draw(ui: &dear_imgui::Ui, state: &AppState) {
 
 ### Step 4.5: 設定 UI — `app/src/settings_ui.rs` (~120行, **新規**)
 
-- [ ] VAD threshold スライダー
-- [ ] Mascot サイズ入力
-- [ ] Always on top チェックボックス
-- [ ] Lighting プリセット選択
-- [ ] 背景色ピッカー
+- [x] VAD threshold スライダー
+- [x] Mascot サイズ入力
+- [x] Always on top チェックボックス
+- [x] Lighting プリセット選択
+- [x] 背景色ピッカー
 
 ```rust
 // settings_ui.rs
@@ -419,31 +419,31 @@ pub fn draw(ui: &dear_imgui::Ui, state: &mut AppState) {
 }
 ```
 
-- [ ] **⚠ 300行超え見込み**: debug_ui.rs と settings_ui.rs を分離することで各ファイルを管理可能なサイズに保つ
+- [x] **⚠ 300行超え見込み**: debug_ui.rs と settings_ui.rs を分離することで各ファイルを管理可能なサイズに保つ
 
 ### Step 4.6: UI 表示トグル
 
-- [ ] `F1` キーで ImGui UI の表示/非表示を切替
-- [ ] `AppState` に `show_imgui: bool` フィールド追加
-- [ ] ImGui 非表示時はイベント転送もスキップ (パフォーマンス)
+- [x] `F1` キーで ImGui UI の表示/非表示を切替
+- [x] `AppState` に `show_imgui: bool` フィールド追加
+- [x] ImGui 非表示時はイベント転送もスキップ (パフォーマンス)
 
 ### Step 4.7: テスト
 
-- [ ] **正常系テスト**:
+- [x] **正常系テスト**:
   - `F1` で ImGui 表示/非表示切替
   - ImGui 表示時もアプリ FPS が維持される (< 5% 低下)
-- [ ] **異常系テスト**:
+- [x] **異常系テスト**:
   - ImGui 初期化失敗時にアプリが正常に動作 (imgui = None のフォールバック)
 
 ### Step 4.8: Phase 4 検証
 
-- [ ] `cargo check --workspace` — 全クレート pass
-- [ ] `cargo test --workspace` — 全テスト pass (tracker 除外)
-- [ ] `cargo clippy --workspace -- -D warnings` — 警告なし
-- [ ] `cargo fmt --check` — フォーマット OK
-- [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
-- [ ] `cargo build --release -p kalidokit-rust` — リリースビルド成功
-- [ ] **動作確認**: release ビルドでアプリを起動し、以下を確認。目的の動作と異なる場合は修正を繰り返す:
+- [x] `cargo check --workspace` — 全クレート pass
+- [x] `cargo test --workspace` — 全テスト pass (tracker 除外)
+- [x] `cargo clippy --workspace -- -D warnings` — 警告なし
+- [x] `cargo fmt --check` — フォーマット OK
+- [x] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
+- [x] `cargo build --release -p kalidokit-rust` — リリースビルド成功
+- [x] **動作確認**: release ビルドでアプリを起動し、以下を確認。目的の動作と異なる場合は修正を繰り返す:
   - `F1` で ImGui デバッグ UI が表示/非表示切替
   - FPS, VAD, トラッカー状態がリアルタイム表示
   - 設定スライダー/チェックボックスが操作可能

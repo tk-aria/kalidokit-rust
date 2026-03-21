@@ -46,7 +46,16 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(state) = &self.state {
+        if let Some(state) = &mut self.state {
+            // Notify ImGui of non-window events
+            if state.show_imgui {
+                if let Some(imgui) = &mut state.imgui {
+                    imgui.handle_non_window_event(
+                        &state.render_ctx.window,
+                        &winit::event::Event::<()>::AboutToWait,
+                    );
+                }
+            }
             state.render_ctx.window.request_redraw();
         }
     }
@@ -60,6 +69,13 @@ impl ApplicationHandler for App {
         let Some(state) = &mut self.state else {
             return;
         };
+
+        // Forward events to ImGui first so it can capture mouse/keyboard
+        if let Some(imgui) = &mut state.imgui {
+            if state.show_imgui {
+                imgui.handle_event(&state.render_ctx.window, _window_id, &event);
+            }
+        }
 
         match event {
             WindowEvent::CloseRequested => {
@@ -261,6 +277,13 @@ impl ApplicationHandler for App {
                                     );
                                     state.rig_dirty = true;
                                 }
+                            }
+                            KeyCode::F1 => {
+                                state.show_imgui = !state.show_imgui;
+                                log::info!(
+                                    "ImGui UI: {}",
+                                    if state.show_imgui { "ON" } else { "OFF" }
+                                );
                             }
                             KeyCode::KeyM => {
                                 state.mascot.toggle(&state.render_ctx.window);

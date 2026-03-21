@@ -73,6 +73,10 @@ pub struct AppState {
     pub mascot_alpha_width: u32,
     /// Height of the cached mascot alpha map in pixels.
     pub mascot_alpha_height: u32,
+    /// ImGui debug/settings UI renderer (None if initialization failed).
+    pub imgui: Option<imgui_renderer::ImGuiRenderer>,
+    /// Whether ImGui UI is visible (toggled by F1).
+    pub show_imgui: bool,
 }
 
 /// Current rig solver results (face/pose/hand).
