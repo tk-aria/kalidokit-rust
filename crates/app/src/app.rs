@@ -329,7 +329,7 @@ impl ApplicationHandler for App {
                 // rendered pixel (alpha > 0) the window captures mouse events (drag,
                 // scroll, click). Over transparent areas (alpha == 0) clicks pass
                 // through to background windows. No modifier key needed.
-                if state.mascot.enabled && !state.fullscreen && !state.mascot_alpha_map.is_empty() {
+                if state.mascot.enabled && !state.mascot_alpha_map.is_empty() {
                     // Convert physical cursor position to alpha map coordinates.
                     // The alpha map uses the mascot window's logical size; the cursor
                     // position is in physical pixels, so scale by the window's scale factor.
@@ -358,11 +358,14 @@ impl ApplicationHandler for App {
                     let dx = position.x - state.drag_prev_pos[0];
                     let dy = position.y - state.drag_prev_pos[1];
                     let size = state.render_ctx.window.inner_size();
-                    // Map pixel delta to world-space offset.
-                    // Scale by camera_distance so drag feels 1:1 regardless of zoom.
-                    let world_scale = state.camera_distance * 2.0 / size.height as f32;
-                    state.model_offset[0] += dx as f32 * world_scale;
-                    state.model_offset[1] -= dy as f32 * world_scale;
+                    // Map pixel delta to world-space offset using perspective projection.
+                    // Camera FOV = 35 degrees, so visible height at model distance is:
+                    //   world_height = 2 * camera_distance * tan(fov/2)
+                    let fov_rad = 35.0f32.to_radians();
+                    let world_height = 2.0 * state.camera_distance * (fov_rad / 2.0).tan();
+                    let px_to_world = world_height / size.height as f32;
+                    state.model_offset[0] += dx as f32 * px_to_world;
+                    state.model_offset[1] -= dy as f32 * px_to_world;
                     state.drag_prev_pos = [position.x, position.y];
                 }
             }
