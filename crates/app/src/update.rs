@@ -458,16 +458,27 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                 let dockspace_id = ui.dockspace_over_main_viewport();
                 let _ = dockspace_id;
 
-                // ── Main Menu Bar: Window Manager ──
-                ui.main_menu_bar(|| {
-                    ui.menu("Windows", || {
+                // // ── Main Menu Bar: Window Manager (commented out) ──
+                // ui.main_menu_bar(|| {
+                //     ui.menu("Windows", || {
+                //         ui.checkbox("Debug Info", &mut win.debug_info);
+                //         ui.checkbox("Settings", &mut win.settings);
+                //         ui.checkbox("Node Editor", &mut win.node_editor);
+                //         ui.checkbox("Profiler", &mut win.profiler);
+                //         ui.checkbox("Log", &mut win.log);
+                //     });
+                // });
+
+                // ── Windows Manager (as a dockable window) ──
+                ui.window("Windows")
+                    .size([160.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .build(|| {
                         ui.checkbox("Debug Info", &mut win.debug_info);
                         ui.checkbox("Settings", &mut win.settings);
                         ui.checkbox("Node Editor", &mut win.node_editor);
                         ui.checkbox("Profiler", &mut win.profiler);
                         ui.checkbox("Log", &mut win.log);
                     });
-                });
 
                 // ── Debug Info ──
                 if win.debug_info {
