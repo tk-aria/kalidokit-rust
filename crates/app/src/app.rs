@@ -352,17 +352,20 @@ impl ApplicationHandler for App {
                 ..
             } => {
                 if state.mascot.enabled {
+                    // Don't drag the window when ImGui wants the mouse
+                    // (e.g. clicking a button, dragging a slider)
+                    let imgui_wants = state.show_imgui
+                        && state.imgui.as_ref().map_or(false, |im| im.want_capture_mouse());
+
                     match btn_state {
-                        ElementState::Pressed => {
+                        ElementState::Pressed if !imgui_wants => {
                             // Use OS-native window drag to avoid cursor feedback loop.
-                            // This hands control to the OS compositor, which handles
-                            // drag smoothly without jitter.
                             if let Err(e) = state.render_ctx.window.drag_window() {
                                 log::warn!("drag_window failed: {e}");
                             }
                         }
-                        ElementState::Released => {
-                            // OS-native drag ends automatically; nothing to do.
+                        _ => {
+                            // ImGui is handling this click, or button released.
                         }
                     }
                 }
