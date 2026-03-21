@@ -1,0 +1,16 @@
+[package]
+name = "etd"
+version = "0.1.0"
+edition = "2021"
+description = "End-of-Turn Detection using smart-turn v3 ONNX model"
+
+[dependencies]
+ort = { workspace = true }
+ndarray = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+rustfft = "6.4"
+
+[dev-dependencies]
+hound = "3.5"
+approx = "0.5"

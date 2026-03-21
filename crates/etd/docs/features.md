@@ -10,7 +10,7 @@
 
 ### Step 1.1: クレート scaffolding
 
-- [ ] `crates/etd/Cargo.toml` を作成
+- [x] `crates/etd/Cargo.toml` を作成 <!-- 2026-03-21 11:27 JST -->
 
 ```toml
 [package]
@@ -31,8 +31,8 @@ hound = "3.5"                        # WAV 読み込み (test/example)
 approx = "0.5"                       # 浮動小数点近似比較
 ```
 
-- [ ] ルート `Cargo.toml` の `workspace.members` に `"crates/etd"` を追加
-- [ ] `crates/etd/src/lib.rs` を作成 — モジュール宣言のみ
+- [x] ルート `Cargo.toml` の `workspace.members` に <!-- 2026-03-21 11:27 JST --> `"crates/etd"` を追加
+- [x] `crates/etd/src/lib.rs` を作成 — モジュール宣言のみ <!-- 2026-03-21 11:27 JST -->
 
 ```rust
 pub mod audio;
@@ -43,7 +43,7 @@ mod error;
 pub use error::EtdError;
 ```
 
-- [ ] `crates/etd/src/error.rs` を作成 — エラー型定義
+- [x] `crates/etd/src/error.rs` を作成 — エラー型定義 <!-- 2026-03-21 11:27 JST -->
 
 ```rust
 use thiserror::Error;
@@ -59,7 +59,7 @@ pub enum EtdError {
 }
 ```
 
-- [ ] `cargo check -p etd` が通ることを確認
+- [x] `cargo check -p etd` が通ることを確認 <!-- 2026-03-21 11:27 JST -->
 
 ### Step 1.2: 音声前処理 — `audio.rs` (domain 層)
 
