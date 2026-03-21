@@ -8,6 +8,7 @@ description = "Dear ImGui integration for wgpu applications"
 imgui = { version = "0.12", features = ["docking"] }
 imgui-wgpu = "0.28"
 imgui-winit-support = "0.13"
+imnodes = "0.5"
 wgpu = { workspace = true }
 winit = { workspace = true }
 log = { workspace = true }

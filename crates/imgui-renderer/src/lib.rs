@@ -37,6 +37,7 @@
 pub use imgui;
 pub use imgui_wgpu;
 pub use imgui_winit_support;
+pub use imnodes;
 
 use imgui::{Context, FontConfig, FontSource, MouseCursor};
 use imgui_wgpu::{Renderer, RendererConfig};
@@ -98,30 +99,33 @@ impl ImGuiRenderer {
         style.frame_rounding = 2.0;
         style.grab_rounding = 2.0;
         style.window_border_size = 0.0;
-        // Colors: navy theme
-        style.colors[imgui::sys::ImGuiCol_WindowBg as usize] = [0.06, 0.08, 0.14, 0.92];
-        style.colors[imgui::sys::ImGuiCol_TitleBg as usize] = [0.04, 0.05, 0.10, 1.00];
-        style.colors[imgui::sys::ImGuiCol_TitleBgActive as usize] = [0.08, 0.10, 0.20, 1.00];
-        style.colors[imgui::sys::ImGuiCol_FrameBg as usize] = [0.10, 0.12, 0.22, 1.00];
-        style.colors[imgui::sys::ImGuiCol_FrameBgHovered as usize] = [0.14, 0.18, 0.32, 1.00];
-        style.colors[imgui::sys::ImGuiCol_FrameBgActive as usize] = [0.18, 0.22, 0.38, 1.00];
-        style.colors[imgui::sys::ImGuiCol_Header as usize] = [0.10, 0.14, 0.26, 1.00];
-        style.colors[imgui::sys::ImGuiCol_HeaderHovered as usize] = [0.16, 0.20, 0.36, 1.00];
-        style.colors[imgui::sys::ImGuiCol_HeaderActive as usize] = [0.20, 0.26, 0.44, 1.00];
-        style.colors[imgui::sys::ImGuiCol_Button as usize] = [0.12, 0.16, 0.30, 1.00];
-        style.colors[imgui::sys::ImGuiCol_ButtonHovered as usize] = [0.18, 0.24, 0.42, 1.00];
-        style.colors[imgui::sys::ImGuiCol_ButtonActive as usize] = [0.24, 0.30, 0.50, 1.00];
-        style.colors[imgui::sys::ImGuiCol_SliderGrab as usize] = [0.30, 0.40, 0.65, 1.00];
-        style.colors[imgui::sys::ImGuiCol_SliderGrabActive as usize] = [0.40, 0.50, 0.80, 1.00];
-        style.colors[imgui::sys::ImGuiCol_CheckMark as usize] = [0.45, 0.60, 0.90, 1.00];
-        style.colors[imgui::sys::ImGuiCol_Text as usize] = [0.82, 0.85, 0.92, 1.00];
-        style.colors[imgui::sys::ImGuiCol_Separator as usize] = [0.15, 0.18, 0.30, 1.00];
-        style.colors[imgui::sys::ImGuiCol_Tab as usize] = [0.08, 0.10, 0.20, 1.00];
-        style.colors[imgui::sys::ImGuiCol_TabHovered as usize] = [0.18, 0.24, 0.42, 1.00];
-        style.colors[imgui::sys::ImGuiCol_TabActive as usize] = [0.14, 0.18, 0.34, 1.00];
-        style.colors[imgui::sys::ImGuiCol_DockingPreview as usize] = [0.20, 0.30, 0.55, 0.70];
-        style.colors[imgui::sys::ImGuiCol_ScrollbarBg as usize] = [0.05, 0.06, 0.12, 1.00];
-        style.colors[imgui::sys::ImGuiCol_ScrollbarGrab as usize] = [0.18, 0.22, 0.38, 1.00];
+        // Colors: YouTube-style dark gray
+        style.colors[imgui::sys::ImGuiCol_WindowBg as usize] = [0.11, 0.11, 0.11, 0.94];
+        style.colors[imgui::sys::ImGuiCol_TitleBg as usize] = [0.08, 0.08, 0.08, 1.00];
+        style.colors[imgui::sys::ImGuiCol_TitleBgActive as usize] = [0.15, 0.15, 0.15, 1.00];
+        style.colors[imgui::sys::ImGuiCol_FrameBg as usize] = [0.18, 0.18, 0.18, 1.00];
+        style.colors[imgui::sys::ImGuiCol_FrameBgHovered as usize] = [0.25, 0.25, 0.25, 1.00];
+        style.colors[imgui::sys::ImGuiCol_FrameBgActive as usize] = [0.30, 0.30, 0.30, 1.00];
+        style.colors[imgui::sys::ImGuiCol_Header as usize] = [0.18, 0.18, 0.18, 1.00];
+        style.colors[imgui::sys::ImGuiCol_HeaderHovered as usize] = [0.25, 0.25, 0.25, 1.00];
+        style.colors[imgui::sys::ImGuiCol_HeaderActive as usize] = [0.30, 0.30, 0.30, 1.00];
+        style.colors[imgui::sys::ImGuiCol_Button as usize] = [0.20, 0.20, 0.20, 1.00];
+        style.colors[imgui::sys::ImGuiCol_ButtonHovered as usize] = [0.28, 0.28, 0.28, 1.00];
+        style.colors[imgui::sys::ImGuiCol_ButtonActive as usize] = [0.35, 0.35, 0.35, 1.00];
+        style.colors[imgui::sys::ImGuiCol_SliderGrab as usize] = [0.50, 0.50, 0.50, 1.00];
+        style.colors[imgui::sys::ImGuiCol_SliderGrabActive as usize] = [0.65, 0.65, 0.65, 1.00];
+        style.colors[imgui::sys::ImGuiCol_CheckMark as usize] = [0.90, 0.90, 0.90, 1.00];
+        style.colors[imgui::sys::ImGuiCol_Text as usize] = [0.90, 0.90, 0.90, 1.00];
+        style.colors[imgui::sys::ImGuiCol_TextDisabled as usize] = [0.50, 0.50, 0.50, 1.00];
+        style.colors[imgui::sys::ImGuiCol_Separator as usize] = [0.22, 0.22, 0.22, 1.00];
+        style.colors[imgui::sys::ImGuiCol_Tab as usize] = [0.12, 0.12, 0.12, 1.00];
+        style.colors[imgui::sys::ImGuiCol_TabHovered as usize] = [0.25, 0.25, 0.25, 1.00];
+        style.colors[imgui::sys::ImGuiCol_TabActive as usize] = [0.18, 0.18, 0.18, 1.00];
+        style.colors[imgui::sys::ImGuiCol_DockingPreview as usize] = [0.40, 0.40, 0.40, 0.70];
+        style.colors[imgui::sys::ImGuiCol_ScrollbarBg as usize] = [0.08, 0.08, 0.08, 1.00];
+        style.colors[imgui::sys::ImGuiCol_ScrollbarGrab as usize] = [0.30, 0.30, 0.30, 1.00];
+        style.colors[imgui::sys::ImGuiCol_PopupBg as usize] = [0.13, 0.13, 0.13, 0.96];
+        style.colors[imgui::sys::ImGuiCol_Border as usize] = [0.22, 0.22, 0.22, 0.50];
 
         let renderer_config = RendererConfig {
             texture_format: format,

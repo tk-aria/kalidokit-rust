@@ -491,39 +491,59 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         }
                     });
 
-                // ── Pipeline (node-style view) ──
-                ui.window("Pipeline")
-                    .size([300.0, 200.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                // ── Node Editor (custom draw) ──
+                ui.window("Node Editor")
+                    .size([420.0, 200.0], imgui_renderer::imgui::Condition::FirstUseEver)
                     .build(|| {
                         let draw_list = ui.get_window_draw_list();
                         let p = ui.cursor_screen_pos();
-                        let nodes = [
-                            ("Camera", [0.0, 0.0]),
-                            ("Tracker", [110.0, 0.0]),
-                            ("Solver", [220.0, 0.0]),
-                            ("VRM Rig", [110.0, 60.0]),
-                            ("Renderer", [220.0, 60.0]),
+                        // Node definitions: (name, position, color)
+                        let nodes: &[(&str, [f32; 2], [f32; 4])] = &[
+                            ("Camera",   [0.0,   10.0], [0.18, 0.45, 0.28, 1.0]),
+                            ("Tracker",  [100.0, 10.0], [0.20, 0.35, 0.55, 1.0]),
+                            ("Solver",   [200.0, 10.0], [0.45, 0.30, 0.55, 1.0]),
+                            ("VRM Rig",  [100.0, 65.0], [0.50, 0.35, 0.20, 1.0]),
+                            ("Renderer", [200.0, 65.0], [0.55, 0.25, 0.25, 1.0]),
+                            ("VAD",      [300.0, 10.0], [0.25, 0.50, 0.50, 1.0]),
+                            ("STT",      [300.0, 65.0], [0.45, 0.45, 0.25, 1.0]),
                         ];
-                        let node_w = 80.0f32;
-                        let node_h = 30.0f32;
-                        // Draw connections
-                        let edges = [(0, 1), (1, 2), (1, 3), (2, 4), (3, 4)];
-                        for (a, b) in &edges {
-                            let ax = p[0] + nodes[*a].1[0] + node_w;
-                            let ay = p[1] + nodes[*a].1[1] + node_h / 2.0;
-                            let bx = p[0] + nodes[*b].1[0];
-                            let by = p[1] + nodes[*b].1[1] + node_h / 2.0;
-                            draw_list.add_line([ax, ay], [bx, by], [0.3, 0.45, 0.7, 0.8]).thickness(2.0).build();
+                        let nw = 80.0f32;
+                        let nh = 36.0f32;
+                        let r = 3.0f32;
+                        // Edges: (from_idx, to_idx)
+                        let edges = [(0,1), (1,2), (1,3), (2,4), (3,4), (0,5), (5,6)];
+                        // Draw edges with bezier curves
+                        for &(a, b) in &edges {
+                            let ax = p[0] + nodes[a].1[0] + nw;
+                            let ay = p[1] + nodes[a].1[1] + nh / 2.0;
+                            let bx = p[0] + nodes[b].1[0];
+                            let by = p[1] + nodes[b].1[1] + nh / 2.0;
+                            let mid = (ax + bx) / 2.0;
+                            draw_list.add_bezier_curve(
+                                [ax, ay], [mid, ay], [mid, by], [bx, by],
+                                [0.55, 0.55, 0.55, 0.7],
+                            ).thickness(2.0).build();
                         }
                         // Draw nodes
-                        for (name, pos) in &nodes {
+                        for &(name, pos, color) in nodes {
                             let x = p[0] + pos[0];
                             let y = p[1] + pos[1];
-                            draw_list.add_rect([x, y], [x + node_w, y + node_h], [0.12, 0.16, 0.30, 0.95]).filled(true).build();
-                            draw_list.add_rect([x, y], [x + node_w, y + node_h], [0.30, 0.40, 0.65, 1.0]).thickness(1.0).build();
-                            draw_list.add_text([x + 6.0, y + 8.0], [0.8, 0.85, 0.95, 1.0], name);
+                            // Node body
+                            draw_list.add_rect([x, y], [x + nw, y + nh], color)
+                                .filled(true).rounding(r).build();
+                            // Border
+                            draw_list.add_rect([x, y], [x + nw, y + nh],
+                                [color[0] + 0.15, color[1] + 0.15, color[2] + 0.15, 1.0])
+                                .rounding(r).thickness(1.0).build();
+                            // Pin circles
+                            draw_list.add_circle([x, y + nh / 2.0], 4.0,
+                                [0.7, 0.7, 0.7, 1.0]).filled(true).build();
+                            draw_list.add_circle([x + nw, y + nh / 2.0], 4.0,
+                                [0.7, 0.7, 0.7, 1.0]).filled(true).build();
+                            // Label
+                            draw_list.add_text([x + 8.0, y + 10.0], [0.92, 0.92, 0.92, 1.0], name);
                         }
-                        ui.dummy([300.0, 100.0]); // reserve space
+                        ui.dummy([400.0, 115.0]);
                     });
 
                 // ── Profiler ──
