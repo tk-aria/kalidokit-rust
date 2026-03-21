@@ -304,14 +304,14 @@ pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
 
 ### Step 2.1: ONNX モデル取得
 
-- [ ] HuggingFace から smart-turn v3 ONNX モデルをダウンロード
+- [x] HuggingFace から smart-turn v3 ONNX モデルをダウンロード <!-- 2026-03-21 11:37 JST -->
   ```bash
   # FP32 版 (~32MB)
   curl -L -o assets/models/smart_turn_v3.onnx \
     "https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/main/onnx/model.onnx"
   ```
-- [ ] `.gitignore` に ONNX モデルが含まれていないことを確認（大きいファイルの場合は追加）
-- [ ] ort でモデルがロードできることを手動確認
+- [x] `.gitignore` に ONNX モデルが含まれていないことを確認（大きいファイルの場合は追加） <!-- 2026-03-21 11:37 JST -->
+- [x] ort でモデルがロードできることを手動確認 <!-- 2026-03-21 11:37 JST -->
 
 ### Step 2.2: 推論エンジン — `inference.rs` (usecase 層)
 
