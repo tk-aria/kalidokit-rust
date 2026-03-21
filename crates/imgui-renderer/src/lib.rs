@@ -150,10 +150,8 @@ impl ImGuiRenderer {
         let ui = self.ctx.frame();
         f(ui);
 
-        if self.last_cursor != ui.mouse_cursor() {
-            self.last_cursor = ui.mouse_cursor();
-            self.platform.prepare_render(ui, window);
-        }
+        self.last_cursor = ui.mouse_cursor();
+        self.platform.prepare_render(ui, window);
     }
 
     /// Build the ImGui frame with an explicit delta time.
@@ -171,10 +169,8 @@ impl ImGuiRenderer {
         let ui = self.ctx.frame();
         f(ui);
 
-        if self.last_cursor != ui.mouse_cursor() {
-            self.last_cursor = ui.mouse_cursor();
-            self.platform.prepare_render(ui, window);
-        }
+        self.last_cursor = ui.mouse_cursor();
+        self.platform.prepare_render(ui, window);
     }
 
     /// Render the ImGui draw data onto the given texture view.
