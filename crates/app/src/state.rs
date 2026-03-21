@@ -77,6 +77,8 @@ pub struct AppState {
     pub imgui: Option<imgui_renderer::ImGuiRenderer>,
     /// Whether ImGui UI is visible (toggled by F1).
     pub show_imgui: bool,
+    /// Per-window visibility for ImGui panels.
+    pub imgui_windows: ImGuiWindows,
     /// Whether the window is in fullscreen mode.
     pub fullscreen: bool,
     /// Whether the debug overlay (camera preview + landmarks) is shown.
@@ -89,6 +91,49 @@ pub struct AppState {
     pub dragging_model: bool,
     /// Last cursor position when model drag started.
     pub drag_prev_pos: [f64; 2],
+}
+
+/// Visibility state for each ImGui panel.
+pub struct ImGuiWindows {
+    pub debug_info: bool,
+    pub settings: bool,
+    pub node_editor: bool,
+    pub profiler: bool,
+    pub log: bool,
+}
+
+impl Default for ImGuiWindows {
+    fn default() -> Self {
+        Self {
+            debug_info: true,
+            settings: true,
+            node_editor: false,
+            profiler: false,
+            log: false,
+        }
+    }
+}
+
+impl ImGuiWindows {
+    /// Clone flags into a temporary for use in ImGui closures.
+    pub fn clone_flags(&self) -> ImGuiWindows {
+        ImGuiWindows {
+            debug_info: self.debug_info,
+            settings: self.settings,
+            node_editor: self.node_editor,
+            profiler: self.profiler,
+            log: self.log,
+        }
+    }
+
+    /// Apply modified flags back from the temporary.
+    pub fn apply_flags(&mut self, flags: &ImGuiWindows) {
+        self.debug_info = flags.debug_info;
+        self.settings = flags.settings;
+        self.node_editor = flags.node_editor;
+        self.profiler = flags.profiler;
+        self.log = flags.log;
+    }
 }
 
 /// Current rig solver results (face/pose/hand).

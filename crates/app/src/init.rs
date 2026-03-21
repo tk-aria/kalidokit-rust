@@ -352,6 +352,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         mascot_alpha_height: 0,
         imgui,
         show_imgui: true,
+        imgui_windows: crate::state::ImGuiWindows::default(),
         fullscreen: prefs.fullscreen,
         show_debug_overlay: true,
         pending_mascot_toggle: false,

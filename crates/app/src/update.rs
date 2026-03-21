@@ -450,24 +450,43 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             let frame_times = unsafe { &FRAME_TIMES };
             let frame_idx = unsafe { FRAME_IDX };
 
+            // Copy window visibility flags for the closure
+            let mut win = state.imgui_windows.clone_flags();
+
             imgui.frame(&state.render_ctx.window, |ui| {
                 // Enable dockspace over the entire viewport
                 let dockspace_id = ui.dockspace_over_main_viewport();
                 let _ = dockspace_id;
 
+                // ── Main Menu Bar: Window Manager ──
+                ui.main_menu_bar(|| {
+                    ui.menu("Windows", || {
+                        ui.checkbox("Debug Info", &mut win.debug_info);
+                        ui.checkbox("Settings", &mut win.settings);
+                        ui.checkbox("Node Editor", &mut win.node_editor);
+                        ui.checkbox("Profiler", &mut win.profiler);
+                        ui.checkbox("Log", &mut win.log);
+                    });
+                });
+
                 // ── Debug Info ──
+                if win.debug_info {
                 ui.window("Debug Info")
                     .size([220.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .opened(&mut win.debug_info)
                     .build(|| {
                         ui.text(format!("Render FPS: {fps_render}"));
                         ui.text(format!("Decode FPS: {fps_decode}"));
                         ui.text(format!("Shading: {shading_label}"));
                         ui.text(format!("Idle Anim: {}", if idle_anim_on { "ON" } else { "OFF" }));
                     });
+                } // debug_info
 
                 // ── Settings ──
+                if win.settings {
                 ui.window("Settings")
                     .size([220.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .opened(&mut win.settings)
                     .build(|| {
                         if ui.collapsing_header("Display", imgui_renderer::imgui::TreeNodeFlags::DEFAULT_OPEN) {
                             ui.checkbox("Mascot Mode (M)", &mut mascot_enabled);
@@ -490,9 +509,12 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                             ui.slider("Back Intensity", 0.0, 3.0, &mut back_intensity);
                         }
                     });
+                } // settings
 
                 // ── Node Editor (custom draw) ──
+                if win.node_editor {
                 ui.window("Node Editor")
+                    .opened(&mut win.node_editor)
                     .size([420.0, 200.0], imgui_renderer::imgui::Condition::FirstUseEver)
                     .build(|| {
                         let draw_list = ui.get_window_draw_list();
@@ -545,10 +567,13 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         }
                         ui.dummy([400.0, 115.0]);
                     });
+                } // node_editor
 
                 // ── Profiler ──
+                if win.profiler {
                 ui.window("Profiler")
                     .size([300.0, 150.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .opened(&mut win.profiler)
                     .build(|| {
                         let avg = frame_times.iter().sum::<f32>() / 120.0;
                         let max = frame_times.iter().cloned().fold(0.0f32, f32::max);
@@ -563,10 +588,13 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         ui.text(format!("GPU: wgpu 29.0"));
                         ui.text(format!("ImGui: {}", imgui_renderer::imgui::dear_imgui_version()));
                     });
+                } // profiler
 
                 // ── Terminal / Log ──
+                if win.log {
                 ui.window("Log")
                     .size([400.0, 150.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .opened(&mut win.log)
                     .build(|| {
                         // Show last N log-style lines
                         let lines = [
@@ -585,7 +613,11 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                             ui.set_scroll_here_y();
                         }
                     });
+                } // log
             });
+
+            // Apply window visibility changes back to state
+            state.imgui_windows.apply_flags(&win);
 
             // Apply non-surface changes immediately
             if mascot_enabled != state.mascot.enabled {
