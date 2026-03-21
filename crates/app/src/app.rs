@@ -328,7 +328,14 @@ impl ApplicationHandler for App {
                     let scale = state.render_ctx.window.scale_factor();
                     let lx = (position.x / scale) as u32;
                     let ly = (position.y / scale) as u32;
-                    if lx < state.mascot_alpha_width && ly < state.mascot_alpha_height {
+                    // Check if ImGui wants the mouse (cursor is over an ImGui window)
+                    let imgui_wants_mouse = state.show_imgui
+                        && state.imgui.as_ref().map_or(false, |im| im.want_capture_mouse());
+
+                    if imgui_wants_mouse {
+                        // ImGui is under the cursor — always allow interaction
+                        let _ = state.render_ctx.window.set_cursor_hittest(true);
+                    } else if lx < state.mascot_alpha_width && ly < state.mascot_alpha_height {
                         let idx = (ly * state.mascot_alpha_width + lx) as usize;
                         let alpha = state.mascot_alpha_map.get(idx).copied().unwrap_or(0);
                         let on_model = alpha > 0;
