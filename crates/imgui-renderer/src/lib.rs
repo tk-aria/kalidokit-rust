@@ -99,8 +99,8 @@ impl ImGuiRenderer {
         style.frame_rounding = 2.0;
         style.grab_rounding = 2.0;
         style.window_border_size = 0.0;
-        // Colors: YouTube-style dark gray
-        style.colors[imgui::sys::ImGuiCol_WindowBg as usize] = [0.11, 0.11, 0.11, 0.94];
+        // Colors: YouTube-style dark gray (semi-transparent so avatar shows through)
+        style.colors[imgui::sys::ImGuiCol_WindowBg as usize] = [0.11, 0.11, 0.11, 0.75];
         style.colors[imgui::sys::ImGuiCol_TitleBg as usize] = [0.08, 0.08, 0.08, 1.00];
         style.colors[imgui::sys::ImGuiCol_TitleBgActive as usize] = [0.15, 0.15, 0.15, 1.00];
         style.colors[imgui::sys::ImGuiCol_FrameBg as usize] = [0.18, 0.18, 0.18, 1.00];
