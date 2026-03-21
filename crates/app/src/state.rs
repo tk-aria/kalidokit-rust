@@ -66,6 +66,8 @@ pub struct AppState {
     pub mascot: MascotState,
     /// Last known cursor position (physical pixels), used for mascot drag.
     pub last_cursor_pos: winit::dpi::PhysicalPosition<f64>,
+    /// Lua-ImGui overlay (None if initialization failed or disabled).
+    pub lua_imgui: Option<lua_imgui::LuaImgui>,
     /// Cached alpha map from rendered frame for mascot pixel-alpha hit-testing.
     /// One byte per pixel (alpha channel only), dimensions match `mascot_alpha_width` x `mascot_alpha_height`.
     pub mascot_alpha_map: Vec<u8>,

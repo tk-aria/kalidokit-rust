@@ -2,9 +2,13 @@
 name = "audio-capture"
 version = "0.1.0"
 edition = "2021"
-description = "Cross-platform microphone audio capture with 16kHz mono output"
+description = "Cross-platform audio capture (input + output loopback) with 16kHz mono output"
 
 [dependencies]
 cpal = "0.17"
 log = { workspace = true }
 thiserror = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+libc = "0.2"

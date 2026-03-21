@@ -316,6 +316,29 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         scene.set_clear_alpha(0.0);
     }
 
+    // 7. Initialize Lua-ImGui overlay
+    let lua_imgui = match lua_imgui::LuaImgui::new(
+        &render_ctx.device,
+        &render_ctx.queue,
+        render_ctx.config.format,
+        &render_ctx.window,
+    ) {
+        Ok(mut li) => {
+            let script_path = std::path::Path::new("assets/scripts/ui.lua");
+            if script_path.exists() {
+                if let Err(e) = li.load_script(script_path) {
+                    log::warn!("Failed to load UI script: {e}");
+                }
+            }
+            log::info!("Lua-ImGui initialized");
+            Some(li)
+        }
+        Err(e) => {
+            log::warn!("Failed to initialize Lua-ImGui: {e}");
+            None
+        }
+    };
+
     Ok(AppState {
         render_ctx,
         scene,
@@ -345,6 +368,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         fps_counter: 0,
         fps_decode_counter: 0,
         fps_timer: std::time::Instant::now(),
+        lua_imgui,
         mascot,
         last_cursor_pos: winit::dpi::PhysicalPosition::new(0.0, 0.0),
         mascot_alpha_map: Vec::new(),

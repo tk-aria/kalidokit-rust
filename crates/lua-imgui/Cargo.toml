@@ -1,0 +1,15 @@
+[package]
+name = "lua-imgui"
+version = "0.1.0"
+edition = "2021"
+description = "Lua scripting for Dear ImGui over wgpu"
+
+[dependencies]
+lua-runtime = { path = "../lua" }
+mlua = { workspace = true }
+imgui = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+bytemuck = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }

@@ -41,7 +41,8 @@ kalidokit-rust/
 │   ├── renderer/              # wgpu rendering engine (lib)
 │   ├── vrm/                   # VRM loader & bone/blendshape (lib)
 │   ├── solver/                # Rig solver - face/pose/hand (lib)
-│   └── tracker/               # ML tracking - ONNX inference (lib)
+│   ├── tracker/               # ML tracking - ONNX inference (lib)
+│   └── etd/                   # End-of-Turn Detection (lib)
 └── .github/workflows/         # CI/CD & Release
 ```
 
@@ -83,6 +84,43 @@ KALIDOKIT_MODELS_PATH=./my-models sh scripts/setup.sh download-models
 | `pose_landmark.onnx` | 体ポーズ推定 (33点) | ~5.3 MB |
 | `hand_landmark.onnx` | 手ランドマーク検出 (21点×2) | ~4.0 MB |
 | `default_avatar.vrm` | デフォルトVRMアバター | ~7.6 MB |
+| `smart_turn_v3.onnx` | End-of-Turn Detection (smart-turn v3) | ~32 MB |
+
+---
+
+## 🎤 ETD (End-of-Turn Detection)
+
+Detects whether a user has finished speaking, powered by [smart-turn v3](https://github.com/pipecat-ai/smart-turn) ONNX model. ETD complements VAD (Voice Activity Detection) by analyzing acoustic features to determine if silence means "thinking pause" or "turn complete".
+
+### Quick Start
+
+```rust
+use etd::{EndOfTurnDetector, EtdConfig};
+
+let mut detector = EndOfTurnDetector::new(EtdConfig::default())?;
+let result = detector.predict_i16(&audio_samples)?;
+println!("End of turn: {} ({:.2}%)", result.prediction, result.probability * 100.0);
+```
+
+### ETD Model Download
+
+```bash
+curl -L -o assets/models/smart_turn_v3.onnx \
+  "https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/main/onnx/model.onnx"
+```
+
+### ETD Demo (WAV file)
+
+```bash
+cargo run -p etd --example etd_demo -- path/to/audio.wav
+```
+
+### speech-capture Integration
+
+```bash
+# Build with ETD support
+cargo build -p speech-capture --features end-of-turn
+```
 
 ---
 

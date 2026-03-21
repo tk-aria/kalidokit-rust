@@ -655,6 +655,13 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         }
     }
 
+    // 5c. Lua-ImGui overlay
+    if let Some(li) = &mut state.lua_imgui {
+        if let Err(e) = li.render(&state.render_ctx.device, &state.render_ctx.queue, &view) {
+            log::warn!("ImGui render error: {e}");
+        }
+    }
+
     output.present();
 
     // Deferred mascot toggle: safe now that SurfaceTexture is dropped.

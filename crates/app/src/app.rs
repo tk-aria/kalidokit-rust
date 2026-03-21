@@ -74,12 +74,18 @@ impl ApplicationHandler for App {
             return;
         };
 
-        // Forward events to ImGui first so it can capture mouse/keyboard
+        // Forward events to ImGui (dear-imgui-rs) first so it can capture mouse/keyboard
         if let Some(imgui) = &mut state.imgui {
             if state.show_imgui {
                 imgui.handle_event(&state.render_ctx.window, _window_id, &event);
             }
         }
+        // Forward events to Lua-ImGui
+        let imgui_captured = if let Some(li) = &mut state.lua_imgui {
+            li.handle_event(&event)
+        } else {
+            false
+        };
 
         match event {
             WindowEvent::CloseRequested => {
@@ -99,6 +105,9 @@ impl ApplicationHandler for App {
                         size.height,
                         state.render_ctx.window.scale_factor(),
                     );
+                }
+                if let Some(li) = &mut state.lua_imgui {
+                    li.resize(size.width, size.height, state.render_ctx.window.scale_factor());
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -138,8 +147,8 @@ impl ApplicationHandler for App {
 
                 state.render_ctx.window.request_redraw();
             }
-            WindowEvent::MouseWheel { delta, .. } => {
-                // Don't zoom if ImGui is capturing the scroll (e.g. scrolling a panel)
+            WindowEvent::MouseWheel { delta, .. } if !imgui_captured => {
+                // Don't zoom if dear-imgui-rs is capturing the scroll
                 let imgui_wants = state.show_imgui
                     && state.imgui.as_ref().map_or(false, |im| im.want_capture_mouse());
                 if !imgui_wants {
@@ -151,7 +160,7 @@ impl ApplicationHandler for App {
                         (state.camera_distance - scroll_y * 0.3).clamp(0.5, 10.0);
                 }
             }
-            WindowEvent::KeyboardInput { event, .. } => {
+            WindowEvent::KeyboardInput { event, .. } if !imgui_captured => {
                 if event.state == ElementState::Pressed {
                     if let PhysicalKey::Code(key) = event.physical_key {
                         match key {

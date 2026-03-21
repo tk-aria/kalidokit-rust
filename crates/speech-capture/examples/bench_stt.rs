@@ -19,7 +19,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let spec = reader.spec();
     let samples: Vec<i16> = reader.samples::<i16>().map(|s| s.unwrap()).collect();
     let audio_duration_s = samples.len() as f64 / spec.sample_rate as f64;
-    println!("Audio: {wav_path} ({} Hz, {:.1}s)", spec.sample_rate, audio_duration_s);
+    println!(
+        "Audio: {wav_path} ({} Hz, {:.1}s)",
+        spec.sample_rate, audio_duration_s
+    );
 
     // Load model
     println!("Loading model: {model_path}");
@@ -27,8 +30,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = whisper_rs::WhisperContext::new_with_params(
         model_path,
         whisper_rs::WhisperContextParameters::default(),
-    ).map_err(|e| format!("Failed to load model: {e}"))?;
-    println!("Model loaded in {:.1}s\n", load_start.elapsed().as_secs_f64());
+    )
+    .map_err(|e| format!("Failed to load model: {e}"))?;
+    println!(
+        "Model loaded in {:.1}s\n",
+        load_start.elapsed().as_secs_f64()
+    );
 
     let audio_f32: Vec<f32> = samples.iter().map(|&s| s as f32 / 32768.0).collect();
 
@@ -48,7 +55,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Warmup
     {
         let mut state = ctx.create_state().map_err(|e| format!("{e}"))?;
-        let mut params = whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
+        let mut params =
+            whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
         params.set_language(Some("ja"));
         params.set_print_progress(false);
         params.set_print_realtime(false);
@@ -58,12 +66,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Benchmark
-    println!("Benchmarking {runs} runs ({:.1}s audio)...\n", audio_duration_s);
+    println!(
+        "Benchmarking {runs} runs ({:.1}s audio)...\n",
+        audio_duration_s
+    );
     let mut latencies = Vec::new();
 
     for run in 0..runs {
         let mut state = ctx.create_state().map_err(|e| format!("{e}"))?;
-        let mut params = whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
+        let mut params =
+            whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
         params.set_language(Some("ja"));
         params.set_print_progress(false);
         params.set_print_realtime(false);
@@ -83,12 +95,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    let avg_ms = latencies.iter().map(|d| d.as_millis()).sum::<u128>() as f64 / latencies.len() as f64;
+    let avg_ms =
+        latencies.iter().map(|d| d.as_millis()).sum::<u128>() as f64 / latencies.len() as f64;
     let min_ms = latencies.iter().map(|d| d.as_millis()).min().unwrap();
     let max_ms = latencies.iter().map(|d| d.as_millis()).max().unwrap();
     println!("\n--- Summary ---");
     println!("Audio: {:.1}s | Runs: {runs}", audio_duration_s);
-    println!("Latency: avg={:.0}ms  min={min_ms}ms  max={max_ms}ms", avg_ms);
+    println!(
+        "Latency: avg={:.0}ms  min={min_ms}ms  max={max_ms}ms",
+        avg_ms
+    );
     println!("Realtime: {:.2}x", avg_ms / 1000.0 / audio_duration_s);
 
     Ok(())
