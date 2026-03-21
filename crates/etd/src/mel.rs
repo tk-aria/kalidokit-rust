@@ -51,13 +51,7 @@ fn mel_to_hz(mel: f32) -> f32 {
 ///
 /// If `n_mels == 0` or `fmin >= fmax`, the result is an appropriately
 /// degenerate matrix (empty or all-zeros).
-pub fn mel_filterbank(
-    n_mels: usize,
-    n_fft: usize,
-    sr: u32,
-    fmin: f32,
-    fmax: f32,
-) -> Vec<Vec<f32>> {
+pub fn mel_filterbank(n_mels: usize, n_fft: usize, sr: u32, fmin: f32, fmax: f32) -> Vec<Vec<f32>> {
     let n_freqs = n_fft / 2 + 1;
 
     if n_mels == 0 {
@@ -105,17 +99,20 @@ pub fn mel_filterbank(
     filters
 }
 
-/// PCM f32 → log-mel spectrogram
+/// PCM f32 → log-mel spectrogram.
+///
 /// Processing:
-///   1. STFT (Hann window, n_fft=400, hop=160)
-///   2. Apply mel filterbank
-///   3. log10 transform + clamp (max - 8.0 dB)
-///   4. Whisper-style normalization: (x - max) / 4.0 + 1.0
-/// Output: Vec<f32> row-major (n_mels, n_frames) = (80, 800)
+/// 1. STFT (Hann window, n_fft=400, hop=160)
+/// 2. Apply mel filterbank
+/// 3. log10 transform + clamp (max - 8.0 dB)
+/// 4. Whisper-style normalization: (x - max) / 4.0 + 1.0
+///
+/// Output: `Vec<f32>` row-major (n_mels, n_frames) = (80, 800)
 pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
     use crate::stft::{hann_window, stft_power};
 
-    let n_frames_target = (config.chunk_length * config.sample_rate as f32 / config.hop_length as f32) as usize;
+    let n_frames_target =
+        (config.chunk_length * config.sample_rate as f32 / config.hop_length as f32) as usize;
     let n_mels = config.n_mels;
     let n_fft = config.n_fft;
     let hop = config.hop_length;
@@ -176,7 +173,10 @@ mod tests {
     fn test_hz_to_mel_known_values() {
         // 80 Hz
         let mel_80 = hz_to_mel(80.0);
-        assert!((mel_80 - 121.956).abs() < 1.0, "80 Hz => ~122 mel, got {mel_80}");
+        assert!(
+            (mel_80 - 121.956).abs() < 1.0,
+            "80 Hz => ~122 mel, got {mel_80}"
+        );
 
         // 1000 Hz
         let mel_1000 = hz_to_mel(1000.0);
@@ -236,10 +236,7 @@ mod tests {
         let fb = mel_filterbank(80, 400, 16000, 80.0, 7600.0);
         for (m, row) in fb.iter().enumerate() {
             for (k, &val) in row.iter().enumerate() {
-                assert!(
-                    val >= 0.0,
-                    "negative value {val} at mel={m}, bin={k}"
-                );
+                assert!(val >= 0.0, "negative value {val} at mel={m}, bin={k}");
             }
         }
     }
@@ -271,7 +268,12 @@ mod tests {
         let audio = vec![0.0_f32; 128000]; // 8 seconds at 16kHz
         let mel = log_mel_spectrogram(&audio, &config);
 
-        assert_eq!(mel.len(), 64000, "expected 80*800=64000 elements, got {}", mel.len());
+        assert_eq!(
+            mel.len(),
+            64000,
+            "expected 80*800=64000 elements, got {}",
+            mel.len()
+        );
 
         // All-zero input → all values should be identical after normalization
         let first = mel[0];
@@ -279,7 +281,9 @@ mod tests {
             assert!(
                 (v - first).abs() < 1e-6,
                 "silence: mel[{}] = {}, expected uniform value {}",
-                i, v, first
+                i,
+                v,
+                first
             );
         }
     }
@@ -289,7 +293,12 @@ mod tests {
         let config = MelConfig::default();
         let audio = vec![0.0_f32; 128000];
         let mel = log_mel_spectrogram(&audio, &config);
-        assert_eq!(mel.len(), 64000, "expected 80*800=64000 elements, got {}", mel.len());
+        assert_eq!(
+            mel.len(),
+            64000,
+            "expected 80*800=64000 elements, got {}",
+            mel.len()
+        );
     }
 
     #[test]
@@ -319,7 +328,8 @@ mod tests {
             assert!(
                 v >= -1.0 - 0.01 && v <= 1.0 + 0.01,
                 "mel[{}] = {} out of expected range [-1, 1]",
-                i, v
+                i,
+                v
             );
         }
     }
@@ -331,7 +341,12 @@ mod tests {
         let mel = log_mel_spectrogram(&audio, &config);
 
         // Should still produce the correct shape (zero-padded STFT frames)
-        assert_eq!(mel.len(), 64000, "expected 80*800=64000 elements even for short audio, got {}", mel.len());
+        assert_eq!(
+            mel.len(),
+            64000,
+            "expected 80*800=64000 elements even for short audio, got {}",
+            mel.len()
+        );
 
         // Should contain no NaN or Inf
         for (i, &v) in mel.iter().enumerate() {

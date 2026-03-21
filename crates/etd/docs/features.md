@@ -279,7 +279,7 @@ pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
 
 ### Step 1.6: Phase 1 検証
 
-- [ ] テストカバレッジ確認:
+- [x] テストカバレッジ確認: <!-- 2026-03-21 11:35 JST -->
   ```bash
   cargo install cargo-tarpaulin  # 未インストールの場合
   cargo tarpaulin -p etd --out stdout
@@ -287,7 +287,7 @@ pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
   - カバレッジ 90% 以上であること
   - 未カバーの分岐がある場合、正常系/異常系のテストケースを追加
 
-- [ ] ビルド検証:
+- [x] ビルド検証: <!-- 2026-03-21 11:35 JST -->
   ```bash
   cargo check -p etd
   cargo build -p etd

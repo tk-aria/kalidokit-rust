@@ -39,7 +39,11 @@ mod tests {
     fn test_i16_to_f32_max() {
         let result = i16_to_f32(&[32767i16]);
         let expected = 32767.0f32 / 32768.0;
-        assert!((result[0] - expected).abs() < 1e-6, "expected ~1.0, got {}", result[0]);
+        assert!(
+            (result[0] - expected).abs() < 1e-6,
+            "expected ~1.0, got {}",
+            result[0]
+        );
     }
 
     #[test]
