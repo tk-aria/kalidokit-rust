@@ -1,0 +1,13 @@
+[package]
+name = "imgui-text-edit"
+version = "0.1.0"
+edition = "2021"
+description = "ImGuiColorTextEdit integration for dear-imgui-rs"
+links = "imgui_text_edit"
+
+[dependencies]
+dear-imgui-rs = "0.10"
+dear-imgui-sys = "0.10"
+
+[build-dependencies]
+cc = "1.2"
