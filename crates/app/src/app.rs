@@ -61,6 +61,13 @@ impl ApplicationHandler for App {
             return;
         };
 
+        // Forward events to imgui first
+        let imgui_captured = if let Some(li) = &mut state.lua_imgui {
+            li.handle_event(&event)
+        } else {
+            false
+        };
+
         match event {
             WindowEvent::CloseRequested => {
                 save_prefs(state);
@@ -72,6 +79,9 @@ impl ApplicationHandler for App {
                 state
                     .scene
                     .resize(&state.render_ctx.device, size.width, size.height);
+                if let Some(li) = &mut state.lua_imgui {
+                    li.resize(size.width, size.height, state.render_ctx.window.scale_factor());
+                }
             }
             WindowEvent::RedrawRequested => {
                 if let Err(e) = crate::update::update_frame(state) {
@@ -110,7 +120,7 @@ impl ApplicationHandler for App {
 
                 state.render_ctx.window.request_redraw();
             }
-            WindowEvent::MouseWheel { delta, .. } => {
+            WindowEvent::MouseWheel { delta, .. } if !imgui_captured => {
                 let scroll_y = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(pos) => pos.y as f32 * 0.01,
@@ -119,7 +129,7 @@ impl ApplicationHandler for App {
                 // scroll down (negative y) zooms out (increase distance).
                 state.camera_distance = (state.camera_distance - scroll_y * 0.3).clamp(0.5, 10.0);
             }
-            WindowEvent::KeyboardInput { event, .. } => {
+            WindowEvent::KeyboardInput { event, .. } if !imgui_captured => {
                 if event.state == ElementState::Pressed {
                     if let PhysicalKey::Code(key) = event.physical_key {
                         match key {

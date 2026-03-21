@@ -403,6 +403,13 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         .debug_overlay
         .render(&state.render_ctx, &view, &overlay_input)?;
 
+    // 5c. Lua-ImGui overlay
+    if let Some(li) = &mut state.lua_imgui {
+        if let Err(e) = li.render(&state.render_ctx.device, &state.render_ctx.queue, &view) {
+            log::warn!("ImGui render error: {e}");
+        }
+    }
+
     output.present();
 
     // 6. Virtual camera: capture and send frame (throttled to 30fps)
