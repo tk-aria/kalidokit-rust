@@ -329,7 +329,10 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
 
     // 5. Render: acquire surface → 3D scene → debug overlay → present
     pipeline_logger::render(log::Level::Trace, "submitting draw commands").emit();
-    let output = state.render_ctx.surface.get_current_texture()?;
+    let output = match state.render_ctx.surface.get_current_texture() {
+        wgpu::CurrentSurfaceTexture::Success(tex) | wgpu::CurrentSurfaceTexture::Suboptimal(tex) => tex,
+        other => anyhow::bail!("Failed to acquire surface texture: {:?}", other),
+    };
     let view = output
         .texture
         .create_view(&wgpu::TextureViewDescriptor::default());

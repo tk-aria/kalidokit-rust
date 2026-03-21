@@ -11,7 +11,7 @@ pub struct RenderContext {
 
 impl RenderContext {
     pub async fn new(window: Arc<winit::window::Window>) -> anyhow::Result<Self> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let surface = instance.create_surface(window.clone())?;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -19,10 +19,9 @@ impl RenderContext {
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
             })
-            .await
-            .ok_or_else(|| anyhow::anyhow!("No adapter"))?;
+            .await?;
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .request_device(&wgpu::DeviceDescriptor::default())
             .await?;
         let size = window.inner_size();
         let config = surface
@@ -67,7 +66,7 @@ impl RenderContext {
         self.surface.configure(&self.device, &self.config);
         // Force GPU to finish pending work before the new config takes effect.
         // This prevents ghost artifacts when switching to/from transparent mode.
-        self.device.poll(wgpu::Maintain::Wait);
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {

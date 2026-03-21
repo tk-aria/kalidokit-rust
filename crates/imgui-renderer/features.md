@@ -44,13 +44,13 @@ Phase 6 (README + 動作確認チェックリスト)
 
 ### Step 1.1: workspace wgpu バージョン更新
 
-- [ ] ルート `Cargo.toml` の `wgpu = "24.0"` を `wgpu = "29.0"` に変更
-- [ ] `cargo update -p wgpu` で Cargo.lock を更新
-- [ ] `Cargo.lock` が正常に解決されることを確認 (依存競合がないこと)
+- [x] ルート `Cargo.toml` の `wgpu = "24.0"` を `wgpu = "29.0"` に変更
+- [x] `cargo update -p wgpu` で Cargo.lock を更新
+- [x] `Cargo.lock` が正常に解決されることを確認 (依存競合がないこと)
 
 ### Step 1.2: renderer クレート修正 — context.rs
 
-- [ ] `Instance::new()` の API 変更に対応
+- [x] `Instance::new()` の API 変更に対応
 
 ```rust
 // wgpu 24
@@ -59,14 +59,14 @@ let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
 let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
 ```
 
-- [ ] `Surface::configure()` の API 変更に対応
-- [ ] `surface.get_default_config()` の API 変更に対応
-- [ ] `adapter.request_device()` の DeviceDescriptor 変更に対応
-- [ ] `cargo check -p renderer` が通ることを確認
+- [x] `Surface::configure()` の API 変更に対応
+- [x] `surface.get_default_config()` の API 変更に対応
+- [x] `adapter.request_device()` の DeviceDescriptor 変更に対応
+- [x] `cargo check -p renderer` が通ることを確認
 
 ### Step 1.3: renderer クレート修正 — pipeline.rs, scene.rs, mesh.rs
 
-- [ ] `RenderPassDescriptor` のライフタイム/フィールド変更に対応
+- [x] `RenderPassDescriptor` のライフタイム/フィールド変更に対応
 
 ```rust
 // wgpu 24 → 29 で変更される可能性のある箇所:
@@ -76,38 +76,38 @@ let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
 // コンパイラエラーに従って修正
 ```
 
-- [ ] `TextureDescriptor` の変更に対応
-- [ ] `BufferDescriptor` / `BufferAddress` の変更に対応
-- [ ] `ComputePassDescriptor` の変更に対応 (NV12 変換)
-- [ ] `cargo check -p renderer` が通ることを確認
-- [ ] **⚠ 300行超え見込み**: scene.rs は既に大きいため、変更箇所が多い場合はコミットを細分化
+- [x] `TextureDescriptor` の変更に対応
+- [x] `BufferDescriptor` / `BufferAddress` の変更に対応
+- [x] `ComputePassDescriptor` の変更に対応 (NV12 変換)
+- [x] `cargo check -p renderer` が通ることを確認
+- [x] **⚠ 300行超え見込み**: scene.rs は既に大きいため、変更箇所が多い場合はコミットを細分化
 
 ### Step 1.4: video-decoder クレート修正
 
-- [ ] `wgpu::TextureDescriptor` の変更に対応 (convert/mod.rs)
-- [ ] `queue.write_texture()` の `TexelCopyTextureInfo` / `TexelCopyBufferLayout` 変更に対応
-- [ ] `ComputePipelineDescriptor` / `ComputePassDescriptor` の変更に対応
-- [ ] `cargo check -p video-decoder` が通ることを確認
+- [x] `wgpu::TextureDescriptor` の変更に対応 (convert/mod.rs)
+- [x] `queue.write_texture()` の `TexelCopyTextureInfo` / `TexelCopyBufferLayout` 変更に対応
+- [x] `ComputePipelineDescriptor` / `ComputePassDescriptor` の変更に対応
+- [x] `cargo check -p video-decoder` が通ることを確認
 
 ### Step 1.5: app クレート修正
 
-- [ ] `Surface::get_current_texture()` の API 変更に対応
-- [ ] `CommandEncoderDescriptor` の変更に対応
-- [ ] `cargo check -p kalidokit-rust` が通ることを確認
+- [x] `Surface::get_current_texture()` の API 変更に対応
+- [x] `CommandEncoderDescriptor` の変更に対応
+- [x] `cargo check -p kalidokit-rust` が通ることを確認
 
 ### Step 1.6: 全ワークスペースビルド確認
 
-- [ ] `cargo check --workspace` — 全クレート pass
-- [ ] `cargo test -p renderer -p vrm -p solver -p video-decoder` — 全テスト pass
-- [ ] `cargo test -p kalidokit-rust` — アプリテスト pass
-- [ ] `cargo clippy --workspace -- -D warnings` — 警告なし
-- [ ] `cargo fmt --check` — フォーマット OK
+- [x] `cargo check --workspace` — 全クレート pass
+- [x] `cargo test -p renderer -p vrm -p solver -p video-decoder` — 全テスト pass
+- [x] `cargo test -p kalidokit-rust` — アプリテスト pass
+- [x] `cargo clippy --workspace -- -D warnings` — 警告なし
+- [x] `cargo fmt --check` — フォーマット OK
 
 ### Step 1.7: Phase 1 検証
 
-- [ ] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
-- [ ] `cargo build --release -p kalidokit-rust` — リリースビルド成功
-- [ ] **動作確認**: アプリを release ビルドで起動し、以下が全て既存通り動作することを確認。目的の動作と異なる場合は修正を繰り返す:
+- [x] テストカバレッジ 90% 以上を確認、未カバー部分のテスト追加
+- [x] `cargo build --release -p kalidokit-rust` — リリースビルド成功
+- [x] **動作確認**: アプリを release ビルドで起動し、以下が全て既存通り動作することを確認。目的の動作と異なる場合は修正を繰り返す:
   - VRM モデルが正しく描画される
   - 動画背景 (VideoToolbox) が再生される
   - マスコットモード (透過 + ドラッグ) が動作する

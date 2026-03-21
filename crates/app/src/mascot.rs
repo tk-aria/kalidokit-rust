@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::window::{Window, WindowLevel};
 

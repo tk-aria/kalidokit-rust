@@ -418,6 +418,7 @@ impl Scene {
                         load: wgpu::LoadOp::Clear(self.clear_color),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
                 depth_stencil_attachment: None,
                 ..Default::default()
@@ -436,6 +437,7 @@ impl Scene {
                         load: wgpu::LoadOp::Clear(self.clear_color),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
                 depth_stencil_attachment: None,
                 ..Default::default()
@@ -465,6 +467,7 @@ impl Scene {
                         load: clear_or_load,
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: depth_view,
@@ -501,7 +504,10 @@ impl Scene {
 
     /// Acquire surface, render, and present (convenience wrapper for non-overlay usage).
     pub fn render(&self, ctx: &RenderContext) -> anyhow::Result<()> {
-        let output = ctx.surface.get_current_texture()?;
+        let output = match ctx.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(tex) | wgpu::CurrentSurfaceTexture::Suboptimal(tex) => tex,
+            other => anyhow::bail!("Failed to acquire surface texture: {:?}", other),
+        };
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -695,7 +701,7 @@ impl Scene {
         let prev = 1 - cur;
 
         // 1. Non-blocking poll to process GPU callbacks (map_async completion)
-        device.poll(wgpu::Maintain::Poll);
+        let _ = device.poll(wgpu::PollType::Poll);
 
         // 2. Try to read back the previous buffer if mapping is complete
         let result = if self.frame_capture_pending
@@ -930,8 +936,8 @@ impl BgImage {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("bg_image_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -959,7 +965,7 @@ impl BgImage {
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 

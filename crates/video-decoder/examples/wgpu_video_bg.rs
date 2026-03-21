@@ -102,15 +102,14 @@ impl App {
 
     fn init_gpu(&mut self, window: Arc<winit::window::Window>) {
         let size = window.inner_size();
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let surface = instance.create_surface(window.clone()).unwrap();
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             compatible_surface: Some(&surface),
             ..Default::default()
-        }))
-        .expect("no adapter");
+        })).expect("no adapter");
         let (device, queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("no device");
 
         let config = surface
@@ -185,8 +184,8 @@ impl App {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bgl)],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -211,7 +210,7 @@ impl App {
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -412,8 +411,11 @@ impl winit::application::ApplicationHandler for App {
 
                 // Render.
                 if let Some(gpu) = &self.gpu {
-                    let frame = gpu.surface.get_current_texture();
-                    if let Ok(frame) = frame {
+                    let frame = match gpu.surface.get_current_texture() {
+                        wgpu::CurrentSurfaceTexture::Success(tex) | wgpu::CurrentSurfaceTexture::Suboptimal(tex) => tex,
+                        _ => return,
+                    };
+                    {
                         let view = frame
                             .texture
                             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -430,6 +432,7 @@ impl winit::application::ApplicationHandler for App {
                                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                                         store: wgpu::StoreOp::Store,
                                     },
+                                    depth_slice: None,
                                 })],
                                 depth_stencil_attachment: None,
                                 ..Default::default()
