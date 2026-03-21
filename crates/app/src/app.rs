@@ -34,6 +34,12 @@ impl ApplicationHandler for App {
 
         match pollster::block_on(crate::init::init_all(window)) {
             Ok(app_state) => {
+                // Apply fullscreen if configured
+                if app_state.fullscreen {
+                    app_state.render_ctx.window.set_fullscreen(Some(
+                        winit::window::Fullscreen::Borderless(None),
+                    ));
+                }
                 // Request initial redraw to kick-start the render loop
                 app_state.render_ctx.window.request_redraw();
                 self.state = Some(app_state);
@@ -384,6 +390,7 @@ fn save_prefs(state: &AppState) {
         background: state.background.clone(),
         mascot_mode: state.mascot.enabled,
         always_on_top: state.mascot.always_on_top,
+        fullscreen: state.fullscreen,
     }
     .save();
 }

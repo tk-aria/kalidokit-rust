@@ -77,6 +77,8 @@ pub struct AppState {
     pub imgui: Option<imgui_renderer::ImGuiRenderer>,
     /// Whether ImGui UI is visible (toggled by F1).
     pub show_imgui: bool,
+    /// Whether the window is in fullscreen mode.
+    pub fullscreen: bool,
 }
 
 /// Current rig solver results (face/pose/hand).
