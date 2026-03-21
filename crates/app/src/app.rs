@@ -352,8 +352,9 @@ impl ApplicationHandler for App {
                         let _ = state.render_ctx.window.set_cursor_hittest(false);
                     }
                 }
-                // Non-mascot mode: drag moves the avatar within the window
-                if state.dragging_model && !state.mascot.enabled {
+                // Drag moves the avatar within the window
+                // (active in non-mascot mode, or fullscreen mascot mode)
+                if state.dragging_model && (!state.mascot.enabled || state.fullscreen) {
                     let dx = position.x - state.drag_prev_pos[0];
                     let dy = position.y - state.drag_prev_pos[1];
                     let scale = state.render_ctx.window.scale_factor() as f32;
