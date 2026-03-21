@@ -88,6 +88,14 @@ impl ApplicationHandler for App {
                 state
                     .scene
                     .resize(&state.render_ctx.device, size.width, size.height);
+                // Update ImGui display size to match new surface dimensions
+                if let Some(imgui) = &mut state.imgui {
+                    imgui.resize(
+                        size.width,
+                        size.height,
+                        state.render_ctx.window.scale_factor(),
+                    );
+                }
             }
             WindowEvent::RedrawRequested => {
                 if let Err(e) = crate::update::update_frame(state) {

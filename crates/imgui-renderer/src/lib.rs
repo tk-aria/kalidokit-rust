@@ -177,6 +177,16 @@ impl ImGuiRenderer {
     ///
     /// Uses `LoadOp::Load` so that ImGui is drawn on top of whatever was
     /// already rendered (overlay mode).
+    /// Notify ImGui that the window/surface was resized.
+    /// Call this whenever the wgpu surface is reconfigured.
+    pub fn resize(&mut self, width: u32, height: u32, scale_factor: f64) {
+        let io = self.ctx.io_mut();
+        let logical_w = width as f64 / scale_factor;
+        let logical_h = height as f64 / scale_factor;
+        io.display_size = [logical_w as f32, logical_h as f32];
+        io.display_framebuffer_scale = [scale_factor as f32, scale_factor as f32];
+    }
+
     pub fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, view: &wgpu::TextureView) {
         let draw_data = self.ctx.render();
         let mut encoder =
