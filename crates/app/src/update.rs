@@ -439,7 +439,23 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             let fps_render = state.fps_counter;
             let fps_decode = state.fps_decode_counter;
 
+            // Collect profiler frame times
+            static mut FRAME_TIMES: [f32; 120] = [0.0; 120];
+            static mut FRAME_IDX: usize = 0;
+            let frame_ms = elapsed.as_secs_f32() * 1000.0;
+            unsafe {
+                FRAME_TIMES[FRAME_IDX % 120] = frame_ms;
+                FRAME_IDX += 1;
+            }
+            let frame_times = unsafe { &FRAME_TIMES };
+            let frame_idx = unsafe { FRAME_IDX };
+
             imgui.frame(&state.render_ctx.window, |ui| {
+                // Enable dockspace over the entire viewport
+                let dockspace_id = ui.dockspace_over_main_viewport();
+                let _ = dockspace_id;
+
+                // ── Debug Info ──
                 ui.window("Debug Info")
                     .size([220.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
                     .build(|| {
@@ -449,6 +465,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         ui.text(format!("Idle Anim: {}", if idle_anim_on { "ON" } else { "OFF" }));
                     });
 
+                // ── Settings ──
                 ui.window("Settings")
                     .size([220.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
                     .build(|| {
@@ -459,13 +476,11 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                             ui.checkbox("Debug Overlay", &mut show_debug_overlay);
                             ui.slider("Camera Distance", 0.5, 10.0, &mut camera_distance);
                         }
-
                         if ui.collapsing_header("Tracking", imgui_renderer::imgui::TreeNodeFlags::DEFAULT_OPEN) {
                             ui.checkbox("Tracking (T)", &mut tracking_enabled);
                             ui.checkbox("Auto Blink (B)", &mut blink_auto);
                             ui.checkbox("Virtual Camera (C)", &mut vcam_enabled);
                         }
-
                         if ui.collapsing_header("Lighting", imgui_renderer::imgui::TreeNodeFlags::DEFAULT_OPEN) {
                             ui.text(format!("Key: {key_label}"));
                             ui.slider("Key Intensity", 0.0, 3.0, &mut key_intensity);
@@ -473,6 +488,81 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                             ui.slider("Fill Intensity", 0.0, 3.0, &mut fill_intensity);
                             ui.text(format!("Back: {back_label}"));
                             ui.slider("Back Intensity", 0.0, 3.0, &mut back_intensity);
+                        }
+                    });
+
+                // ── Pipeline (node-style view) ──
+                ui.window("Pipeline")
+                    .size([300.0, 200.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .build(|| {
+                        let draw_list = ui.get_window_draw_list();
+                        let p = ui.cursor_screen_pos();
+                        let nodes = [
+                            ("Camera", [0.0, 0.0]),
+                            ("Tracker", [110.0, 0.0]),
+                            ("Solver", [220.0, 0.0]),
+                            ("VRM Rig", [110.0, 60.0]),
+                            ("Renderer", [220.0, 60.0]),
+                        ];
+                        let node_w = 80.0f32;
+                        let node_h = 30.0f32;
+                        // Draw connections
+                        let edges = [(0, 1), (1, 2), (1, 3), (2, 4), (3, 4)];
+                        for (a, b) in &edges {
+                            let ax = p[0] + nodes[*a].1[0] + node_w;
+                            let ay = p[1] + nodes[*a].1[1] + node_h / 2.0;
+                            let bx = p[0] + nodes[*b].1[0];
+                            let by = p[1] + nodes[*b].1[1] + node_h / 2.0;
+                            draw_list.add_line([ax, ay], [bx, by], [0.3, 0.45, 0.7, 0.8]).thickness(2.0).build();
+                        }
+                        // Draw nodes
+                        for (name, pos) in &nodes {
+                            let x = p[0] + pos[0];
+                            let y = p[1] + pos[1];
+                            draw_list.add_rect([x, y], [x + node_w, y + node_h], [0.12, 0.16, 0.30, 0.95]).filled(true).build();
+                            draw_list.add_rect([x, y], [x + node_w, y + node_h], [0.30, 0.40, 0.65, 1.0]).thickness(1.0).build();
+                            draw_list.add_text([x + 6.0, y + 8.0], [0.8, 0.85, 0.95, 1.0], name);
+                        }
+                        ui.dummy([300.0, 100.0]); // reserve space
+                    });
+
+                // ── Profiler ──
+                ui.window("Profiler")
+                    .size([300.0, 150.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .build(|| {
+                        let avg = frame_times.iter().sum::<f32>() / 120.0;
+                        let max = frame_times.iter().cloned().fold(0.0f32, f32::max);
+                        ui.text(format!("Frame: {:.1}ms avg, {:.1}ms max", avg, max));
+                        ui.plot_lines("##frame_times", frame_times)
+                            .overlay_text(&format!("{:.1}ms", frame_times[(frame_idx.wrapping_sub(1)) % 120]))
+                            .graph_size([280.0, 60.0])
+                            .scale_min(0.0)
+                            .scale_max(50.0)
+                            .build();
+                        ui.separator();
+                        ui.text(format!("GPU: wgpu 29.0"));
+                        ui.text(format!("ImGui: {}", imgui_renderer::imgui::dear_imgui_version()));
+                    });
+
+                // ── Terminal / Log ──
+                ui.window("Log")
+                    .size([400.0, 150.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .build(|| {
+                        // Show last N log-style lines
+                        let lines = [
+                            format!("[{:.1}s] Render FPS: {fps_render}", elapsed.as_secs_f64()),
+                            format!("[{:.1}s] Decode FPS: {fps_decode}", elapsed.as_secs_f64()),
+                            format!("[{:.1}s] Tracking: {}", elapsed.as_secs_f64(), if tracking_enabled { "ON" } else { "OFF" }),
+                            format!("[{:.1}s] Mascot: {}, AlwaysOnTop: {}", elapsed.as_secs_f64(), mascot_enabled, always_on_top),
+                            format!("[{:.1}s] Camera dist: {:.2}", elapsed.as_secs_f64(), camera_distance),
+                            format!("[{:.1}s] Frame: {:.1}ms", elapsed.as_secs_f64(), frame_ms),
+                        ];
+                        for line in &lines {
+                            ui.text_colored([0.5, 0.6, 0.8, 1.0], line);
+                        }
+                        // Auto-scroll to bottom
+                        if ui.scroll_y() >= ui.scroll_max_y() {
+                            ui.set_scroll_here_y();
                         }
                     });
             });
