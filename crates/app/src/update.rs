@@ -385,30 +385,33 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         );
     }
 
-    let hud_lines = build_hud_lines(state);
-    let overlay_input = OverlayInput {
-        camera_frame: None, // Already uploaded via update_camera_frame
-        pose_2d: state
-            .last_tracking_result
-            .as_ref()
-            .and_then(|r| r.pose_landmarks_2d.clone()),
-        left_hand: state
-            .last_tracking_result
-            .as_ref()
-            .and_then(|r| r.left_hand_landmarks.clone()),
-        right_hand: state
-            .last_tracking_result
-            .as_ref()
-            .and_then(|r| r.right_hand_landmarks.clone()),
-        face: state
-            .last_tracking_result
-            .as_ref()
-            .and_then(|r| r.face_landmarks.clone()),
-        hud_lines,
-    };
-    state
-        .debug_overlay
-        .render(&state.render_ctx, &view, &overlay_input)?;
+    // 5b. Debug overlay (camera preview + landmarks + HUD)
+    if state.show_debug_overlay {
+        let hud_lines = build_hud_lines(state);
+        let overlay_input = OverlayInput {
+            camera_frame: None,
+            pose_2d: state
+                .last_tracking_result
+                .as_ref()
+                .and_then(|r| r.pose_landmarks_2d.clone()),
+            left_hand: state
+                .last_tracking_result
+                .as_ref()
+                .and_then(|r| r.left_hand_landmarks.clone()),
+            right_hand: state
+                .last_tracking_result
+                .as_ref()
+                .and_then(|r| r.right_hand_landmarks.clone()),
+            face: state
+                .last_tracking_result
+                .as_ref()
+                .and_then(|r| r.face_landmarks.clone()),
+            hud_lines,
+        };
+        state
+            .debug_overlay
+            .render(&state.render_ctx, &view, &overlay_input)?;
+    }
 
     // 5c. ImGui overlay render
     if state.show_imgui {
@@ -416,6 +419,8 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             // Collect mutable state into temporaries to avoid borrow conflicts
             let mut mascot_enabled = state.mascot.enabled;
             let mut always_on_top = state.mascot.always_on_top;
+            let mut fullscreen = state.fullscreen;
+            let mut show_debug_overlay = state.show_debug_overlay;
             let mut tracking_enabled = state.tracking_enabled;
             let mut vcam_enabled = state.vcam_enabled;
             let mut blink_auto = state.blink_mode == BlinkMode::Auto;
@@ -450,6 +455,8 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         if ui.collapsing_header("Display", imgui_renderer::imgui::TreeNodeFlags::DEFAULT_OPEN) {
                             ui.checkbox("Mascot Mode (M)", &mut mascot_enabled);
                             ui.checkbox("Always on Top (F)", &mut always_on_top);
+                            ui.checkbox("Maximized Window", &mut fullscreen);
+                            ui.checkbox("Debug Overlay", &mut show_debug_overlay);
                             ui.slider("Camera Distance", 0.5, 10.0, &mut camera_distance);
                         }
 
@@ -478,6 +485,11 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             if always_on_top != state.mascot.always_on_top {
                 state.mascot.toggle_always_on_top(&state.render_ctx.window);
             }
+            if fullscreen != state.fullscreen {
+                state.fullscreen = fullscreen;
+                state.render_ctx.window.set_maximized(fullscreen);
+            }
+            state.show_debug_overlay = show_debug_overlay;
             state.tracking_enabled = tracking_enabled;
             state.vcam_enabled = vcam_enabled;
             state.camera_distance = camera_distance;

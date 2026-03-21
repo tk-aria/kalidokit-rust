@@ -353,6 +353,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         imgui,
         show_imgui: true,
         fullscreen: prefs.fullscreen,
+        show_debug_overlay: true,
         pending_mascot_toggle: false,
         model_offset: [0.0, 0.0],
         dragging_model: false,

@@ -357,11 +357,12 @@ impl ApplicationHandler for App {
                 if state.dragging_model && (!state.mascot.enabled || state.fullscreen) {
                     let dx = position.x - state.drag_prev_pos[0];
                     let dy = position.y - state.drag_prev_pos[1];
-                    let scale = state.render_ctx.window.scale_factor() as f32;
                     let size = state.render_ctx.window.inner_size();
-                    // Normalize to [-1, 1] range based on window size
-                    state.model_offset[0] += (dx as f32 / size.width as f32) * 2.0 * scale;
-                    state.model_offset[1] -= (dy as f32 / size.height as f32) * 2.0 * scale;
+                    // Map pixel delta to world-space offset.
+                    // Scale by camera_distance so drag feels 1:1 regardless of zoom.
+                    let world_scale = state.camera_distance * 2.0 / size.height as f32;
+                    state.model_offset[0] += dx as f32 * world_scale;
+                    state.model_offset[1] -= dy as f32 * world_scale;
                     state.drag_prev_pos = [position.x, position.y];
                 }
             }

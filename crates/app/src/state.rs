@@ -79,6 +79,8 @@ pub struct AppState {
     pub show_imgui: bool,
     /// Whether the window is in fullscreen mode.
     pub fullscreen: bool,
+    /// Whether the debug overlay (camera preview + landmarks) is shown.
+    pub show_debug_overlay: bool,
     /// Pending mascot mode toggle (deferred to after surface present).
     pub pending_mascot_toggle: bool,
     /// Model offset for dragging the avatar within the window (non-mascot mode).
