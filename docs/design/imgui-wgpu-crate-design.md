@@ -1,240 +1,215 @@
-# imgui-wgpu ラッパークレート設計
+# imgui-wgpu ラッパークレート設計 (dear-imgui-rs ベース)
 
-## 1. 目的
+## 1. 方針変更
 
-Dear ImGui を wgpu アプリケーションに簡単に組み込めるラッパークレートを作成する。
-アプリ側は wgpu の `Device`, `Queue`, `SurfaceConfiguration` を渡すだけで
-ImGui の描画が統合される。
+`imgui-rs` (ImGui 1.89, 2 年遅れ, 拡張なし) から **`dear-imgui-rs`** (ImGui 1.92.6 最新, docking, ImPlot/ImNodes/ImGuizmo 統合) に変更。
 
-## 2. 既存エコシステムの選択肢
+wgpu を **24 → 29** にアップグレードし、`dear-imgui-wgpu` (wgpu 29 対応) をそのまま使用。
 
-| クレート | ImGui バージョン | wgpu 対応 | 特徴 |
-|---|---|---|---|
-| `imgui` (0.12) + `imgui-wgpu` (0.28) | 1.89 | wgpu 25 | 老舗、枯れている |
-| `dear-imgui-rs` (0.10) + `dear-imgui-wgpu` | 1.92.6 (docking) | wgpu 27-29 | 最新、docking 対応、マルチビューポート |
-| **自前ラップ** (本計画) | 最新 (cimgui) | wgpu 24 (本プロジェクト) | 完全制御 |
+## 2. ライブラリ構成
 
-### 推奨アプローチ: `dear-imgui-rs` をベースに薄いラッパーを作る
+| クレート | バージョン | 役割 |
+|---|---|---|
+| `dear-imgui-rs` | 0.10 | ImGui 1.92.6 安全な Rust API (docking, 拡張込み) |
+| `dear-imgui-sys` | 0.10 | cimgui FFI (bindgen 生成) |
+| `dear-imgui-wgpu` | 0.10 | wgpu 29 レンダラーバックエンド |
+| `dear-imgui-winit` | 0.10 | winit プラットフォームバックエンド |
+| `wgpu` | **29.0** | GPU API (24 から上げる) |
+| `winit` | 0.30.9 | ウィンドウ管理 (既存) |
 
-**理由:**
-- `dear-imgui-rs` は ImGui 1.92.6 (docking branch) + cimgui ベースで最も新しい
-- wgpu backend (`dear-imgui-wgpu`) が既にある
-- 自前で cimgui の FFI を書くのは膨大な作業 (ImGui は 1000+ の API)
-- 本プロジェクトの wgpu バージョン (24.0) との互換は `dear-imgui-wgpu` の feature flag で調整可能
+### 利用可能な拡張 (dear-imgui-rs 経由)
 
-**ただし wgpu 24 への対応が問題:**
-- `dear-imgui-wgpu` は wgpu 27-29 対応
-- wgpu 24 → 27 の API 差分を吸収する必要がある
-- 選択肢: (A) wgpu を 27+ に上げる, (B) dear-imgui-wgpu を fork して 24 対応, (C) 自前で renderer を書く
+| 拡張 | 用途 |
+|---|---|
+| **ImPlot / ImPlot3D** | グラフ・プロット描画 |
+| **ImNodes** | ノードエディタ |
+| **ImGuizmo** | 3D ギズモ (移動/回転/拡大) |
+| **Test Engine** | UI 自動テスト |
+| **File Browser** | ファイル選択ダイアログ |
+| **Reflection UI** | Rust struct から自動 UI 生成 |
 
-## 3. アーキテクチャ
+## 3. wgpu 24 → 29 アップグレード
+
+### 影響範囲
+
+| クレート | wgpu 使用 | 変更量 |
+|---|---|---|
+| `renderer` | 大量 (Surface, Device, Queue, Pipeline, Texture, RenderPass) | **大** |
+| `video-decoder` | Texture, Queue (write_texture, compute) | 中 |
+| `app` | Surface acquire, present | 小 |
+
+### wgpu 24 → 29 の主な破壊的変更
 
 ```
-┌───────────────────────────────────────────────────┐
-│  imgui-renderer (本クレート)                       │
-│                                                    │
-│  pub struct ImGuiRenderer {                        │
-│      ctx: dear_imgui::Context,                     │
-│      platform: WinitPlatform,    // winit 統合     │
-│      renderer: WgpuRenderer,     // wgpu 描画      │
-│  }                                                 │
-│                                                    │
-│  impl ImGuiRenderer {                              │
-│      fn new(device, queue, format, window) -> Self │
-│      fn handle_event(event)                        │
-│      fn frame<F: FnOnce(&Ui)>(&mut self, f: F)    │
-│      fn render(device, queue, view)                │
-│  }                                                 │
-└────────────┬──────────────┬───────────────────────┘
-             │              │
-    ┌────────▼──────┐  ┌───▼──────────────────┐
-    │ dear-imgui-rs │  │ wgpu renderer        │
-    │ (Context, Ui) │  │ (自前 or dear-imgui- │
-    │               │  │  wgpu を fork)        │
-    └───────────────┘  └──────────────────────┘
+24 → 25: BufferAddress → u64, TextureDescriptor 変更
+25 → 26: RenderPassDescriptor lifetime 変更
+26 → 27: Instance::new() シグネチャ変更
+27 → 28: SurfaceConfiguration 変更
+28 → 29: BindGroupLayout 自動推論改善, Error 型変更
 ```
 
-## 4. API 設計 — アプリ側の使い方
+### アップグレード戦略
 
-```rust
-use imgui_renderer::ImGuiRenderer;
+1. `Cargo.toml` の workspace dependency を `wgpu = "29.0"` に変更
+2. `cargo check --workspace` でエラーを列挙
+3. クレートごとに API 差分を修正
+4. 全テスト pass を確認
 
-// 初期化 (wgpu の device/queue/format/window を渡す)
-let mut imgui = ImGuiRenderer::new(
-    &device,
-    &queue,
-    surface_config.format,
-    &window,
-)?;
-
-// イベントループ内
-fn window_event(&mut self, event: WindowEvent) {
-    // ImGui にイベントを渡す (マウス, キーボード)
-    imgui.handle_event(&window, &event);
-}
-
-// 描画
-fn redraw(&mut self) {
-    let output = surface.get_current_texture().unwrap();
-    let view = output.texture.create_view(&Default::default());
-
-    // ImGui フレーム: クロージャ内で UI を構築
-    imgui.frame(&window, dt, |ui| {
-        ui.window("Debug Panel").build(|| {
-            ui.text("FPS: 60");
-            ui.slider("Threshold", 0.0, 1.0, &mut threshold);
-            if ui.button("Reset") { /* ... */ }
-        });
-    });
-
-    // 既存の 3D シーンを描画
-    scene.render_to_view(&render_ctx, &view);
-
-    // ImGui を上に重ねて描画
-    imgui.render(&device, &queue, &view);
-
-    output.present();
-}
-```
-
-## 5. クレート構成
+## 4. imgui-renderer クレート設計
 
 ```
 crates/imgui-renderer/
 ├── Cargo.toml
 ├── src/
-│   ├── lib.rs              # ImGuiRenderer — メイン API
-│   ├── wgpu_backend.rs     # wgpu レンダラー (頂点バッファ, テクスチャ, パイプライン)
-│   ├── winit_platform.rs   # winit イベント → ImGui 入力変換
-│   └── shaders/
-│       └── imgui.wgsl      # ImGui 描画用 WGSL シェーダ
+│   └── lib.rs            # ImGuiRenderer (薄いラッパー)
 └── examples/
-    ├── standalone.rs        # ImGui 単体デモ (winit + wgpu)
-    └── overlay.rs           # 既存 3D シーンの上に ImGui オーバーレイ
+    ├── standalone.rs      # ImGui 単体デモ
+    └── overlay.rs         # 3D シーン + ImGui オーバーレイ
 ```
 
-## 6. wgpu レンダラーの実装
-
-ImGui の描画は以下のデータで構成される:
-
-```
-DrawData
-  └── DrawList[]
-        ├── VtxBuffer: Vec<ImDrawVert>   // pos(f32x2), uv(f32x2), col(u32)
-        ├── IdxBuffer: Vec<ImDrawIdx>    // u16 or u32
-        └── CmdBuffer: Vec<ImDrawCmd>    // clip_rect, texture_id, elem_count
-```
-
-wgpu レンダラーの責務:
-1. **頂点/インデックスバッファ**: フレーム毎に `DrawVert` / `DrawIdx` を GPU にアップロード
-2. **テクスチャ**: ImGui のフォントアトラス + ユーザーテクスチャを wgpu Texture に変換
-3. **パイプライン**: WGSL シェーダ + ブレンドステート (Alpha Blending) + scissor rect
-4. **描画**: `DrawCmd` ごとに `draw_indexed()` を発行、`clip_rect` で scissor 設定
-
-### WGSL シェーダ
-
-```wgsl
-struct VertexInput {
-    @location(0) pos: vec2<f32>,
-    @location(1) uv: vec2<f32>,
-    @location(2) color: vec4<f32>,  // u32 → vec4 に展開
-};
-
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-    @location(1) color: vec4<f32>,
-};
-
-@group(0) @binding(0) var<uniform> transform: mat4x4<f32>;
-@group(1) @binding(0) var tex: texture_2d<f32>;
-@group(1) @binding(1) var samp: sampler;
-
-@vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
-    var out: VertexOutput;
-    out.position = transform * vec4<f32>(in.pos, 0.0, 1.0);
-    out.uv = in.uv;
-    out.color = in.color;
-    return out;
-}
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let tex_color = textureSample(tex, samp, in.uv);
-    return in.color * tex_color;
-}
-```
-
-## 7. 2 つのアプローチの比較
-
-### A: dear-imgui-rs + dear-imgui-wgpu を使う (推奨)
+### Cargo.toml
 
 ```toml
+[package]
+name = "imgui-renderer"
+version = "0.1.0"
+edition = "2021"
+
 [dependencies]
 dear-imgui-rs = "0.10"
-dear-imgui-wgpu = { version = "0.10", features = ["wgpu-24"] }  # 要確認
-dear-imgui-winit = "0.10"
+dear-imgui-wgpu = "0.10"       # wgpu 29 レンダラー
+dear-imgui-winit = "0.10"      # winit プラットフォーム
+wgpu = { workspace = true }     # 29.0
+winit = { workspace = true }
+log = { workspace = true }
 ```
 
-**メリット:** ImGui API の安全なラッパーが全て揃っている
-**デメリット:** wgpu 24 との互換が不明、依存が大きい
+### API
 
-### B: imgui-rs (0.12) + 自前 wgpu レンダラー
+```rust
+use imgui_renderer::ImGuiRenderer;
 
-```toml
-[dependencies]
-imgui = "0.12"
-imgui-winit-support = "0.12"
-wgpu = { workspace = true }
+// 初期化
+let mut imgui = ImGuiRenderer::new(&device, &queue, surface_format, &window)?;
+
+// イベント処理
+imgui.handle_event(&window, &event);
+
+// 描画
+imgui.frame(&window, dt, |ui| {
+    ui.window("Debug").build(|| {
+        ui.text("Hello, ImGui!");
+        ui.text(format!("FPS: {:.0}", fps));
+
+        // ImPlot (拡張)
+        if let Some(plot) = ui.plot("Audio") {
+            plot.plot_line("VAD", &vad_history);
+        }
+
+        // ImGuizmo (拡張)
+        // ui.gizmo(...);
+    });
+});
+
+// 3D シーン描画後に ImGui を重ねる
+imgui.render(&device, &queue, &view);
 ```
 
-**メリット:** imgui-rs は枯れている、wgpu レンダラーだけ自前で書けば良い
-**デメリット:** imgui-rs の ImGui バージョンが古い (1.89)
+### lib.rs
 
-### C: 完全自前 (cimgui FFI + wgpu レンダラー)
+```rust
+pub struct ImGuiRenderer {
+    ctx: dear_imgui::Context,
+    platform: dear_imgui_winit::WinitPlatform,
+    renderer: dear_imgui_wgpu::Renderer,
+}
 
-```toml
-[build-dependencies]
-cc = "1.0"
+impl ImGuiRenderer {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+        window: &winit::window::Window,
+    ) -> anyhow::Result<Self> {
+        let mut ctx = dear_imgui::Context::create();
+        ctx.io_mut().config_flags |= dear_imgui::ConfigFlags::DOCKING_ENABLE;
+
+        let mut platform = dear_imgui_winit::WinitPlatform::new(&mut ctx);
+        platform.attach_window(&mut ctx, window, dear_imgui_winit::HiDpiMode::Default);
+
+        let renderer = dear_imgui_wgpu::Renderer::new(&mut ctx, device, queue, format);
+
+        Ok(Self { ctx, platform, renderer })
+    }
+
+    pub fn handle_event(&mut self, window: &winit::window::Window, event: &winit::event::WindowEvent) {
+        self.platform.handle_event(&mut self.ctx, window, event);
+    }
+
+    pub fn frame<F: FnOnce(&dear_imgui::Ui)>(
+        &mut self,
+        window: &winit::window::Window,
+        dt: std::time::Duration,
+        f: F,
+    ) {
+        self.ctx.io_mut().update_delta_time(dt);
+        self.platform.prepare_frame(&mut self.ctx, window).unwrap();
+        let ui = self.ctx.frame();
+        f(ui);
+        self.platform.prepare_render(ui, window);
+    }
+
+    pub fn render(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view: &wgpu::TextureView,
+    ) {
+        let draw_data = self.ctx.render();
+        let mut encoder = device.create_command_encoder(&Default::default());
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("imgui_pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,  // 既存シーンを保持
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        });
+        self.renderer.render(draw_data, queue, device, &mut pass).unwrap();
+        drop(pass);
+        queue.submit(std::iter::once(encoder.finish()));
+    }
+}
 ```
 
-**メリット:** 完全制御、最新 ImGui、最小依存
-**デメリット:** 作業量が膨大 (cimgui の 1000+ API を FFI)
+## 5. 実装フェーズ
 
-### 推奨: **B (imgui-rs 0.12 + 自前 wgpu レンダラー)**
+### Phase A: wgpu 24 → 29 アップグレード
+1. `Cargo.toml` で `wgpu = "29.0"` に変更
+2. `crates/renderer/` の API 差分を修正 (最大変更量)
+3. `crates/video-decoder/` の API 差分を修正
+4. `crates/app/` の API 差分を修正
+5. `cargo check --workspace` pass
+6. `cargo test --workspace` pass
+7. 動作確認 (VRM + 動画背景)
 
-理由:
-- `imgui-rs` 0.12 は十分安定、API カバレッジ良好
-- `imgui-wgpu` 0.28 は wgpu 25 依存で 24 とは直接互換しない → 自前レンダラーの方が確実
-- wgpu レンダラーは ~300行 で実装可能 (頂点バッファ + シェーダ + テクスチャ)
-- 本プロジェクトの wgpu 24.0 と直接連携可能
+### Phase B: imgui-renderer クレート作成
+1. `crates/imgui-renderer/` scaffold
+2. `ImGuiRenderer` 実装 (dear-imgui-rs + dear-imgui-wgpu + dear-imgui-winit)
+3. `examples/standalone.rs` — ImGui 単体デモ
+4. 動作確認
 
-## 8. 実装フェーズ
-
-### Phase 1: クレート scaffold + imgui-rs 統合
-1. `crates/imgui-renderer/` 作成、ワークスペースに追加
-2. `imgui = "0.12"`, `imgui-winit-support = "0.12"`, `wgpu = workspace` 依存
-3. `ImGuiRenderer` struct の骨格
-4. `cargo check -p imgui-renderer`
-
-### Phase 2: wgpu レンダラー実装
-1. WGSL シェーダ (§6)
-2. フォントアトラステクスチャ生成
-3. 頂点/インデックスバッファのフレーム毎アップロード
-4. `render()` — DrawCmd → draw_indexed + scissor rect
-
-### Phase 3: winit 統合
-1. `handle_event()` — マウス, キーボード, スクロール → ImGui IO
-2. `frame()` — dt 更新 + UI クロージャ呼び出し
-3. カーソル形状の反映
-
-### Phase 4: kalidokit-rust アプリ統合
+### Phase C: kalidokit-rust アプリ統合
 1. `crates/app/` に imgui-renderer 依存追加
-2. デバッグパネル: FPS, VAD 状態, トラッカー情報
-3. 設定 UI: threshold, mascot size, always_on_top
+2. デバッグパネル UI (FPS, VAD, トラッカー)
+3. 設定 UI (threshold, mascot, lighting)
+4. 動作確認
 
-### Phase 5: テスト + Example
-1. `examples/standalone.rs` — ImGui 単体デモ
-2. `examples/overlay.rs` — 3D シーン + ImGui オーバーレイ
-3. 動作確認
+### Phase D: 拡張統合 (必要に応じて)
+1. ImPlot — VAD 確率のリアルタイムグラフ
+2. ImGuizmo — VRM モデルの位置/回転操作
+3. ImNodes — トラッカーパイプラインの可視化
