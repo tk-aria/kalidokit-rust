@@ -1,0 +1,10 @@
+[package]
+name = "lua-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Lua 5.4 runtime with LuaRocks package support"
+
+[dependencies]
+mlua = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
