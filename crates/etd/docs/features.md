@@ -166,7 +166,7 @@ fn mel_filterbank(n_mels: usize, n_fft: usize, sr: u32, fmin: f32, fmax: f32) ->
 
 Hann 窓付き Short-Time Fourier Transform を実装。
 
-- [ ] `crates/etd/src/stft.rs` を作成
+- [x] `crates/etd/src/stft.rs` を作成 <!-- 2026-03-21 11:33 JST -->
 
 ```rust
 use rustfft::{FftPlanner, num_complex::Complex};
@@ -215,7 +215,7 @@ pub fn stft_power(audio: &[f32], n_fft: usize, hop: usize, window: &[f32]) -> Ve
   - `test_stft_sine_wave` — 440Hz 正弦波 → 440Hz 付近にピーク
   - `test_stft_output_shape` — 128000 サンプル → (n_frames, 201) の形状
 
-- [ ] ユニットテスト (異常系):
+- [x] ユニットテスト (異常系): <!-- 2026-03-21 11:33 JST -->
   - `test_stft_empty_audio` — 空入力 → 空出力
   - `test_stft_shorter_than_nfft` — n_fft 未満の入力 → 0 フレーム
 
@@ -223,7 +223,7 @@ pub fn stft_power(audio: &[f32], n_fft: usize, hop: usize, window: &[f32]) -> Ve
 
 STFT + mel filterbank + log + 正規化を統合する。
 
-- [ ] `mel.rs` に以下の公開関数を追加
+- [x] `mel.rs` に以下の公開関数を追加 <!-- 2026-03-21 11:33 JST -->
 
 ```rust
 /// PCM f32 → log-mel spectrogram
@@ -266,7 +266,7 @@ pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
 }
 ```
 
-- [ ] `lib.rs` に `pub mod stft;` を追加
+- [x] `lib.rs` に `pub mod stft;` を追加 <!-- 2026-03-21 11:33 JST -->
 
 - [x] ユニットテスト (正常系): <!-- 2026-03-21 11:30 JST -->
   - `test_log_mel_silence` — 全ゼロ入力 → 出力形状が (80, 800)、全値が同一 (正規化後)
@@ -274,7 +274,7 @@ pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
   - `test_log_mel_non_nan` — 出力に NaN/Inf が含まれないこと
   - `test_log_mel_range` — 出力値が概ね [-1.0, 1.0] の範囲内
 
-- [ ] ユニットテスト (異常系):
+- [x] ユニットテスト (異常系): <!-- 2026-03-21 11:33 JST -->
   - `test_log_mel_short_audio` — 160 サンプル (10ms) → パディング後に正常出力
 
 ### Step 1.6: Phase 1 検証

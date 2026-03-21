@@ -105,6 +105,69 @@ pub fn mel_filterbank(
     filters
 }
 
+/// PCM f32 → log-mel spectrogram
+/// Processing:
+///   1. STFT (Hann window, n_fft=400, hop=160)
+///   2. Apply mel filterbank
+///   3. log10 transform + clamp (max - 8.0 dB)
+///   4. Whisper-style normalization: (x - max) / 4.0 + 1.0
+/// Output: Vec<f32> row-major (n_mels, n_frames) = (80, 800)
+pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
+    use crate::stft::{hann_window, stft_power};
+
+    let n_frames_target = (config.chunk_length * config.sample_rate as f32 / config.hop_length as f32) as usize;
+    let n_mels = config.n_mels;
+    let n_fft = config.n_fft;
+    let hop = config.hop_length;
+    let n_bins = n_fft / 2 + 1;
+
+    // Build mel filterbank: shape (n_mels, n_bins)
+    let filters = mel_filterbank(n_mels, n_fft, config.sample_rate, config.fmin, config.fmax);
+
+    // Compute STFT power spectrum
+    let window = hann_window(n_fft);
+    let power_frames = stft_power(audio, n_fft, hop, &window);
+    // power_frames: Vec<Vec<f32>> shape (actual_frames, n_bins)
+
+    let actual_frames = power_frames.len();
+
+    // Apply mel filterbank: result shape (n_mels, n_frames_target) in row-major order
+    let mut mel = vec![0.0_f32; n_mels * n_frames_target];
+
+    for m in 0..n_mels {
+        for t in 0..n_frames_target {
+            if t < actual_frames {
+                let mut sum = 0.0_f32;
+                for k in 0..n_bins {
+                    sum += filters[m][k] * power_frames[t][k];
+                }
+                mel[m * n_frames_target + t] = sum;
+            }
+            // else remains 0.0 (zero-padded)
+        }
+    }
+
+    // log10 transform: clamp minimum to avoid log(0)
+    let floor = 1e-10_f32;
+    for val in mel.iter_mut() {
+        *val = (*val).max(floor).log10();
+    }
+
+    // Clamp to (max - 8.0)
+    let log_max = mel.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let clamp_min = log_max - 8.0;
+    for val in mel.iter_mut() {
+        *val = (*val).max(clamp_min);
+    }
+
+    // Whisper-style normalization: (x - max) / 4.0 + 1.0
+    for val in mel.iter_mut() {
+        *val = (*val - log_max) / 4.0 + 1.0;
+    }
+
+    mel
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,5 +261,82 @@ mod tests {
     fn test_filterbank_zero_mels() {
         let fb = mel_filterbank(0, 400, 16000, 80.0, 7600.0);
         assert!(fb.is_empty(), "expected empty vec for n_mels=0");
+    }
+
+    // --- log_mel_spectrogram tests ---
+
+    #[test]
+    fn test_log_mel_silence() {
+        let config = MelConfig::default();
+        let audio = vec![0.0_f32; 128000]; // 8 seconds at 16kHz
+        let mel = log_mel_spectrogram(&audio, &config);
+
+        assert_eq!(mel.len(), 64000, "expected 80*800=64000 elements, got {}", mel.len());
+
+        // All-zero input → all values should be identical after normalization
+        let first = mel[0];
+        for (i, &v) in mel.iter().enumerate() {
+            assert!(
+                (v - first).abs() < 1e-6,
+                "silence: mel[{}] = {}, expected uniform value {}",
+                i, v, first
+            );
+        }
+    }
+
+    #[test]
+    fn test_log_mel_output_shape() {
+        let config = MelConfig::default();
+        let audio = vec![0.0_f32; 128000];
+        let mel = log_mel_spectrogram(&audio, &config);
+        assert_eq!(mel.len(), 64000, "expected 80*800=64000 elements, got {}", mel.len());
+    }
+
+    #[test]
+    fn test_log_mel_non_nan() {
+        let config = MelConfig::default();
+        // Use a sine wave to get non-trivial values
+        let audio: Vec<f32> = (0..128000)
+            .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 16000.0).sin())
+            .collect();
+        let mel = log_mel_spectrogram(&audio, &config);
+
+        for (i, &v) in mel.iter().enumerate() {
+            assert!(!v.is_nan(), "NaN at index {}", i);
+            assert!(!v.is_infinite(), "Inf at index {}", i);
+        }
+    }
+
+    #[test]
+    fn test_log_mel_range() {
+        let config = MelConfig::default();
+        let audio: Vec<f32> = (0..128000)
+            .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 16000.0).sin())
+            .collect();
+        let mel = log_mel_spectrogram(&audio, &config);
+
+        for (i, &v) in mel.iter().enumerate() {
+            assert!(
+                v >= -1.0 - 0.01 && v <= 1.0 + 0.01,
+                "mel[{}] = {} out of expected range [-1, 1]",
+                i, v
+            );
+        }
+    }
+
+    #[test]
+    fn test_log_mel_short_audio() {
+        let config = MelConfig::default();
+        let audio = vec![0.1_f32; 160]; // Very short, shorter than n_fft
+        let mel = log_mel_spectrogram(&audio, &config);
+
+        // Should still produce the correct shape (zero-padded STFT frames)
+        assert_eq!(mel.len(), 64000, "expected 80*800=64000 elements even for short audio, got {}", mel.len());
+
+        // Should contain no NaN or Inf
+        for (i, &v) in mel.iter().enumerate() {
+            assert!(!v.is_nan(), "NaN at index {}", i);
+            assert!(!v.is_infinite(), "Inf at index {}", i);
+        }
     }
 }
