@@ -34,11 +34,9 @@ impl ApplicationHandler for App {
 
         match pollster::block_on(crate::init::init_all(window)) {
             Ok(app_state) => {
-                // Apply fullscreen if configured
+                // Maximize window to monitor size if configured
                 if app_state.fullscreen {
-                    app_state.render_ctx.window.set_fullscreen(Some(
-                        winit::window::Fullscreen::Borderless(None),
-                    ));
+                    app_state.render_ctx.window.set_maximized(true);
                 }
                 // Request initial redraw to kick-start the render loop
                 app_state.render_ctx.window.request_redraw();
