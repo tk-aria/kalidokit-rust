@@ -64,8 +64,13 @@ impl MascotState {
             let _ = window.request_inner_size(self.mascot_size);
         }
 
-        // Click-through controlled per-pixel via alpha map in CursorMoved
-        let _ = window.set_cursor_hittest(false);
+        // In fullscreen mascot mode, keep normal hit-testing so the user can
+        // interact with the app (scroll zoom, avatar drag, ImGui).
+        // In windowed mascot mode, enable click-through (alpha-based hit-test
+        // in CursorMoved will selectively re-enable interaction).
+        if !fullscreen {
+            let _ = window.set_cursor_hittest(false);
+        }
 
         #[cfg(target_os = "macos")]
         {

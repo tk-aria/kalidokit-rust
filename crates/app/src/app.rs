@@ -329,7 +329,7 @@ impl ApplicationHandler for App {
                 // rendered pixel (alpha > 0) the window captures mouse events (drag,
                 // scroll, click). Over transparent areas (alpha == 0) clicks pass
                 // through to background windows. No modifier key needed.
-                if state.mascot.enabled && !state.mascot_alpha_map.is_empty() {
+                if state.mascot.enabled && !state.fullscreen && !state.mascot_alpha_map.is_empty() {
                     // Convert physical cursor position to alpha map coordinates.
                     // The alpha map uses the mascot window's logical size; the cursor
                     // position is in physical pixels, so scale by the window's scale factor.
@@ -373,8 +373,8 @@ impl ApplicationHandler for App {
                     let imgui_wants = state.show_imgui
                         && state.imgui.as_ref().map_or(false, |im| im.want_capture_mouse());
 
-                    if state.mascot.enabled {
-                        // Mascot mode: drag the window (unless ImGui wants the mouse)
+                    if state.mascot.enabled && !state.fullscreen {
+                        // Windowed mascot mode: drag the window
                         match btn_state {
                             ElementState::Pressed if !imgui_wants => {
                                 if let Err(e) = state.render_ctx.window.drag_window() {
@@ -384,7 +384,7 @@ impl ApplicationHandler for App {
                             _ => {}
                         }
                     } else if !imgui_wants {
-                        // Non-mascot (fullscreen/windowed): drag moves the avatar
+                        // Fullscreen or non-mascot: drag moves the avatar
                         match btn_state {
                             ElementState::Pressed => {
                                 state.dragging_model = true;
