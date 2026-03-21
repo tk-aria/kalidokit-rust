@@ -302,7 +302,7 @@ impl ApplicationHandler for App {
                                 );
                             }
                             KeyCode::KeyM => {
-                                state.mascot.toggle(&state.render_ctx.window);
+                                state.mascot.toggle(&state.render_ctx.window, state.fullscreen);
                                 if state.mascot.enabled {
                                     state.render_ctx.set_transparent(true);
                                     state.scene.set_clear_alpha(0.0);

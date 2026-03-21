@@ -495,7 +495,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     // Deferred mascot toggle: safe now that SurfaceTexture is dropped.
     if state.pending_mascot_toggle {
         state.pending_mascot_toggle = false;
-        state.mascot.toggle(&state.render_ctx.window);
+        state.mascot.toggle(&state.render_ctx.window, state.fullscreen);
         if state.mascot.enabled {
             state.render_ctx.set_transparent(true);
             state.scene.set_clear_alpha(0.0);

@@ -311,7 +311,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
     let mut mascot = crate::mascot::MascotState::new();
     mascot.always_on_top = prefs.always_on_top;
     if prefs.mascot_mode {
-        mascot.enter(&render_ctx.window, prefs.always_on_top);
+        mascot.enter(&render_ctx.window, prefs.always_on_top, prefs.fullscreen);
         render_ctx.set_transparent(true);
         scene.set_clear_alpha(0.0);
     }

@@ -41,11 +41,15 @@ impl MascotState {
     }
 
     /// Enter mascot mode: no decorations, always on top, smaller size.
-    /// Click-through is controlled per-pixel via the alpha map in the CursorMoved handler
-    /// rather than a blanket enable here.
-    pub fn enter(&mut self, window: &Window, always_on_top: bool) {
-        let size = window.inner_size();
-        self.normal_size = LogicalSize::new(size.width, size.height);
+    /// If `fullscreen` is true, keep the current window size instead of shrinking.
+    pub fn enter(&mut self, window: &Window, always_on_top: bool, fullscreen: bool) {
+        // Save current size as logical pixels for correct restoration
+        let phys = window.inner_size();
+        let scale = window.scale_factor();
+        self.normal_size = LogicalSize::new(
+            (phys.width as f64 / scale) as u32,
+            (phys.height as f64 / scale) as u32,
+        );
         self.always_on_top = always_on_top;
         window.set_decorations(false);
         let level = if always_on_top {
@@ -54,13 +58,15 @@ impl MascotState {
             WindowLevel::Normal
         };
         window.set_window_level(level);
-        let _ = window.request_inner_size(self.mascot_size);
 
-        // Start with click-through enabled; the alpha-based hit-test in CursorMoved
-        // will enable interaction when the cursor is over non-transparent pixels.
+        // Only resize to mascot size if not in fullscreen
+        if !fullscreen {
+            let _ = window.request_inner_size(self.mascot_size);
+        }
+
+        // Click-through controlled per-pixel via alpha map in CursorMoved
         let _ = window.set_cursor_hittest(false);
 
-        // Disable window shadow to prevent ghost artifacts when moving.
         #[cfg(target_os = "macos")]
         {
             use winit::platform::macos::WindowExtMacOS;
@@ -68,24 +74,21 @@ impl MascotState {
         }
 
         self.enabled = true;
-        log::info!(
-            "Mascot mode: ON ({}x{}, always_on_top={})",
-            self.mascot_size.width,
-            self.mascot_size.height,
-            always_on_top,
-        );
+        let actual = if fullscreen { "fullscreen" } else { &format!("{}x{}", self.mascot_size.width, self.mascot_size.height) };
+        log::info!("Mascot mode: ON ({actual}, always_on_top={always_on_top})");
     }
 
     /// Leave mascot mode: restore decorations, normal level, original size.
-    pub fn leave(&mut self, window: &Window) {
+    pub fn leave(&mut self, window: &Window, fullscreen: bool) {
         window.set_decorations(true);
         window.set_window_level(WindowLevel::Normal);
-        let _ = window.request_inner_size(self.normal_size);
 
-        // Restore normal cursor hit-testing.
+        if !fullscreen {
+            let _ = window.request_inner_size(self.normal_size);
+        }
+
         let _ = window.set_cursor_hittest(true);
 
-        // Re-enable window shadow.
         #[cfg(target_os = "macos")]
         {
             use winit::platform::macos::WindowExtMacOS;
@@ -98,12 +101,12 @@ impl MascotState {
     }
 
     /// Toggle mascot mode on/off.
-    pub fn toggle(&mut self, window: &Window) {
+    pub fn toggle(&mut self, window: &Window, fullscreen: bool) {
         if self.enabled {
-            self.leave(window);
+            self.leave(window, fullscreen);
         } else {
             let on_top = self.always_on_top;
-            self.enter(window, on_top);
+            self.enter(window, on_top, fullscreen);
         }
     }
 
