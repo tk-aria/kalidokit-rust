@@ -329,7 +329,7 @@ impl ApplicationHandler for App {
                 // rendered pixel (alpha > 0) the window captures mouse events (drag,
                 // scroll, click). Over transparent areas (alpha == 0) clicks pass
                 // through to background windows. No modifier key needed.
-                if state.mascot.enabled && !state.fullscreen && !state.mascot_alpha_map.is_empty() {
+                if state.mascot.enabled && !state.mascot_alpha_map.is_empty() {
                     // Convert physical cursor position to alpha map coordinates.
                     // The alpha map uses the mascot window's logical size; the cursor
                     // position is in physical pixels, so scale by the window's scale factor.
@@ -340,8 +340,8 @@ impl ApplicationHandler for App {
                     let imgui_wants_mouse = state.show_imgui
                         && state.imgui.as_ref().map_or(false, |im| im.want_capture_mouse());
 
-                    if imgui_wants_mouse {
-                        // ImGui is under the cursor — always allow interaction
+                    if imgui_wants_mouse || state.dragging_model {
+                        // ImGui or active drag — always allow interaction
                         let _ = state.render_ctx.window.set_cursor_hittest(true);
                     } else if lx < state.mascot_alpha_width && ly < state.mascot_alpha_height {
                         let idx = (ly * state.mascot_alpha_width + lx) as usize;

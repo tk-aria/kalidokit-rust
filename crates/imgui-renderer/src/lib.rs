@@ -80,9 +80,9 @@ impl ImGuiRenderer {
         let mut platform = WinitPlatform::new(&mut ctx);
         platform.attach_window(ctx.io_mut(), window, HiDpiMode::Default);
 
-        // Configure fonts for HiDPI
+        // Configure fonts for HiDPI — smaller size for compact UI
         let hidpi_factor = window.scale_factor();
-        let font_size = (13.0 * hidpi_factor) as f32;
+        let font_size = (10.0 * hidpi_factor) as f32;
         ctx.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 
         ctx.fonts().add_font(&[FontSource::DefaultFontData {
@@ -91,6 +91,31 @@ impl ImGuiRenderer {
                 ..Default::default()
             }),
         }]);
+
+        // Dark gray style
+        let style = ctx.style_mut();
+        style.window_rounding = 4.0;
+        style.frame_rounding = 2.0;
+        style.grab_rounding = 2.0;
+        style.window_border_size = 0.0;
+        // Colors: dark gray theme
+        style.colors[imgui::sys::ImGuiCol_WindowBg as usize] = [0.12, 0.12, 0.14, 0.90];
+        style.colors[imgui::sys::ImGuiCol_TitleBg as usize] = [0.08, 0.08, 0.10, 1.00];
+        style.colors[imgui::sys::ImGuiCol_TitleBgActive as usize] = [0.14, 0.14, 0.18, 1.00];
+        style.colors[imgui::sys::ImGuiCol_FrameBg as usize] = [0.18, 0.18, 0.22, 1.00];
+        style.colors[imgui::sys::ImGuiCol_FrameBgHovered as usize] = [0.24, 0.24, 0.30, 1.00];
+        style.colors[imgui::sys::ImGuiCol_FrameBgActive as usize] = [0.30, 0.30, 0.38, 1.00];
+        style.colors[imgui::sys::ImGuiCol_Header as usize] = [0.18, 0.18, 0.22, 1.00];
+        style.colors[imgui::sys::ImGuiCol_HeaderHovered as usize] = [0.24, 0.24, 0.30, 1.00];
+        style.colors[imgui::sys::ImGuiCol_HeaderActive as usize] = [0.30, 0.30, 0.38, 1.00];
+        style.colors[imgui::sys::ImGuiCol_Button as usize] = [0.20, 0.20, 0.26, 1.00];
+        style.colors[imgui::sys::ImGuiCol_ButtonHovered as usize] = [0.28, 0.28, 0.36, 1.00];
+        style.colors[imgui::sys::ImGuiCol_ButtonActive as usize] = [0.35, 0.35, 0.44, 1.00];
+        style.colors[imgui::sys::ImGuiCol_SliderGrab as usize] = [0.40, 0.40, 0.50, 1.00];
+        style.colors[imgui::sys::ImGuiCol_SliderGrabActive as usize] = [0.50, 0.50, 0.65, 1.00];
+        style.colors[imgui::sys::ImGuiCol_CheckMark as usize] = [0.55, 0.65, 0.85, 1.00];
+        style.colors[imgui::sys::ImGuiCol_Text as usize] = [0.85, 0.85, 0.88, 1.00];
+        style.colors[imgui::sys::ImGuiCol_Separator as usize] = [0.25, 0.25, 0.30, 1.00];
 
         let renderer_config = RendererConfig {
             texture_format: format,

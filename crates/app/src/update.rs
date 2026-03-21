@@ -441,7 +441,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
 
             imgui.frame(&state.render_ctx.window, |ui| {
                 ui.window("Debug Info")
-                    .size([280.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .size([220.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
                     .build(|| {
                         ui.text(format!("Render FPS: {fps_render}"));
                         ui.text(format!("Decode FPS: {fps_decode}"));
@@ -450,7 +450,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                     });
 
                 ui.window("Settings")
-                    .size([280.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .size([220.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
                     .build(|| {
                         if ui.collapsing_header("Display", imgui_renderer::imgui::TreeNodeFlags::DEFAULT_OPEN) {
                             ui.checkbox("Mascot Mode (M)", &mut mascot_enabled);
