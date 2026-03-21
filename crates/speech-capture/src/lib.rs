@@ -4,7 +4,7 @@
 //! from microphone input in real time.
 
 pub mod json_log;
-mod segmenter;
+pub mod segmenter;
 pub mod stt_types;
 
 #[cfg(feature = "stt")]
@@ -32,6 +32,10 @@ pub enum SpeechEvent {
         duration: Duration,
         /// Transcription text (only when STT is enabled).
         transcript: Option<String>,
+        /// ETD prediction: true = turn complete (only when `end-of-turn` feature is enabled).
+        end_of_turn: Option<bool>,
+        /// ETD raw probability in [0.0, 1.0] (only when `end-of-turn` feature is enabled).
+        turn_probability: Option<f32>,
     },
     /// Per-frame VAD status (only if `emit_vad_status` is enabled).
     VadStatus {
@@ -56,6 +60,10 @@ pub struct SpeechConfig {
     /// STT configuration. None = disabled, Some = enable Whisper.
     /// Requires the `stt` feature to actually run transcription.
     pub stt: Option<SttConfig>,
+    /// ETD configuration. None = disabled, Some = enable End-of-Turn Detection.
+    /// Requires the `end-of-turn` feature.
+    #[cfg(feature = "end-of-turn")]
+    pub etd: Option<etd::EtdConfig>,
 }
 
 impl Default for SpeechConfig {
@@ -68,6 +76,8 @@ impl Default for SpeechConfig {
             emit_vad_status: false,
             audio: AudioConfig::default(),
             stt: None,
+            #[cfg(feature = "end-of-turn")]
+            etd: None,
         }
     }
 }
@@ -145,6 +155,44 @@ impl SpeechCapture {
         let mut seg =
             segmenter::VadSegmenter::new(config.min_speech_duration_ms, config.silence_timeout_ms);
 
+        // Initialize ETD detector if configured and feature is enabled.
+        // A single detector is shared between streaming early-cut (segmenter) and
+        // batch mode (event loop). Both run on this single worker thread.
+        // Arc<Mutex> is used because the closure must be Send for VadSegmenter.
+        #[cfg(feature = "end-of-turn")]
+        let etd_detector: Option<std::sync::Arc<std::sync::Mutex<etd::EndOfTurnDetector>>> =
+            config.etd.as_ref().and_then(|etd_config| {
+                match etd::EndOfTurnDetector::new(etd_config.clone()) {
+                    Ok(detector) => {
+                        log::info!("ETD detector initialized");
+                        Some(std::sync::Arc::new(std::sync::Mutex::new(detector)))
+                    }
+                    Err(e) => {
+                        log::error!("Failed to initialize ETD: {e}");
+                        None
+                    }
+                }
+            });
+
+        // Wire ETD to segmenter for streaming early-cut mode.
+        #[cfg(feature = "end-of-turn")]
+        if let Some(ref detector) = etd_detector {
+            let detector_for_seg = std::sync::Arc::clone(detector);
+            seg.set_etd_predict(Box::new(move |audio: &[i16]| {
+                let mut det = detector_for_seg.lock().unwrap();
+                match det.predict_i16(audio) {
+                    Ok(result) => Some(segmenter::EarlyCutResult {
+                        prediction: result.prediction,
+                        probability: result.probability,
+                    }),
+                    Err(e) => {
+                        log::warn!("ETD streaming early-cut failed: {e}");
+                        None
+                    }
+                }
+            }));
+        }
+
         // Initialize Whisper engine if STT is configured and feature is enabled.
         #[cfg(feature = "stt")]
         let whisper_engine: Option<whisper_engine::WhisperEngine> =
@@ -216,13 +264,46 @@ impl SpeechCapture {
                         }
                     }
 
-                    for event in seg.feed(result.is_voice, &frame.samples, frame.timestamp) {
+                    #[allow(unused_mut)]
+                    for mut event in seg.feed(result.is_voice, &frame.samples, frame.timestamp) {
+                        // Apply ETD to VoiceEnd events (Batch mode fallback).
+                        // Only runs if early-cut didn't already set the fields.
+                        #[cfg(feature = "end-of-turn")]
+                        if let SpeechEvent::VoiceEnd {
+                            ref audio,
+                            ref mut end_of_turn,
+                            ref mut turn_probability,
+                            ..
+                        } = event
+                        {
+                            if end_of_turn.is_none() {
+                                if let Some(ref detector) = etd_detector {
+                                    match detector.lock().unwrap().predict_i16(audio) {
+                                        Ok(etd_result) => {
+                                            log::info!(
+                                                "ETD: prediction={}, probability={:.4}",
+                                                etd_result.prediction,
+                                                etd_result.probability
+                                            );
+                                            *end_of_turn = Some(etd_result.prediction);
+                                            *turn_probability = Some(etd_result.probability);
+                                        }
+                                        Err(e) => {
+                                            log::warn!("ETD inference failed: {e}");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Attach transcription to VoiceEnd when STT is enabled.
                         #[cfg(feature = "stt")]
                         if let SpeechEvent::VoiceEnd {
                             timestamp,
                             audio,
                             duration,
+                            end_of_turn,
+                            turn_probability,
                             ..
                         } = &event
                         {
@@ -243,6 +324,8 @@ impl SpeechCapture {
                                             audio: audio.clone(),
                                             duration: *duration,
                                             transcript,
+                                            end_of_turn: *end_of_turn,
+                                            turn_probability: *turn_probability,
                                         });
                                         // Reset interim timer for next utterance.
                                         #[cfg(feature = "stt")]

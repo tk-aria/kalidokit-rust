@@ -13,10 +13,14 @@ thiserror = { workspace = true }
 # Optional: Speech-to-Text via whisper.cpp
 whisper-rs = { version = "0.16", optional = true }
 
+# Optional: End-of-Turn Detection
+etd = { path = "../etd", optional = true }
+
 [features]
 default = []
 stt = ["dep:whisper-rs"]
 stt-metal = ["stt", "whisper-rs/metal"]
+end-of-turn = ["dep:etd"]
 
 [dependencies.serde]
 workspace = true

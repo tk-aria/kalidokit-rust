@@ -26,6 +26,10 @@ pub enum SpeechRecord {
         duration_ms: u64,
         samples: usize,
         transcript: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        end_of_turn: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        turn_probability: Option<f32>,
     },
 
     #[serde(rename = "vad_status")]
@@ -52,11 +56,15 @@ impl SpeechRecord {
                 audio,
                 duration,
                 transcript,
+                end_of_turn,
+                turn_probability,
             } => SpeechRecord::VoiceEnd {
                 timestamp_ms: dur_ms(timestamp),
                 duration_ms: dur_ms(duration),
                 samples: audio.len(),
                 transcript: transcript.clone(),
+                end_of_turn: *end_of_turn,
+                turn_probability: *turn_probability,
             },
             SpeechEvent::VadStatus {
                 timestamp,
@@ -118,6 +126,8 @@ mod tests {
             audio: vec![0i16; 8704],
             duration: Duration::from_millis(500),
             transcript: Some("hello".to_string()),
+            end_of_turn: None,
+            turn_probability: None,
         };
         let record = SpeechRecord::from_event(&event);
         let json = serde_json::to_string(&record).unwrap();
@@ -150,6 +160,8 @@ mod tests {
             audio: vec![],
             duration: Duration::from_millis(500),
             transcript: None,
+            end_of_turn: None,
+            turn_probability: None,
         });
         let output = String::from_utf8(buf).unwrap();
         let lines: Vec<&str> = output.trim().lines().collect();
