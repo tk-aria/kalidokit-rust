@@ -94,6 +94,12 @@ pub struct AppState {
     pub dragging_model: bool,
     /// Last cursor position when model drag started.
     pub drag_prev_pos: [f64; 2],
+    /// Code editor widget (ImGuiColorTextEdit).
+    pub code_editor: Option<imgui_text_edit::CodeEditor>,
+    /// Terminal emulator (PTY-based).
+    pub terminal: Option<crate::terminal::ImGuiTerminal>,
+    /// Imported drawio graph for the node editor.
+    pub drawio_graph: Option<crate::drawio::ImNodesGraph>,
 }
 
 /// Visibility state for each ImGui panel.
@@ -103,6 +109,8 @@ pub struct ImGuiWindows {
     pub node_editor: bool,
     pub profiler: bool,
     pub log: bool,
+    pub code_editor: bool,
+    pub terminal: bool,
 }
 
 impl Default for ImGuiWindows {
@@ -113,6 +121,8 @@ impl Default for ImGuiWindows {
             node_editor: false,
             profiler: false,
             log: false,
+            code_editor: false,
+            terminal: false,
         }
     }
 }
@@ -126,6 +136,8 @@ impl ImGuiWindows {
             node_editor: self.node_editor,
             profiler: self.profiler,
             log: self.log,
+            code_editor: self.code_editor,
+            terminal: self.terminal,
         }
     }
 
@@ -136,6 +148,8 @@ impl ImGuiWindows {
         self.node_editor = flags.node_editor;
         self.profiler = flags.profiler;
         self.log = flags.log;
+        self.code_editor = flags.code_editor;
+        self.terminal = flags.terminal;
     }
 }
 

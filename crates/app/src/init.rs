@@ -383,6 +383,9 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         model_offset: [0.0, 0.0],
         dragging_model: false,
         drag_prev_pos: [0.0, 0.0],
+        code_editor: None,
+        terminal: None,
+        drawio_graph: None,
     })
 }
 

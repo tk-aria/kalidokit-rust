@@ -1,9 +1,11 @@
 mod app;
 mod auto_blink;
+mod drawio;
 mod init;
 mod mascot;
 mod rig_config;
 mod state;
+mod terminal;
 mod tracker_thread;
 mod update;
 mod user_prefs;

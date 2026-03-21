@@ -26,3 +26,9 @@ serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 imgui-renderer = { path = "../imgui-renderer" }
 lua-imgui = { path = "../lua-imgui" }
+imgui-text-edit = { path = "../imgui-text-edit" }
+quick-xml = "0.37"
+portable-pty = "0.8"
+vte = "0.13"
+dear-imgui-rs = "0.10"
+dear-file-browser = "0.10"

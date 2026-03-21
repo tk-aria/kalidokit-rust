@@ -10,6 +10,7 @@ use vrm::bone::HumanoidBoneName;
 
 use crate::rig_config::BoneConfig;
 use crate::state::AppState;
+use imgui_renderer::imnodes::{ImNodesExt, PinShape};
 
 /// Target frame duration: ~16ms for 60fps.
 const TARGET_FRAME_DURATION: Duration = Duration::from_millis(16);
@@ -174,14 +175,14 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         rig_changed = true;
     }
 
-    // 3.5a. Advance idle animation
-    let has_idle = state.idle_animation.is_some();
+    // 3.5a. Advance idle animation (only if enabled)
+    let idle_active = state.idle_animation.as_ref().map_or(false, |a| a.enabled);
     if let Some(anim) = &mut state.idle_animation {
         anim.update(elapsed.as_secs_f32());
     }
 
     // 4. Apply rig to VRM model (if rig changed, first frame, or idle animation is playing)
-    if rig_changed || state.rig_dirty || has_idle {
+    if rig_changed || state.rig_dirty || idle_active {
         pipeline_logger::bone(log::Level::Debug, "applying rig to model")
             .field("rig_changed", rig_changed)
             .field("rig_dirty", state.rig_dirty)
@@ -428,10 +429,15 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             let mut key_intensity = state.stage_lighting.key.intensity;
             let mut fill_intensity = state.stage_lighting.fill.intensity;
             let mut back_intensity = state.stage_lighting.back.intensity;
-            let idle_anim_on = state
+            let mut key_color = state.stage_lighting.key.color;
+            let mut fill_color = state.stage_lighting.fill.color;
+            let mut back_color = state.stage_lighting.back.color;
+            let mut idle_anim_on = state
                 .idle_animation
                 .as_ref()
                 .map_or(false, |a| a.enabled);
+            let has_idle_anim = state.idle_animation.is_some();
+            let mut shading_virtual_live = state.stage_lighting.shading_mode == renderer::light::ShadingMode::VirtualLive;
             let shading_label = state.stage_lighting.shading_mode.label().to_string();
             let key_label = state.stage_lighting.key.preset.label().to_string();
             let fill_label = state.stage_lighting.fill.preset.label().to_string();
@@ -450,10 +456,35 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             let frame_times = unsafe { &FRAME_TIMES };
             let frame_idx = unsafe { FRAME_IDX };
 
+            // Background image path editing buffer
+            let mut bg_image_path_buf = state.background.image_path.clone().unwrap_or_default();
+            let mut apply_bg_image = false;
+            let mut model_offset = state.model_offset;
+
+            // Lazy-init code editor
+            if state.code_editor.is_none() {
+                let editor = imgui_text_edit::CodeEditor::new();
+                editor.set_language(imgui_text_edit::Language::CPlusPlus);
+                editor.set_text("// Hello from KalidoKit Rust!\nfn main() {\n    println!(\"Hello, world!\");\n}\n");
+                state.code_editor = Some(editor);
+            }
+            // Take code editor out of state for use in closure
+            let code_editor = state.code_editor.take();
+
+            // Lazy-init terminal
+            if state.terminal.is_none() && state.imgui_windows.terminal {
+                match crate::terminal::ImGuiTerminal::new(120, 30) {
+                    Ok(term) => state.terminal = Some(term),
+                    Err(e) => log::warn!("Terminal init failed: {e}"),
+                }
+            }
+            // Take terminal out of state for use in closure
+            let terminal = state.terminal.take();
+
             // Copy window visibility flags for the closure
             let mut win = state.imgui_windows.clone_flags();
 
-            imgui.frame(&state.render_ctx.window, |ui| {
+            imgui.frame_with_nodes(&state.render_ctx.window, |ui, imnodes_ctx, imnodes_editor| {
                 // Enable dockspace over the entire viewport
                 let dockspace_id = ui.dockspace_over_main_viewport();
                 let _ = dockspace_id;
@@ -478,6 +509,8 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         ui.checkbox("Node Editor", &mut win.node_editor);
                         ui.checkbox("Profiler", &mut win.profiler);
                         ui.checkbox("Log", &mut win.log);
+                        ui.checkbox("Code Editor", &mut win.code_editor);
+                        ui.checkbox("Terminal", &mut win.terminal);
                     });
 
                 // ── Debug Info ──
@@ -496,87 +529,212 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                 // ── Settings ──
                 if win.settings {
                 ui.window("Settings")
-                    .size([220.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .size([280.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
                     .opened(&mut win.settings)
                     .build(|| {
+                        // ── Info (debug data, at top) ──
+                        if ui.collapsing_header("Info", imgui_renderer::imgui::TreeNodeFlags::DEFAULT_OPEN) {
+                            ui.text(format!("Render FPS: {fps_render}"));
+                            ui.text(format!("Decode FPS: {fps_decode}"));
+                            ui.text(format!("Frame: {:.1}ms", frame_ms));
+                            ui.text(format!("Shading: {shading_label}"));
+                            ui.text(format!("Idle Anim: {}", if idle_anim_on { "ON" } else { "OFF" }));
+                            ui.text(format!("Mascot: {}, AlwaysOnTop: {}", mascot_enabled, always_on_top));
+                            ui.text(format!("Tracking: {}", if tracking_enabled { "ON" } else { "OFF" }));
+                            ui.text(format!("Camera dist: {:.2}", camera_distance));
+                            ui.text(format!("Model offset: [{:.2}, {:.2}]", model_offset[0], model_offset[1]));
+                            ui.text(format!("ImGui: {}", imgui_renderer::imgui::dear_imgui_version()));
+                        }
+
+                        // ── Display ──
                         if ui.collapsing_header("Display", imgui_renderer::imgui::TreeNodeFlags::DEFAULT_OPEN) {
                             ui.checkbox("Mascot Mode (M)", &mut mascot_enabled);
+                            // Mascot sub-items: background image (shown when mascot OFF)
+                            if !mascot_enabled {
+                                ui.indent();
+                                ui.text("Background Image:");
+                                ui.set_next_item_width(-120.0);
+                                ui.input_text("##bg_path", &mut bg_image_path_buf).build();
+                                ui.same_line();
+                                if ui.button("Browse..") {
+                                    use dear_file_browser::{FileDialog, DialogMode, FileFilter};
+                                    let dialog = FileDialog::new(DialogMode::OpenFile)
+                                        .filter(FileFilter::new("Images", vec![
+                                            "png".into(), "jpg".into(), "jpeg".into(),
+                                            "bmp".into(), "gif".into(), "webp".into(),
+                                        ]))
+                                        .filter(FileFilter::new("Video", vec![
+                                            "mp4".into(), "mov".into(), "avi".into(),
+                                            "mkv".into(), "webm".into(),
+                                        ]))
+                                        .filter(FileFilter::new("All", vec!["*".into()]));
+                                    if let Ok(sel) = dialog.open_blocking() {
+                                        if let Some(path) = sel.file_path_name() {
+                                            bg_image_path_buf = path.to_string_lossy().into_owned();
+                                            apply_bg_image = true;
+                                        }
+                                    }
+                                }
+                                ui.same_line();
+                                if ui.button("Apply") {
+                                    apply_bg_image = true;
+                                }
+                                ui.unindent();
+                            }
                             ui.checkbox("Always on Top (F)", &mut always_on_top);
                             ui.checkbox("Maximized Window", &mut fullscreen);
                             ui.checkbox("Debug Overlay", &mut show_debug_overlay);
                             ui.slider("Camera Distance", 0.5, 10.0, &mut camera_distance);
+                            ui.drag_float2("Model Offset", &mut model_offset);
                         }
+
+                        // ── Tracking ──
                         if ui.collapsing_header("Tracking", imgui_renderer::imgui::TreeNodeFlags::DEFAULT_OPEN) {
                             ui.checkbox("Tracking (T)", &mut tracking_enabled);
                             ui.checkbox("Auto Blink (B)", &mut blink_auto);
+                            if has_idle_anim {
+                                let prev = idle_anim_on;
+                                ui.checkbox("Idle Animation (I)", &mut idle_anim_on);
+                                if prev != idle_anim_on {
+                                    ui.text_colored([1.0, 1.0, 0.0, 1.0], format!("-> {}", idle_anim_on));
+                                }
+                                ui.same_line();
+                                ui.text_colored([0.5, 0.5, 0.5, 1.0], format!("({})", idle_anim_on));
+                            } else {
+                                ui.text_disabled("Idle Animation (not loaded)");
+                            }
                             ui.checkbox("Virtual Camera (C)", &mut vcam_enabled);
+                            ui.checkbox("VirtualLive Shading", &mut shading_virtual_live);
                         }
+
+                        // ── Lighting ──
                         if ui.collapsing_header("Lighting", imgui_renderer::imgui::TreeNodeFlags::DEFAULT_OPEN) {
                             ui.text(format!("Key: {key_label}"));
                             ui.slider("Key Intensity", 0.0, 3.0, &mut key_intensity);
+                            ui.color_edit3("Key Color", &mut key_color);
+                            ui.separator();
                             ui.text(format!("Fill: {fill_label}"));
                             ui.slider("Fill Intensity", 0.0, 3.0, &mut fill_intensity);
+                            ui.color_edit3("Fill Color", &mut fill_color);
+                            ui.separator();
                             ui.text(format!("Back: {back_label}"));
                             ui.slider("Back Intensity", 0.0, 3.0, &mut back_intensity);
+                            ui.color_edit3("Back Color", &mut back_color);
                         }
                     });
                 } // settings
 
-                // ── Node Editor (custom draw) ──
+                // ── Node Editor (ImNodes) ──
                 if win.node_editor {
                 ui.window("Node Editor")
                     .opened(&mut win.node_editor)
-                    .size([420.0, 200.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .size([500.0, 300.0], imgui_renderer::imgui::Condition::FirstUseEver)
                     .build(|| {
-                        let draw_list = ui.get_window_draw_list();
-                        let p = ui.cursor_screen_pos();
-                        // Node definitions: (name, position, color)
-                        let nodes: &[(&str, [f32; 2], [f32; 4])] = &[
-                            ("Camera",   [0.0,   10.0], [0.18, 0.45, 0.28, 1.0]),
-                            ("Tracker",  [100.0, 10.0], [0.20, 0.35, 0.55, 1.0]),
-                            ("Solver",   [200.0, 10.0], [0.45, 0.30, 0.55, 1.0]),
-                            ("VRM Rig",  [100.0, 65.0], [0.50, 0.35, 0.20, 1.0]),
-                            ("Renderer", [200.0, 65.0], [0.55, 0.25, 0.25, 1.0]),
-                            ("VAD",      [300.0, 10.0], [0.25, 0.50, 0.50, 1.0]),
-                            ("STT",      [300.0, 65.0], [0.45, 0.45, 0.25, 1.0]),
-                        ];
-                        let nw = 80.0f32;
-                        let nh = 36.0f32;
-                        let r = 3.0f32;
-                        // Edges: (from_idx, to_idx)
-                        let edges = [(0,1), (1,2), (1,3), (2,4), (3,4), (0,5), (5,6)];
-                        // Draw edges with bezier curves
-                        for &(a, b) in &edges {
-                            let ax = p[0] + nodes[a].1[0] + nw;
-                            let ay = p[1] + nodes[a].1[1] + nh / 2.0;
-                            let bx = p[0] + nodes[b].1[0];
-                            let by = p[1] + nodes[b].1[1] + nh / 2.0;
-                            let mid = (ax + bx) / 2.0;
-                            draw_list.add_bezier_curve(
-                                [ax, ay], [mid, ay], [mid, by], [bx, by],
-                                [0.55, 0.55, 0.55, 0.7],
-                            ).thickness(2.0).build();
+                        if let Some(ctx) = imnodes_ctx {
+                            let editor = ui.imnodes_editor(ctx, imnodes_editor);
+
+                            // Node IDs
+                            const NODE_CAMERA: i32 = 1;
+                            const NODE_TRACKER: i32 = 2;
+                            const NODE_SOLVER: i32 = 3;
+                            const NODE_VRM_RIG: i32 = 4;
+                            const NODE_RENDERER: i32 = 5;
+                            const NODE_VAD: i32 = 6;
+                            const NODE_STT: i32 = 7;
+
+                            // Attribute IDs (unique across all nodes)
+                            // Camera: out=11
+                            // Tracker: in=20, out=21
+                            // Solver: in=30, out=31
+                            // VRM Rig: in=40, out=41
+                            // Renderer: in=50
+                            // VAD: in=60, out=61
+                            // STT: in=70, out=71
+
+                            // Camera node
+                            {
+                                let n = editor.node(NODE_CAMERA);
+                                n.title_bar(|| ui.text("Camera"));
+                                let _out = editor.output_attr(11, PinShape::CircleFilled);
+                                ui.text("frame");
+                            }
+
+                            // Tracker node
+                            {
+                                let n = editor.node(NODE_TRACKER);
+                                n.title_bar(|| ui.text("Tracker"));
+                                let _in = editor.input_attr(20, PinShape::CircleFilled);
+                                ui.text("image");
+                                _in.end();
+                                let _out = editor.output_attr(21, PinShape::CircleFilled);
+                                ui.text("landmarks");
+                            }
+
+                            // Solver node
+                            {
+                                let n = editor.node(NODE_SOLVER);
+                                n.title_bar(|| ui.text("Solver"));
+                                let _in = editor.input_attr(30, PinShape::CircleFilled);
+                                ui.text("landmarks");
+                                _in.end();
+                                let _out = editor.output_attr(31, PinShape::CircleFilled);
+                                ui.text("rig data");
+                            }
+
+                            // VRM Rig node
+                            {
+                                let n = editor.node(NODE_VRM_RIG);
+                                n.title_bar(|| ui.text("VRM Rig"));
+                                let _in = editor.input_attr(40, PinShape::CircleFilled);
+                                ui.text("rig data");
+                                _in.end();
+                                let _out = editor.output_attr(41, PinShape::CircleFilled);
+                                ui.text("bones");
+                            }
+
+                            // Renderer node
+                            {
+                                let n = editor.node(NODE_RENDERER);
+                                n.title_bar(|| ui.text("Renderer"));
+                                let _in = editor.input_attr(50, PinShape::CircleFilled);
+                                ui.text("bones");
+                            }
+
+                            // VAD node
+                            {
+                                let n = editor.node(NODE_VAD);
+                                n.title_bar(|| ui.text("VAD"));
+                                let _in = editor.input_attr(60, PinShape::CircleFilled);
+                                ui.text("audio");
+                                _in.end();
+                                let _out = editor.output_attr(61, PinShape::CircleFilled);
+                                ui.text("speech");
+                            }
+
+                            // STT node
+                            {
+                                let n = editor.node(NODE_STT);
+                                n.title_bar(|| ui.text("STT"));
+                                let _in = editor.input_attr(70, PinShape::CircleFilled);
+                                ui.text("speech");
+                                _in.end();
+                                let _out = editor.output_attr(71, PinShape::CircleFilled);
+                                ui.text("text");
+                            }
+
+                            // Links (link_id, from_output_attr, to_input_attr)
+                            editor.link(1, 11, 20);  // Camera → Tracker
+                            editor.link(2, 21, 30);  // Tracker → Solver
+                            editor.link(3, 21, 40);  // Tracker → VRM Rig
+                            editor.link(4, 31, 50);  // Solver → Renderer
+                            editor.link(5, 41, 50);  // VRM Rig → Renderer
+                            editor.link(6, 11, 60);  // Camera → VAD
+                            editor.link(7, 61, 70);  // VAD → STT
+
+                            editor.end();
+                        } else {
+                            ui.text_colored([1.0, 0.5, 0.0, 1.0], "ImNodes not available");
                         }
-                        // Draw nodes
-                        for &(name, pos, color) in nodes {
-                            let x = p[0] + pos[0];
-                            let y = p[1] + pos[1];
-                            // Node body
-                            draw_list.add_rect([x, y], [x + nw, y + nh], color)
-                                .filled(true).rounding(r).build();
-                            // Border
-                            draw_list.add_rect([x, y], [x + nw, y + nh],
-                                [color[0] + 0.15, color[1] + 0.15, color[2] + 0.15, 1.0])
-                                .rounding(r).thickness(1.0).build();
-                            // Pin circles
-                            draw_list.add_circle([x, y + nh / 2.0], 4.0,
-                                [0.7, 0.7, 0.7, 1.0]).filled(true).build();
-                            draw_list.add_circle([x + nw, y + nh / 2.0], 4.0,
-                                [0.7, 0.7, 0.7, 1.0]).filled(true).build();
-                            // Label
-                            draw_list.add_text([x + 8.0, y + 10.0], [0.92, 0.92, 0.92, 1.0], name);
-                        }
-                        ui.dummy([400.0, 115.0]);
                     });
                 } // node_editor
 
@@ -625,7 +783,49 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         }
                     });
                 } // log
+
+                // ── Code Editor ──
+                if win.code_editor {
+                    if let Some(ref editor) = code_editor {
+                    ui.window("Code Editor")
+                        .size([500.0, 400.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                        .opened(&mut win.code_editor)
+                        .build(|| {
+                            // Status bar
+                            let cl = editor.cursor_line();
+                            let cc = editor.cursor_column();
+                            let tl = editor.total_lines();
+                            ui.text(format!("Ln {}, Col {} | {} lines", cl + 1, cc + 1, tl));
+                            ui.separator();
+                            // Render the TextEditor widget
+                            editor.render("##code_editor", [0.0, 0.0], false);
+                        });
+                    }
+                } // code_editor
+
+                // ── Terminal ──
+                if win.terminal {
+                    if let Some(ref term) = terminal {
+                    ui.window("Terminal")
+                        .size([500.0, 300.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                        .opened(&mut win.terminal)
+                        .build(|| {
+                            term.render_with_input(ui);
+                        });
+                    } else {
+                    ui.window("Terminal")
+                        .size([500.0, 300.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                        .opened(&mut win.terminal)
+                        .build(|| {
+                            ui.text_colored([1.0, 0.5, 0.0, 1.0], "Terminal not available");
+                        });
+                    }
+                } // terminal
             });
+
+            // Put code editor and terminal back into state
+            state.code_editor = code_editor;
+            state.terminal = terminal;
 
             // Apply window visibility changes back to state
             state.imgui_windows.apply_flags(&win);
@@ -650,6 +850,51 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             state.stage_lighting.key.intensity = key_intensity;
             state.stage_lighting.fill.intensity = fill_intensity;
             state.stage_lighting.back.intensity = back_intensity;
+            state.stage_lighting.key.color = key_color;
+            state.stage_lighting.fill.color = fill_color;
+            state.stage_lighting.back.color = back_color;
+            state.model_offset = model_offset;
+            // Apply idle animation toggle (same logic as KeyI handler in app.rs)
+            if let Some(anim) = &mut state.idle_animation {
+                if anim.enabled != idle_anim_on {
+                    anim.enabled = idle_anim_on;
+                    if !idle_anim_on {
+                        // Reset bones to bind pose when disabling
+                        let node_transforms = &state.vrm_model.node_transforms;
+                        state
+                            .vrm_model
+                            .humanoid_bones
+                            .reset_to_bind_pose(node_transforms);
+                    }
+                    log::info!("Idle animation: {}", if idle_anim_on { "ON" } else { "OFF" });
+                    state.rig_dirty = true;
+                }
+            }
+            // Apply shading mode toggle
+            let new_shading = if shading_virtual_live {
+                renderer::light::ShadingMode::VirtualLive
+            } else {
+                renderer::light::ShadingMode::Classic
+            };
+            state.stage_lighting.shading_mode = new_shading;
+
+            // Apply background image path change
+            if apply_bg_image {
+                let new_path = if bg_image_path_buf.trim().is_empty() {
+                    None
+                } else {
+                    Some(bg_image_path_buf.trim().to_string())
+                };
+                state.background.image_path = new_path.clone();
+                if let Err(e) = state.scene.set_background_image_from_path(
+                    &state.render_ctx.device,
+                    &state.render_ctx.queue,
+                    state.render_ctx.config.format,
+                    new_path.as_deref(),
+                ) {
+                    log::warn!("Failed to set background image: {e}");
+                }
+            }
 
             imgui.render(&state.render_ctx.device, &state.render_ctx.queue, &view);
         }
@@ -783,13 +1028,9 @@ fn apply_rig_to_model(state: &mut AppState) {
     // Apply idle animation to bones that are NOT driven by tracking.
     // This sets a base pose that tracking will override/blend with.
     if let Some(ref idle) = idle_pose {
-        // Collect bones that tracking will set (we'll skip those here)
         let tracking_bones = collect_tracked_bones(state);
-
         for (&bone, &rot) in idle {
             if !tracking_bones.contains(&bone) {
-                // No tracking for this bone: apply idle animation directly.
-                // No additional interpolation — keyframes are already slerp-interpolated.
                 state.vrm_model.humanoid_bones.set_rotation(bone, rot);
             }
         }
