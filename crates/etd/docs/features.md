@@ -65,7 +65,7 @@ pub enum EtdError {
 
 `speech-capture` の `Vec<i16>` 16kHz mono をそのまま受け取り、ETD 推論に適した `Vec<f32>` に変換する。
 
-- [ ] `crates/etd/src/audio.rs` を作成
+- [x] `crates/etd/src/audio.rs` を作成 <!-- 2026-03-21 11:30 JST -->
 
 **実装する関数:**
 
@@ -96,7 +96,7 @@ pub fn truncate_or_pad(audio: &[f32], sample_rate: u32, max_seconds: f32) -> Vec
 }
 ```
 
-- [ ] ユニットテスト (正常系):
+- [x] ユニットテスト (正常系): <!-- 2026-03-21 11:30 JST -->
   - `test_i16_to_f32_zero` — `0i16 → 0.0f32`
   - `test_i16_to_f32_max` — `32767i16 → ≈ 1.0f32`
   - `test_i16_to_f32_min` — `-32768i16 → -1.0f32`
@@ -105,17 +105,17 @@ pub fn truncate_or_pad(audio: &[f32], sample_rate: u32, max_seconds: f32) -> Vec
   - `test_pad_shorter` — 64000 サンプル (4s) → 先頭に 64000 ゼロ + 元データ
   - `test_pad_empty` — 空配列 → 128000 ゼロ
 
-- [ ] ユニットテスト (異常系):
+- [x] ユニットテスト (異常系): <!-- 2026-03-21 11:30 JST -->
   - `test_truncate_zero_max_seconds` — `max_seconds=0.0` → 空の Vec を返す
   - `test_i16_to_f32_empty` — 空スライス → 空 Vec
 
-- [ ] `cargo test -p etd` が通ることを確認
+- [x] `cargo test -p etd` が通ることを確認 <!-- 2026-03-21 11:30 JST -->
 
 ### Step 1.3: Mel フィルタバンク — `mel.rs` 内部関数 (domain 層)
 
 Whisper 互換の mel フィルタバンクを構築する。三角フィルタの生成。
 
-- [ ] `crates/etd/src/mel.rs` を作成
+- [x] `crates/etd/src/mel.rs` を作成 <!-- 2026-03-21 11:30 JST -->
 
 **実装する型と関数:**
 
@@ -148,14 +148,14 @@ fn mel_to_hz(mel: f32) -> f32;
 fn mel_filterbank(n_mels: usize, n_fft: usize, sr: u32, fmin: f32, fmax: f32) -> Vec<Vec<f32>>;
 ```
 
-- [ ] ユニットテスト (正常系):
+- [x] ユニットテスト (正常系): <!-- 2026-03-21 11:30 JST -->
   - `test_hz_to_mel_known_values` — 80Hz, 1000Hz, 7600Hz の変換値を検証
   - `test_mel_to_hz_roundtrip` — `mel_to_hz(hz_to_mel(x)) ≈ x`
   - `test_filterbank_shape` — 80 × 201 (n_fft/2+1 = 400/2+1)
   - `test_filterbank_sum_approx_one` — 各周波数ビンでフィルタの合計 ≈ 1.0 (帯域内)
   - `test_filterbank_no_negative` — 全要素 ≥ 0.0
 
-- [ ] ユニットテスト (異常系):
+- [x] ユニットテスト (異常系): <!-- 2026-03-21 11:30 JST -->
   - `test_filterbank_fmin_equals_fmax` — fmin == fmax → 全ゼロフィルタ
   - `test_filterbank_zero_mels` — n_mels=0 → 空ベクタ
 
@@ -208,7 +208,7 @@ pub fn stft_power(audio: &[f32], n_fft: usize, hop: usize, window: &[f32]) -> Ve
 }
 ```
 
-- [ ] ユニットテスト (正常系):
+- [x] ユニットテスト (正常系): <!-- 2026-03-21 11:30 JST -->
   - `test_hann_window_endpoints` — hann[0] ≈ 0.0, hann[N/2] ≈ 1.0
   - `test_hann_window_symmetry` — hann[i] ≈ hann[N-1-i]
   - `test_stft_silence` — 全ゼロ入力 → 全ゼロパワー
@@ -268,7 +268,7 @@ pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
 
 - [ ] `lib.rs` に `pub mod stft;` を追加
 
-- [ ] ユニットテスト (正常系):
+- [x] ユニットテスト (正常系): <!-- 2026-03-21 11:30 JST -->
   - `test_log_mel_silence` — 全ゼロ入力 → 出力形状が (80, 800)、全値が同一 (正規化後)
   - `test_log_mel_output_shape` — 128000 サンプル (8s) → 80 × 800 = 64000 要素
   - `test_log_mel_non_nan` — 出力に NaN/Inf が含まれないこと
