@@ -198,6 +198,29 @@ impl ImGuiRenderer {
         self.platform.prepare_render_with_ui(ui, window);
     }
 
+    /// Build the ImGui frame with ImNodes support.
+    ///
+    /// The closure receives the Ui and references to the ImNodes context/editor,
+    /// enabling use of `ui.imnodes_editor(ctx, Some(editor))` for node editors.
+    pub fn frame_with_nodes<F>(&mut self, window: &Window, f: F)
+    where
+        F: FnOnce(&dear_imgui_rs::Ui, Option<&dear_imnodes::Context>, Option<&dear_imnodes::EditorContext>),
+    {
+        let now = Instant::now();
+        let delta = now - self.last_frame;
+        let delta_s = delta.as_secs() as f32 + delta.subsec_nanos() as f32 / 1_000_000_000.0;
+        self.ctx.io_mut().set_delta_time(delta_s);
+        self.last_frame = now;
+
+        self.platform.prepare_frame(window, &mut self.ctx);
+
+        let ui = self.ctx.frame();
+        f(ui, self.imnodes_ctx.as_ref(), self.imnodes_editor.as_ref());
+
+        self.last_cursor = ui.mouse_cursor();
+        self.platform.prepare_render_with_ui(ui, window);
+    }
+
     /// Build the ImGui frame with an explicit delta time.
     ///
     /// Same as [`frame`](Self::frame) but uses the provided `dt` instead of
