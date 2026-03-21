@@ -329,9 +329,10 @@ impl ApplicationHandler for App {
                 // rendered pixel (alpha > 0) the window captures mouse events (drag,
                 // scroll, click). Over transparent areas (alpha == 0) clicks pass
                 // through to background windows. No modifier key needed.
-                // Alpha-based click-through: only for windowed mascot mode.
-                // In fullscreen mascot, hittest stays true (no click-through needed).
-                if state.mascot.enabled && !state.fullscreen && !state.mascot_alpha_map.is_empty() {
+                // Alpha-based hit-testing for mascot mode (both windowed and fullscreen).
+                // On model/ImGui: hittest true (drag, scroll, click).
+                // On transparent: hittest false (click-through to desktop).
+                if state.mascot.enabled && !state.mascot_alpha_map.is_empty() {
                     // Convert physical cursor position to alpha map coordinates.
                     // The alpha map uses the mascot window's logical size; the cursor
                     // position is in physical pixels, so scale by the window's scale factor.

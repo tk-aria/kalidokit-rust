@@ -532,8 +532,12 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     // mascot window dimensions. The alpha channel is extracted from the BGRA
     // readback data and cached for CursorMoved hit-test lookups.
     if state.mascot.enabled {
-        let w = state.mascot.mascot_size.width;
-        let h = state.mascot.mascot_size.height;
+        // Use actual window logical size for alpha map (not mascot_size,
+        // which is 512x512 even in fullscreen mascot mode).
+        let phys = state.render_ctx.window.inner_size();
+        let scale = state.render_ctx.window.scale_factor();
+        let w = (phys.width as f64 / scale) as u32;
+        let h = (phys.height as f64 / scale) as u32;
         state
             .scene
             .ensure_frame_capture(&state.render_ctx.device, w, h);
