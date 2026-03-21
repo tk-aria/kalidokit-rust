@@ -79,6 +79,14 @@ pub struct AppState {
     pub show_imgui: bool,
     /// Whether the window is in fullscreen mode.
     pub fullscreen: bool,
+    /// Pending mascot mode toggle (deferred to after surface present).
+    pub pending_mascot_toggle: bool,
+    /// Model offset for dragging the avatar within the window (non-mascot mode).
+    pub model_offset: [f32; 2],
+    /// Whether the user is dragging the avatar (non-mascot mode).
+    pub dragging_model: bool,
+    /// Last cursor position when model drag started.
+    pub drag_prev_pos: [f64; 2],
 }
 
 /// Current rig solver results (face/pose/hand).

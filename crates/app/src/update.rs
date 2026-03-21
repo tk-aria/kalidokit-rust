@@ -200,7 +200,11 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     // Rotate model 180° around Y to face camera (matching testbed: scene.rotation.y = Math.PI)
     // This must be applied to joint matrices too, not just the camera uniform,
     // because skinned vertices bypass camera.model in the shader.
-    let model_matrix = glam::Mat4::from_rotation_y(std::f32::consts::PI);
+    let model_matrix = glam::Mat4::from_translation(glam::Vec3::new(
+        state.model_offset[0],
+        state.model_offset[1],
+        0.0,
+    )) * glam::Mat4::from_rotation_y(std::f32::consts::PI);
 
     // Compute world matrices for all nodes via FK, then build per-joint skinning matrices
     let world_matrices = state
@@ -466,17 +470,10 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                     });
             });
 
-            // Apply changes back to state
+            // Apply non-surface changes immediately
             if mascot_enabled != state.mascot.enabled {
-                state.mascot.toggle(&state.render_ctx.window);
-                if state.mascot.enabled {
-                    state.render_ctx.set_transparent(true);
-                    state.scene.set_clear_alpha(0.0);
-                    state.scene.remove_background_video();
-                } else {
-                    state.render_ctx.set_transparent(false);
-                    state.scene.set_clear_alpha(1.0);
-                }
+                // Defer mascot toggle to after present (surface must be dropped first)
+                state.pending_mascot_toggle = true;
             }
             if always_on_top != state.mascot.always_on_top {
                 state.mascot.toggle_always_on_top(&state.render_ctx.window);
@@ -494,6 +491,20 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     }
 
     output.present();
+
+    // Deferred mascot toggle: safe now that SurfaceTexture is dropped.
+    if state.pending_mascot_toggle {
+        state.pending_mascot_toggle = false;
+        state.mascot.toggle(&state.render_ctx.window);
+        if state.mascot.enabled {
+            state.render_ctx.set_transparent(true);
+            state.scene.set_clear_alpha(0.0);
+            state.scene.remove_background_video();
+        } else {
+            state.render_ctx.set_transparent(false);
+            state.scene.set_clear_alpha(1.0);
+        }
+    }
 
     // 6. Virtual camera: capture and send frame (throttled to 30fps)
     if state.vcam_enabled {

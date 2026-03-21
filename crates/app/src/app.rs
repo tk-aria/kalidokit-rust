@@ -139,13 +139,17 @@ impl ApplicationHandler for App {
                 state.render_ctx.window.request_redraw();
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let scroll_y = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(pos) => pos.y as f32 * 0.01,
-                };
-                // Scroll up (positive y) zooms in (decrease distance),
-                // scroll down (negative y) zooms out (increase distance).
-                state.camera_distance = (state.camera_distance - scroll_y * 0.3).clamp(0.5, 10.0);
+                // Don't zoom if ImGui is capturing the scroll (e.g. scrolling a panel)
+                let imgui_wants = state.show_imgui
+                    && state.imgui.as_ref().map_or(false, |im| im.want_capture_mouse());
+                if !imgui_wants {
+                    let scroll_y = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => y,
+                        MouseScrollDelta::PixelDelta(pos) => pos.y as f32 * 0.01,
+                    };
+                    state.camera_distance =
+                        (state.camera_distance - scroll_y * 0.3).clamp(0.5, 10.0);
+                }
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {
@@ -348,28 +352,50 @@ impl ApplicationHandler for App {
                         let _ = state.render_ctx.window.set_cursor_hittest(false);
                     }
                 }
-                // Note: drag is handled by OS-native drag_window(), no manual update needed.
+                // Non-mascot mode: drag moves the avatar within the window
+                if state.dragging_model && !state.mascot.enabled {
+                    let dx = position.x - state.drag_prev_pos[0];
+                    let dy = position.y - state.drag_prev_pos[1];
+                    let scale = state.render_ctx.window.scale_factor() as f32;
+                    let size = state.render_ctx.window.inner_size();
+                    // Normalize to [-1, 1] range based on window size
+                    state.model_offset[0] += (dx as f32 / size.width as f32) * 2.0 * scale;
+                    state.model_offset[1] -= (dy as f32 / size.height as f32) * 2.0 * scale;
+                    state.drag_prev_pos = [position.x, position.y];
+                }
             }
             WindowEvent::MouseInput {
                 state: btn_state,
                 button: winit::event::MouseButton::Left,
                 ..
             } => {
-                if state.mascot.enabled {
-                    // Don't drag the window when ImGui wants the mouse
-                    // (e.g. clicking a button, dragging a slider)
+                {
                     let imgui_wants = state.show_imgui
                         && state.imgui.as_ref().map_or(false, |im| im.want_capture_mouse());
 
-                    match btn_state {
-                        ElementState::Pressed if !imgui_wants => {
-                            // Use OS-native window drag to avoid cursor feedback loop.
-                            if let Err(e) = state.render_ctx.window.drag_window() {
-                                log::warn!("drag_window failed: {e}");
+                    if state.mascot.enabled {
+                        // Mascot mode: drag the window (unless ImGui wants the mouse)
+                        match btn_state {
+                            ElementState::Pressed if !imgui_wants => {
+                                if let Err(e) = state.render_ctx.window.drag_window() {
+                                    log::warn!("drag_window failed: {e}");
+                                }
                             }
+                            _ => {}
                         }
-                        _ => {
-                            // ImGui is handling this click, or button released.
+                    } else if !imgui_wants {
+                        // Non-mascot (fullscreen/windowed): drag moves the avatar
+                        match btn_state {
+                            ElementState::Pressed => {
+                                state.dragging_model = true;
+                                state.drag_prev_pos = [
+                                    state.last_cursor_pos.x,
+                                    state.last_cursor_pos.y,
+                                ];
+                            }
+                            ElementState::Released => {
+                                state.dragging_model = false;
+                            }
                         }
                     }
                 }
