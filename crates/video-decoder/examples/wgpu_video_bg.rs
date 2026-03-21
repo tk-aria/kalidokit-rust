@@ -102,7 +102,7 @@ impl App {
 
     fn init_gpu(&mut self, window: Arc<winit::window::Window>) {
         let size = window.inner_size();
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::from_env_or_default());
         let surface = instance.create_surface(window.clone()).unwrap();
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             compatible_surface: Some(&surface),
@@ -184,7 +184,7 @@ impl App {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[Some(&bgl)],
+            bind_group_layouts: &[&bgl],
             immediate_size: 0,
         });
 
@@ -412,7 +412,7 @@ impl winit::application::ApplicationHandler for App {
                 // Render.
                 if let Some(gpu) = &self.gpu {
                     let frame = match gpu.surface.get_current_texture() {
-                        wgpu::CurrentSurfaceTexture::Success(tex) | wgpu::CurrentSurfaceTexture::Suboptimal(tex) => tex,
+                        Ok(tex) => tex,
                         _ => return,
                     };
                     {

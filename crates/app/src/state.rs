@@ -79,6 +79,7 @@ pub struct AppState {
     pub show_imgui: bool,
     /// Per-window visibility for ImGui panels.
     pub imgui_windows: ImGuiWindows,
+    // ImNodes context is managed by ImGuiRenderer internally.
     /// Whether the window is in fullscreen mode.
     pub fullscreen: bool,
     /// Whether the debug overlay (camera preview + landmarks) is shown.

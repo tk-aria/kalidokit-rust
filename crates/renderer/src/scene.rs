@@ -505,8 +505,8 @@ impl Scene {
     /// Acquire surface, render, and present (convenience wrapper for non-overlay usage).
     pub fn render(&self, ctx: &RenderContext) -> anyhow::Result<()> {
         let output = match ctx.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(tex) | wgpu::CurrentSurfaceTexture::Suboptimal(tex) => tex,
-            other => anyhow::bail!("Failed to acquire surface texture: {:?}", other),
+            Ok(tex) => tex,
+            Err(e) => anyhow::bail!("Failed to acquire surface texture: {:?}", e),
         };
         let view = output
             .texture
@@ -936,7 +936,7 @@ impl BgImage {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("bg_image_pipeline_layout"),
-            bind_group_layouts: &[Some(&bind_group_layout)],
+            bind_group_layouts: &[&bind_group_layout],
             immediate_size: 0,
         });
 

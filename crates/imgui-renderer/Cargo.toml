@@ -5,10 +5,10 @@ edition = "2021"
 description = "Dear ImGui integration for wgpu applications"
 
 [dependencies]
-imgui = { version = "0.12", features = ["docking"] }
-imgui-wgpu = "0.28"
-imgui-winit-support = "0.13"
-imnodes = "0.5"
+dear-imgui-rs = "0.10"
+dear-imgui-wgpu = "0.10"
+dear-imgui-winit = "0.10"
+dear-imnodes = "0.10"
 wgpu = { workspace = true }
 winit = { workspace = true }
 log = { workspace = true }

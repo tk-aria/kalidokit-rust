@@ -42,11 +42,9 @@ struct App {
 
 impl App {
     fn init(&mut self, event_loop: &ActiveEventLoop) {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
-            ..wgpu::InstanceDescriptor::new_with_display_handle(Box::new(
-                event_loop.owned_display_handle(),
-            ))
+            ..wgpu::InstanceDescriptor::default()
         });
 
         let size = LogicalSize::new(1280.0, 720.0);
@@ -146,19 +144,17 @@ impl ApplicationHandler for App {
                 }
 
                 let frame = match state.gpu.surface.get_current_texture() {
-                    wgpu::CurrentSurfaceTexture::Success(frame) => frame,
-                    wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
-                    wgpu::CurrentSurfaceTexture::Timeout
-                    | wgpu::CurrentSurfaceTexture::Occluded => return,
-                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                    Ok(frame) => frame,
+                    Err(wgpu::SurfaceError::Timeout) => return,
+                    Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
                         state
                             .gpu
                             .surface
                             .configure(&state.gpu.device, &state.gpu.surface_config);
                         return;
                     }
-                    other => {
-                        eprintln!("get_current_texture error: {other:?}");
+                    Err(e) => {
+                        eprintln!("get_current_texture error: {e:?}");
                         return;
                     }
                 };
@@ -213,7 +209,7 @@ impl ApplicationHandler for App {
                         .build(|| {
                             ui.text(format!("FPS: {fps:.0}"));
                             ui.separator();
-                            let mouse_pos = ui.io().mouse_pos;
+                            let mouse_pos = ui.io().mouse_pos();
                             ui.text(format!("Mouse: ({:.0}, {:.0})", mouse_pos[0], mouse_pos[1]));
                             ui.checkbox("Show Demo Window", show_demo);
                         });

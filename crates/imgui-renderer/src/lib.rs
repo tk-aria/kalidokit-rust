@@ -1,7 +1,7 @@
 //! Dear ImGui integration for wgpu applications.
 //!
-//! Provides [`ImGuiRenderer`] — a thin wrapper around `imgui`, `imgui-wgpu`,
-//! and `imgui-winit-support` that can be integrated into any wgpu + winit
+//! Provides [`ImGuiRenderer`] — a thin wrapper around `dear-imgui-rs`, `dear-imgui-wgpu`,
+//! and `dear-imgui-winit` that can be integrated into any wgpu + winit
 //! application in three method calls: [`handle_event`](ImGuiRenderer::handle_event),
 //! [`frame`](ImGuiRenderer::frame), and [`render`](ImGuiRenderer::render).
 //!
@@ -34,28 +34,32 @@
 //! # }
 //! ```
 
-pub use imgui;
-pub use imgui_wgpu;
-pub use imgui_winit_support;
-pub use imnodes;
+pub use dear_imgui_rs as imgui;
+pub use dear_imgui_wgpu as imgui_wgpu;
+pub use dear_imgui_winit as imgui_winit;
+pub use dear_imnodes as imnodes;
 
-use imgui::{Context, FontConfig, FontSource, MouseCursor};
-use imgui_wgpu::{Renderer, RendererConfig};
-use imgui_winit_support::{HiDpiMode, WinitPlatform};
+use dear_imgui_rs::{ConfigFlags, Context, FontConfig, FontSource, MouseCursor, StyleColor};
+use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
+use dear_imgui_winit::{HiDpiMode, WinitPlatform};
 use std::time::{Duration, Instant};
 use winit::event::{Event, WindowEvent};
 use winit::window::Window;
 
 /// Dear ImGui renderer integrated with wgpu and winit.
 ///
-/// Wraps an imgui [`Context`], a [`WinitPlatform`] backend, and an
-/// imgui-wgpu [`Renderer`] into a single type with a simple three-method API.
+/// Wraps a dear-imgui-rs [`Context`], a [`WinitPlatform`] backend, and a
+/// dear-imgui-wgpu [`WgpuRenderer`] into a single type with a simple three-method API.
 pub struct ImGuiRenderer {
     ctx: Context,
     platform: WinitPlatform,
-    renderer: Renderer,
+    renderer: WgpuRenderer,
     last_frame: Instant,
     last_cursor: Option<MouseCursor>,
+    /// ImNodes context for node editors (created lazily on first use).
+    imnodes_ctx: Option<dear_imnodes::Context>,
+    /// ImNodes editor context (one per editor).
+    imnodes_editor: Option<dear_imnodes::EditorContext>,
 }
 
 impl ImGuiRenderer {
@@ -73,66 +77,74 @@ impl ImGuiRenderer {
         window: &Window,
     ) -> anyhow::Result<Self> {
         let mut ctx = Context::create();
-        ctx.set_ini_filename(None);
+        let _ = ctx.set_ini_filename(None::<String>);
 
         // Enable docking
-        ctx.io_mut().config_flags |= imgui::ConfigFlags::DOCKING_ENABLE;
+        {
+            let flags = ctx.io().config_flags();
+            ctx.io_mut()
+                .set_config_flags(flags | ConfigFlags::DOCKING_ENABLE);
+        }
 
         let mut platform = WinitPlatform::new(&mut ctx);
-        platform.attach_window(ctx.io_mut(), window, HiDpiMode::Default);
+        platform.attach_window(window, HiDpiMode::Default, &mut ctx);
 
         // Configure fonts for HiDPI — smaller size for compact UI
         let hidpi_factor = window.scale_factor();
         let font_size = (10.0 * hidpi_factor) as f32;
-        ctx.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
+        ctx.io_mut()
+            .set_font_global_scale((1.0 / hidpi_factor) as f32);
 
         ctx.fonts().add_font(&[FontSource::DefaultFontData {
-            config: Some(FontConfig {
-                size_pixels: font_size,
-                ..Default::default()
-            }),
+            size_pixels: Some(font_size),
+            config: Some(FontConfig::new()),
         }]);
 
         // Dark gray style
         let style = ctx.style_mut();
-        style.window_rounding = 4.0;
-        style.frame_rounding = 2.0;
-        style.grab_rounding = 2.0;
-        style.window_border_size = 0.0;
+        style.set_window_rounding(4.0);
+        style.set_frame_rounding(2.0);
+        style.set_grab_rounding(2.0);
+        style.set_window_border_size(0.0);
         // Colors: YouTube-style dark gray (semi-transparent so avatar shows through)
-        style.colors[imgui::sys::ImGuiCol_WindowBg as usize] = [0.11, 0.11, 0.11, 0.75];
-        style.colors[imgui::sys::ImGuiCol_TitleBg as usize] = [0.08, 0.08, 0.08, 1.00];
-        style.colors[imgui::sys::ImGuiCol_TitleBgActive as usize] = [0.15, 0.15, 0.15, 1.00];
-        style.colors[imgui::sys::ImGuiCol_FrameBg as usize] = [0.18, 0.18, 0.18, 1.00];
-        style.colors[imgui::sys::ImGuiCol_FrameBgHovered as usize] = [0.25, 0.25, 0.25, 1.00];
-        style.colors[imgui::sys::ImGuiCol_FrameBgActive as usize] = [0.30, 0.30, 0.30, 1.00];
-        style.colors[imgui::sys::ImGuiCol_Header as usize] = [0.18, 0.18, 0.18, 1.00];
-        style.colors[imgui::sys::ImGuiCol_HeaderHovered as usize] = [0.25, 0.25, 0.25, 1.00];
-        style.colors[imgui::sys::ImGuiCol_HeaderActive as usize] = [0.30, 0.30, 0.30, 1.00];
-        style.colors[imgui::sys::ImGuiCol_Button as usize] = [0.20, 0.20, 0.20, 1.00];
-        style.colors[imgui::sys::ImGuiCol_ButtonHovered as usize] = [0.28, 0.28, 0.28, 1.00];
-        style.colors[imgui::sys::ImGuiCol_ButtonActive as usize] = [0.35, 0.35, 0.35, 1.00];
-        style.colors[imgui::sys::ImGuiCol_SliderGrab as usize] = [0.50, 0.50, 0.50, 1.00];
-        style.colors[imgui::sys::ImGuiCol_SliderGrabActive as usize] = [0.65, 0.65, 0.65, 1.00];
-        style.colors[imgui::sys::ImGuiCol_CheckMark as usize] = [0.90, 0.90, 0.90, 1.00];
-        style.colors[imgui::sys::ImGuiCol_Text as usize] = [0.90, 0.90, 0.90, 1.00];
-        style.colors[imgui::sys::ImGuiCol_TextDisabled as usize] = [0.50, 0.50, 0.50, 1.00];
-        style.colors[imgui::sys::ImGuiCol_Separator as usize] = [0.22, 0.22, 0.22, 1.00];
-        style.colors[imgui::sys::ImGuiCol_Tab as usize] = [0.12, 0.12, 0.12, 1.00];
-        style.colors[imgui::sys::ImGuiCol_TabHovered as usize] = [0.25, 0.25, 0.25, 1.00];
-        style.colors[imgui::sys::ImGuiCol_TabActive as usize] = [0.18, 0.18, 0.18, 1.00];
-        style.colors[imgui::sys::ImGuiCol_DockingPreview as usize] = [0.40, 0.40, 0.40, 0.70];
-        style.colors[imgui::sys::ImGuiCol_ScrollbarBg as usize] = [0.08, 0.08, 0.08, 1.00];
-        style.colors[imgui::sys::ImGuiCol_ScrollbarGrab as usize] = [0.30, 0.30, 0.30, 1.00];
-        style.colors[imgui::sys::ImGuiCol_PopupBg as usize] = [0.13, 0.13, 0.13, 0.96];
-        style.colors[imgui::sys::ImGuiCol_Border as usize] = [0.22, 0.22, 0.22, 0.50];
+        style.set_color(StyleColor::WindowBg, [0.11, 0.11, 0.11, 0.75]);
+        style.set_color(StyleColor::TitleBg, [0.08, 0.08, 0.08, 1.00]);
+        style.set_color(StyleColor::TitleBgActive, [0.15, 0.15, 0.15, 1.00]);
+        style.set_color(StyleColor::FrameBg, [0.18, 0.18, 0.18, 1.00]);
+        style.set_color(StyleColor::FrameBgHovered, [0.25, 0.25, 0.25, 1.00]);
+        style.set_color(StyleColor::FrameBgActive, [0.30, 0.30, 0.30, 1.00]);
+        style.set_color(StyleColor::Header, [0.18, 0.18, 0.18, 1.00]);
+        style.set_color(StyleColor::HeaderHovered, [0.25, 0.25, 0.25, 1.00]);
+        style.set_color(StyleColor::HeaderActive, [0.30, 0.30, 0.30, 1.00]);
+        style.set_color(StyleColor::Button, [0.20, 0.20, 0.20, 1.00]);
+        style.set_color(StyleColor::ButtonHovered, [0.28, 0.28, 0.28, 1.00]);
+        style.set_color(StyleColor::ButtonActive, [0.35, 0.35, 0.35, 1.00]);
+        style.set_color(StyleColor::SliderGrab, [0.50, 0.50, 0.50, 1.00]);
+        style.set_color(StyleColor::SliderGrabActive, [0.65, 0.65, 0.65, 1.00]);
+        style.set_color(StyleColor::CheckMark, [0.90, 0.90, 0.90, 1.00]);
+        style.set_color(StyleColor::Text, [0.90, 0.90, 0.90, 1.00]);
+        style.set_color(StyleColor::TextDisabled, [0.50, 0.50, 0.50, 1.00]);
+        style.set_color(StyleColor::Separator, [0.22, 0.22, 0.22, 1.00]);
+        style.set_color(StyleColor::Tab, [0.12, 0.12, 0.12, 1.00]);
+        style.set_color(StyleColor::TabHovered, [0.25, 0.25, 0.25, 1.00]);
+        style.set_color(StyleColor::TabSelected, [0.18, 0.18, 0.18, 1.00]);
+        style.set_color(StyleColor::DockingPreview, [0.40, 0.40, 0.40, 0.70]);
+        style.set_color(StyleColor::ScrollbarBg, [0.08, 0.08, 0.08, 1.00]);
+        style.set_color(StyleColor::ScrollbarGrab, [0.30, 0.30, 0.30, 1.00]);
+        style.set_color(StyleColor::PopupBg, [0.13, 0.13, 0.13, 0.96]);
+        style.set_color(StyleColor::Border, [0.22, 0.22, 0.22, 0.50]);
 
-        let renderer_config = RendererConfig {
-            texture_format: format,
-            ..Default::default()
-        };
+        let init_info = WgpuInitInfo::new(device.clone(), queue.clone(), format);
+        let renderer = WgpuRenderer::new(init_info, &mut ctx)
+            .map_err(|e| anyhow::anyhow!("WgpuRenderer init failed: {e}"))?;
 
-        let renderer = Renderer::new(&mut ctx, device, queue, renderer_config);
+        // Create ImNodes context from the ImGui context
+        let imnodes_ctx = dear_imnodes::Context::try_create(&ctx)
+            .map_err(|e| anyhow::anyhow!("ImNodes context failed: {e}"))
+            .ok();
+        let imnodes_editor = imnodes_ctx.as_ref().map(|c| {
+            c.create_editor_context()
+        });
 
         Ok(Self {
             ctx,
@@ -140,6 +152,8 @@ impl ImGuiRenderer {
             renderer,
             last_frame: Instant::now(),
             last_cursor: None,
+            imnodes_ctx,
+            imnodes_editor,
         })
     }
 
@@ -149,80 +163,87 @@ impl ImGuiRenderer {
     pub fn handle_event(
         &mut self,
         window: &Window,
-        window_id: winit::window::WindowId,
+        _window_id: winit::window::WindowId,
         event: &WindowEvent,
     ) {
-        self.platform.handle_event::<()>(
-            self.ctx.io_mut(),
-            window,
-            &Event::WindowEvent {
-                window_id,
-                event: event.clone(),
-            },
-        );
+        self.platform
+            .handle_window_event(&mut self.ctx, window, event);
     }
 
     /// Forward a non-window event to ImGui (e.g. `AboutToWait`, `DeviceEvent`).
     ///
     /// Typically called from `about_to_wait` with `Event::AboutToWait`.
     pub fn handle_non_window_event<T: 'static>(&mut self, window: &Window, event: &Event<T>) {
-        self.platform.handle_event(self.ctx.io_mut(), window, event);
+        self.platform
+            .handle_event(&mut self.ctx, window, event);
     }
 
     /// Build the ImGui frame.
     ///
-    /// The closure `f` receives a [`imgui::Ui`] reference to define the UI.
+    /// The closure `f` receives a [`dear_imgui_rs::Ui`] reference to define the UI.
     /// After this call, use [`render`](Self::render) to draw the frame.
-    pub fn frame<F: FnOnce(&imgui::Ui)>(&mut self, window: &Window, f: F) {
+    pub fn frame<F: FnOnce(&dear_imgui_rs::Ui)>(&mut self, window: &Window, f: F) {
         let now = Instant::now();
-        self.ctx.io_mut().update_delta_time(now - self.last_frame);
+        let delta = now - self.last_frame;
+        let delta_s = delta.as_secs() as f32 + delta.subsec_nanos() as f32 / 1_000_000_000.0;
+        self.ctx.io_mut().set_delta_time(delta_s);
         self.last_frame = now;
 
-        self.platform
-            .prepare_frame(self.ctx.io_mut(), window)
-            .expect("Failed to prepare ImGui frame");
+        self.platform.prepare_frame(window, &mut self.ctx);
 
         let ui = self.ctx.frame();
         f(ui);
 
         self.last_cursor = ui.mouse_cursor();
-        self.platform.prepare_render(ui, window);
+        self.platform.prepare_render_with_ui(ui, window);
     }
 
     /// Build the ImGui frame with an explicit delta time.
     ///
     /// Same as [`frame`](Self::frame) but uses the provided `dt` instead of
     /// measuring elapsed time automatically.
-    pub fn frame_with_dt<F: FnOnce(&imgui::Ui)>(&mut self, window: &Window, dt: Duration, f: F) {
-        self.ctx.io_mut().update_delta_time(dt);
+    pub fn frame_with_dt<F: FnOnce(&dear_imgui_rs::Ui)>(
+        &mut self,
+        window: &Window,
+        dt: Duration,
+        f: F,
+    ) {
+        let delta_s = dt.as_secs() as f32 + dt.subsec_nanos() as f32 / 1_000_000_000.0;
+        self.ctx.io_mut().set_delta_time(delta_s);
         self.last_frame = Instant::now();
 
-        self.platform
-            .prepare_frame(self.ctx.io_mut(), window)
-            .expect("Failed to prepare ImGui frame");
+        self.platform.prepare_frame(window, &mut self.ctx);
 
         let ui = self.ctx.frame();
         f(ui);
 
         self.last_cursor = ui.mouse_cursor();
-        self.platform.prepare_render(ui, window);
+        self.platform.prepare_render_with_ui(ui, window);
+    }
+
+    /// Notify ImGui that the window/surface was resized.
+    /// Call this whenever the wgpu surface is reconfigured.
+    pub fn resize(&mut self, width: u32, height: u32, scale_factor: f64) {
+        let logical_w = width as f64 / scale_factor;
+        let logical_h = height as f64 / scale_factor;
+        let io = self.ctx.io_mut();
+        io.set_display_size([logical_w as f32, logical_h as f32]);
+        io.set_display_framebuffer_scale([scale_factor as f32, scale_factor as f32]);
     }
 
     /// Render the ImGui draw data onto the given texture view.
     ///
     /// Uses `LoadOp::Load` so that ImGui is drawn on top of whatever was
     /// already rendered (overlay mode).
-    /// Notify ImGui that the window/surface was resized.
-    /// Call this whenever the wgpu surface is reconfigured.
-    pub fn resize(&mut self, width: u32, height: u32, scale_factor: f64) {
-        let io = self.ctx.io_mut();
-        let logical_w = width as f64 / scale_factor;
-        let logical_h = height as f64 / scale_factor;
-        io.display_size = [logical_w as f32, logical_h as f32];
-        io.display_framebuffer_scale = [scale_factor as f32, scale_factor as f32];
-    }
+    pub fn render(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view: &wgpu::TextureView,
+    ) {
+        // Notify the renderer of a new frame (recreates pipeline if needed)
+        let _ = self.renderer.new_frame();
 
-    pub fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, view: &wgpu::TextureView) {
         let draw_data = self.ctx.render();
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -244,9 +265,7 @@ impl ImGuiRenderer {
                 multiview_mask: None,
             });
 
-            self.renderer
-                .render(draw_data, queue, device, &mut rpass)
-                .expect("ImGui rendering failed");
+            let _ = self.renderer.render_draw_data(draw_data, &mut rpass);
         }
         queue.submit(std::iter::once(encoder.finish()));
     }
@@ -257,50 +276,58 @@ impl ImGuiRenderer {
     /// having [`render`](Self::render) create one.
     pub fn render_into_pass<'a>(
         &'a mut self,
-        queue: &wgpu::Queue,
-        device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        _device: &wgpu::Device,
         rpass: &mut wgpu::RenderPass<'a>,
     ) {
+        let _ = self.renderer.new_frame();
         let draw_data = self.ctx.render();
-        self.renderer
-            .render(draw_data, queue, device, rpass)
-            .expect("ImGui rendering failed");
+        let _ = self.renderer.render_draw_data(draw_data, rpass);
     }
 
-    /// Access the underlying imgui [`Context`].
+    /// Access the underlying dear-imgui-rs [`Context`].
     pub fn context(&self) -> &Context {
         &self.ctx
     }
 
-    /// Mutably access the underlying imgui [`Context`].
+    /// Mutably access the underlying dear-imgui-rs [`Context`].
     pub fn context_mut(&mut self) -> &mut Context {
         &mut self.ctx
     }
 
-    /// Access the underlying imgui-wgpu [`Renderer`].
-    pub fn renderer(&self) -> &Renderer {
+    /// Access the underlying dear-imgui-wgpu [`WgpuRenderer`].
+    pub fn renderer(&self) -> &WgpuRenderer {
         &self.renderer
     }
 
-    /// Mutably access the underlying imgui-wgpu [`Renderer`].
-    pub fn renderer_mut(&mut self) -> &mut Renderer {
+    /// Mutably access the underlying dear-imgui-wgpu [`WgpuRenderer`].
+    pub fn renderer_mut(&mut self) -> &mut WgpuRenderer {
         &mut self.renderer
     }
 
+    /// Access the ImNodes editor context (for use inside `frame()` closures).
+    pub fn imnodes_editor(&self) -> Option<&dear_imnodes::EditorContext> {
+        self.imnodes_editor.as_ref()
+    }
+
     /// Reload the font texture after font changes.
-    pub fn reload_font_texture(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        self.renderer
-            .reload_font_texture(&mut self.ctx, device, queue);
+    ///
+    /// Note: In dear-imgui-wgpu 0.10+, font texture management is handled
+    /// internally by the renderer via the modern texture system.
+    /// This method is kept for API compatibility but is a no-op.
+    pub fn reload_font_texture(&mut self, _device: &wgpu::Device, _queue: &wgpu::Queue) {
+        // dear-imgui-wgpu 0.10+ handles font textures automatically
+        // via the ImTextureData system in new_frame()/render_draw_data().
     }
 
     /// Returns true if ImGui wants to capture mouse input.
     pub fn want_capture_mouse(&self) -> bool {
-        self.ctx.io().want_capture_mouse
+        self.ctx.io().want_capture_mouse()
     }
 
     /// Returns true if ImGui wants to capture keyboard input.
     pub fn want_capture_keyboard(&self) -> bool {
-        self.ctx.io().want_capture_keyboard
+        self.ctx.io().want_capture_keyboard()
     }
 }
 

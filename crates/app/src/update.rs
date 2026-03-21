@@ -334,8 +334,8 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     // 5. Render: acquire surface → 3D scene → debug overlay → present
     pipeline_logger::render(log::Level::Trace, "submitting draw commands").emit();
     let output = match state.render_ctx.surface.get_current_texture() {
-        wgpu::CurrentSurfaceTexture::Success(tex) | wgpu::CurrentSurfaceTexture::Suboptimal(tex) => tex,
-        other => anyhow::bail!("Failed to acquire surface texture: {:?}", other),
+        Ok(tex) => tex,
+        Err(e) => anyhow::bail!("Failed to acquire surface texture: {:?}", e),
     };
     let view = output
         .texture
@@ -589,8 +589,8 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         let avg = frame_times.iter().sum::<f32>() / 120.0;
                         let max = frame_times.iter().cloned().fold(0.0f32, f32::max);
                         ui.text(format!("Frame: {:.1}ms avg, {:.1}ms max", avg, max));
-                        ui.plot_lines("##frame_times", frame_times)
-                            .overlay_text(&format!("{:.1}ms", frame_times[(frame_idx.wrapping_sub(1)) % 120]))
+                        ui.plot_lines_config("##frame_times", frame_times)
+                            .overlay_text(format!("{:.1}ms", frame_times[(frame_idx.wrapping_sub(1)) % 120]))
                             .graph_size([280.0, 60.0])
                             .scale_min(0.0)
                             .scale_max(50.0)
@@ -621,7 +621,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         }
                         // Auto-scroll to bottom
                         if ui.scroll_y() >= ui.scroll_max_y() {
-                            ui.set_scroll_here_y();
+                            ui.set_scroll_here_y(0.5);
                         }
                     });
                 } // log
