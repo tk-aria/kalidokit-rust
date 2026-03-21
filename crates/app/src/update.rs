@@ -409,15 +409,86 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     // 5c. ImGui overlay render
     if state.show_imgui {
         if let Some(imgui) = &mut state.imgui {
+            // Collect mutable state into temporaries to avoid borrow conflicts
+            let mut mascot_enabled = state.mascot.enabled;
+            let mut always_on_top = state.mascot.always_on_top;
+            let mut tracking_enabled = state.tracking_enabled;
+            let mut vcam_enabled = state.vcam_enabled;
+            let mut blink_auto = state.blink_mode == BlinkMode::Auto;
+            let mut camera_distance = state.camera_distance;
+            let mut key_intensity = state.stage_lighting.key.intensity;
+            let mut fill_intensity = state.stage_lighting.fill.intensity;
+            let mut back_intensity = state.stage_lighting.back.intensity;
+            let idle_anim_on = state
+                .idle_animation
+                .as_ref()
+                .map_or(false, |a| a.enabled);
+            let shading_label = state.stage_lighting.shading_mode.label().to_string();
+            let key_label = state.stage_lighting.key.preset.label().to_string();
+            let fill_label = state.stage_lighting.fill.preset.label().to_string();
+            let back_label = state.stage_lighting.back.preset.label().to_string();
+            let fps_render = state.fps_counter;
+            let fps_decode = state.fps_decode_counter;
+
             imgui.frame(&state.render_ctx.window, |ui| {
-                ui.window("Debug").build(|| {
-                    ui.text(format!("Render FPS: {}", state.fps_counter));
-                    ui.text(format!("Decode FPS: {}", state.fps_decode_counter));
-                    ui.separator();
-                    ui.text(format!("Mascot: {}", state.mascot.enabled));
-                    ui.text(format!("Always on top: {}", state.mascot.always_on_top));
-                });
+                ui.window("Debug Info")
+                    .size([280.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .build(|| {
+                        ui.text(format!("Render FPS: {fps_render}"));
+                        ui.text(format!("Decode FPS: {fps_decode}"));
+                        ui.text(format!("Shading: {shading_label}"));
+                        ui.text(format!("Idle Anim: {}", if idle_anim_on { "ON" } else { "OFF" }));
+                    });
+
+                ui.window("Settings")
+                    .size([280.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
+                    .build(|| {
+                        if ui.collapsing_header("Display", imgui_renderer::imgui::TreeNodeFlags::DEFAULT_OPEN) {
+                            ui.checkbox("Mascot Mode (M)", &mut mascot_enabled);
+                            ui.checkbox("Always on Top (F)", &mut always_on_top);
+                            ui.slider("Camera Distance", 0.5, 10.0, &mut camera_distance);
+                        }
+
+                        if ui.collapsing_header("Tracking", imgui_renderer::imgui::TreeNodeFlags::DEFAULT_OPEN) {
+                            ui.checkbox("Tracking (T)", &mut tracking_enabled);
+                            ui.checkbox("Auto Blink (B)", &mut blink_auto);
+                            ui.checkbox("Virtual Camera (C)", &mut vcam_enabled);
+                        }
+
+                        if ui.collapsing_header("Lighting", imgui_renderer::imgui::TreeNodeFlags::DEFAULT_OPEN) {
+                            ui.text(format!("Key: {key_label}"));
+                            ui.slider("Key Intensity", 0.0, 3.0, &mut key_intensity);
+                            ui.text(format!("Fill: {fill_label}"));
+                            ui.slider("Fill Intensity", 0.0, 3.0, &mut fill_intensity);
+                            ui.text(format!("Back: {back_label}"));
+                            ui.slider("Back Intensity", 0.0, 3.0, &mut back_intensity);
+                        }
+                    });
             });
+
+            // Apply changes back to state
+            if mascot_enabled != state.mascot.enabled {
+                state.mascot.toggle(&state.render_ctx.window);
+                if state.mascot.enabled {
+                    state.render_ctx.set_transparent(true);
+                    state.scene.set_clear_alpha(0.0);
+                    state.scene.remove_background_video();
+                } else {
+                    state.render_ctx.set_transparent(false);
+                    state.scene.set_clear_alpha(1.0);
+                }
+            }
+            if always_on_top != state.mascot.always_on_top {
+                state.mascot.toggle_always_on_top(&state.render_ctx.window);
+            }
+            state.tracking_enabled = tracking_enabled;
+            state.vcam_enabled = vcam_enabled;
+            state.camera_distance = camera_distance;
+            state.blink_mode = if blink_auto { BlinkMode::Auto } else { BlinkMode::Tracking };
+            state.stage_lighting.key.intensity = key_intensity;
+            state.stage_lighting.fill.intensity = fill_intensity;
+            state.stage_lighting.back.intensity = back_intensity;
+
             imgui.render(&state.render_ctx.device, &state.render_ctx.queue, &view);
         }
     }
