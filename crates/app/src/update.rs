@@ -145,6 +145,10 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                 .emit();
             state.rig.left_hand = Some(hand);
             rig_changed = true;
+        } else if state.rig.left_hand.is_some() {
+            // Clear stale hand rig when hand is no longer detected
+            state.rig.left_hand = None;
+            rig_changed = true;
         }
 
         if let Some(left_lm) = &result.left_hand_landmarks {
@@ -159,6 +163,9 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                 )
                 .emit();
             state.rig.right_hand = Some(hand);
+            rig_changed = true;
+        } else if state.rig.right_hand.is_some() {
+            state.rig.right_hand = None;
             rig_changed = true;
         }
     } else {
@@ -444,6 +451,9 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         av.tracking.has_idle_animation = state.idle_animation.is_some();
         av.tracking.vcam_enabled = state.vcam_enabled;
         av.tracking.virtual_live_shading = state.stage_lighting.shading_mode == renderer::light::ShadingMode::VirtualLive;
+        av.tracking.face_tracking = state.face_tracking;
+        av.tracking.arm_tracking = state.arm_tracking;
+        av.tracking.hand_tracking = state.hand_tracking;
         av.lighting.key.intensity = state.stage_lighting.key.intensity;
         av.lighting.key.color = state.stage_lighting.key.color;
         av.lighting.key.preset = state.stage_lighting.key.preset.label().to_string();
@@ -1024,6 +1034,19 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                 state.rig_dirty = true;
             }
         }
+        // Per-feature tracking toggles
+        if av.tracking.face_tracking != snap.tracking.face_tracking {
+            state.face_tracking = av.tracking.face_tracking;
+        }
+        if av.tracking.arm_tracking != snap.tracking.arm_tracking {
+            state.arm_tracking = av.tracking.arm_tracking;
+        }
+        if av.tracking.hand_tracking != snap.tracking.hand_tracking {
+            state.hand_tracking = av.tracking.hand_tracking;
+        }
+        // face_only mode: disable pose/hand detection if only face tracking is enabled
+        let need_pose_hand = state.arm_tracking || state.hand_tracking;
+        state.tracker_thread.set_face_only(!need_pose_hand);
         // Shading
         if av.tracking.virtual_live_shading != snap.tracking.virtual_live_shading {
             state.stage_lighting.shading_mode = if av.tracking.virtual_live_shading {
@@ -1239,7 +1262,8 @@ fn apply_rig_to_model(state: &mut AppState) {
         }
     }
 
-    // Apply face rig
+    // Apply face rig (only if face_tracking enabled)
+    if state.face_tracking {
     if let Some(face) = &state.rig.face {
         // Head rotation: rigRotation("Neck", head, 0.7)
         let neck_quat = blend_with_idle(
@@ -1349,57 +1373,11 @@ fn apply_rig_to_model(state: &mut AppState) {
             );
         }
     }
+    } // end face_tracking
 
-    // Apply pose rig
+    // Apply pose rig — arms only (only if arm_tracking enabled)
+    if state.arm_tracking {
     if let Some(pose) = &state.rig.pose {
-        // Hip position: X/Z inverted, Y+1.0
-        let hip_pos = glam::Vec3::new(
-            -pose.hips.position.x,
-            pose.hips.position.y + 1.0,
-            -pose.hips.position.z,
-        );
-
-        // Hips: rigRotation("Hips", rotation, 0.7)
-        let hips_quat = blend_with_idle(
-            pose.hips
-                .rotation
-                .to_quat_dampened(cfg.hips_rotation.dampener),
-            HumanoidBoneName::Hips,
-            &idle_pose,
-            &state.idle_animation,
-        );
-        state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            HumanoidBoneName::Hips,
-            hips_quat,
-            cfg.hips_rotation.lerp_amount,
-        );
-
-        // Spine: rigRotation("Spine", Spine, 0.45, 0.3)
-        let spine_quat = blend_with_idle(
-            pose.spine.to_quat_dampened(cfg.spine.dampener),
-            HumanoidBoneName::Spine,
-            &idle_pose,
-            &state.idle_animation,
-        );
-        state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            HumanoidBoneName::Spine,
-            spine_quat,
-            cfg.spine.lerp_amount,
-        );
-
-        // Chest: rigRotation("Chest", Spine, 0.25, 0.3)
-        let chest_quat = blend_with_idle(
-            pose.chest.to_quat_dampened(cfg.chest.dampener),
-            HumanoidBoneName::Chest,
-            &idle_pose,
-            &state.idle_animation,
-        );
-        state.vrm_model.humanoid_bones.set_rotation_interpolated(
-            HumanoidBoneName::Chest,
-            chest_quat,
-            cfg.chest.lerp_amount,
-        );
-
         // Arms: rigRotation(name, rotation, 1, 0.3)
         for (bone, euler) in [
             (HumanoidBoneName::RightUpperArm, &pose.right_upper_arm),
@@ -1419,37 +1397,11 @@ fn apply_rig_to_model(state: &mut AppState) {
                 cfg.limbs.lerp_amount,
             );
         }
-
-        // Legs: rigRotation(name, rotation, 1, 0.3)
-        for (bone, euler) in [
-            (HumanoidBoneName::RightUpperLeg, &pose.right_upper_leg),
-            (HumanoidBoneName::RightLowerLeg, &pose.right_lower_leg),
-            (HumanoidBoneName::LeftUpperLeg, &pose.left_upper_leg),
-            (HumanoidBoneName::LeftLowerLeg, &pose.left_lower_leg),
-        ] {
-            let q = blend_with_idle(
-                euler.to_quat_dampened(cfg.limbs.dampener),
-                bone,
-                &idle_pose,
-                &state.idle_animation,
-            );
-            state.vrm_model.humanoid_bones.set_rotation_interpolated(
-                bone,
-                q,
-                cfg.limbs.lerp_amount,
-            );
-        }
-
-        // Hip position: rigPosition("Hips", pos, 1, 0.07)
-        state.vrm_model.humanoid_bones.set_position_interpolated(
-            vrm::bone::HumanoidBoneName::Hips,
-            hip_pos,
-            cfg.hips_position.dampener,
-            cfg.hips_position.lerp_amount,
-        );
     }
+    } // end arm_tracking
 
-    // Apply hand bones
+    // Apply hand bones (only if hand_tracking enabled)
+    if state.hand_tracking {
     // Left hand: combine wrist X/Y from hand solver with Z from pose solver
     if let Some(left_hand) = &state.rig.left_hand {
         let pose_wrist_z = state
@@ -1464,7 +1416,7 @@ fn apply_rig_to_model(state: &mut AppState) {
             left_hand,
             &wrist_combined,
             Side::Left,
-            &cfg.limbs,
+            &cfg.fingers,
             &idle_pose,
             &state.idle_animation,
         );
@@ -1484,11 +1436,12 @@ fn apply_rig_to_model(state: &mut AppState) {
             right_hand,
             &wrist_combined,
             Side::Right,
-            &cfg.limbs,
+            &cfg.fingers,
             &idle_pose,
             &state.idle_animation,
         );
     }
+    } // end hand_tracking
 }
 
 /// Blend a tracking quaternion with the idle animation pose for a given bone.

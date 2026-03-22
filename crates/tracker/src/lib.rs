@@ -1,6 +1,7 @@
 pub mod face_mesh;
 pub mod hand;
 pub mod holistic;
+pub mod palm;
 pub mod pose;
 pub mod preprocess;
 

@@ -44,6 +44,20 @@ function settings_update(dt)
     local tr = imgui.checkbox("Tracking (T)", avatar.get_tracking())
     avatar.set_tracking(tr)
 
+    imgui.separator()
+    imgui.text("Features:")
+
+    local ft = imgui.checkbox("Face Tracking", avatar.get_face_tracking())
+    avatar.set_face_tracking(ft)
+
+    local at = imgui.checkbox("Arm Tracking", avatar.get_arm_tracking())
+    avatar.set_arm_tracking(at)
+
+    local ht = imgui.checkbox("Hand Tracking", avatar.get_hand_tracking())
+    avatar.set_hand_tracking(ht)
+
+    imgui.separator()
+
     local ab = imgui.checkbox("Auto Blink (B)", avatar.get_auto_blink())
     avatar.set_auto_blink(ab)
 

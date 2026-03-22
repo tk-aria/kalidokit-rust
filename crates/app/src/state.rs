@@ -50,6 +50,10 @@ pub struct AppState {
     pub idle_animation: Option<AnimationPlayer>,
     /// Whether tracking is enabled (T key to toggle).
     pub tracking_enabled: bool,
+    /// Per-feature tracking toggles (face, arm, hand).
+    pub face_tracking: bool,
+    pub arm_tracking: bool,
+    pub hand_tracking: bool,
     /// Animation path from config (preserved for save).
     pub animation_path: Option<String>,
     /// Background config (preserved for save).

@@ -14,6 +14,8 @@ pub struct RigConfig {
     pub chest: BoneConfig,
     pub spine: BoneConfig,
     pub limbs: BoneConfig,
+    /// Separate config for hand/finger bones (heavier smoothing).
+    pub fingers: BoneConfig,
     #[allow(dead_code)]
     pub eye_blink: f32,
     #[allow(dead_code)]
@@ -47,6 +49,10 @@ impl Default for RigConfig {
             limbs: BoneConfig {
                 dampener: 1.0,
                 lerp_amount: 0.3,
+            },
+            fingers: BoneConfig {
+                dampener: 1.0,
+                lerp_amount: 0.15, // heavier smoothing for fingers to reduce jitter
             },
             eye_blink: 0.5,
             mouth_shape: 0.5,

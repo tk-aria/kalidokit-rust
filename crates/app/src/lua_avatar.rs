@@ -322,6 +322,44 @@ pub fn register(lua_imgui: &LuaImgui, handle: &AvatarHandle) -> anyhow::Result<(
         )?;
     }
 
+    // Per-feature tracking toggles
+    {
+        let h = handle.state.clone();
+        avatar_table.set("get_face_tracking", l.create_function(move |_, ()| {
+            Ok(h.lock().unwrap().tracking.face_tracking)
+        })?)?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set("set_face_tracking", l.create_function(move |_, v: bool| {
+            h.lock().unwrap().tracking.face_tracking = v; Ok(())
+        })?)?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set("get_arm_tracking", l.create_function(move |_, ()| {
+            Ok(h.lock().unwrap().tracking.arm_tracking)
+        })?)?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set("set_arm_tracking", l.create_function(move |_, v: bool| {
+            h.lock().unwrap().tracking.arm_tracking = v; Ok(())
+        })?)?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set("get_hand_tracking", l.create_function(move |_, ()| {
+            Ok(h.lock().unwrap().tracking.hand_tracking)
+        })?)?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set("set_hand_tracking", l.create_function(move |_, v: bool| {
+            h.lock().unwrap().tracking.hand_tracking = v; Ok(())
+        })?)?;
+    }
+
     // ── Lighting ──
 
     {

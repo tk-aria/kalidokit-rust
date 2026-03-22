@@ -259,10 +259,10 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         }
     }
 
-    // 4. Initialize ML tracker on a background thread (face-only mode for debugging)
+    // 4. Initialize ML tracker on a background thread (full holistic: face + pose + hand)
     let tracker = HolisticTracker::new(FACE_MODEL_PATH, POSE_MODEL_PATH, HAND_MODEL_PATH)
         .context("Failed to initialize ML tracker. Run: sh scripts/setup.sh download-models")?;
-    let tracker_thread = TrackerThread::new_with_mode(tracker, true);
+    let tracker_thread = TrackerThread::new_with_mode(tracker, false);
 
     // 5. Initialize webcam via nokhwa
     let camera = match init_camera() {
@@ -369,6 +369,9 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         vcam_last_send: Instant::now(),
         idle_animation,
         tracking_enabled: true,
+        face_tracking: true,
+        arm_tracking: false,
+        hand_tracking: false,
         animation_path: prefs.animation_path,
         background: prefs.background,
         video_session,

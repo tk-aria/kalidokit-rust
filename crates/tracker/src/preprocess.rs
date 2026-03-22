@@ -64,9 +64,9 @@ pub fn normalize_landmarks(
 ///
 /// `wrist` contains normalized (0-1) x/y coordinates from pose landmarks.
 /// Returns `(x, y, width, height)` in pixel coordinates, clamped to image bounds.
-/// The ROI size is 25% of image width, centered on the wrist.
+/// The ROI size is 18% of image width, centered on the wrist (tight crop to reduce noise).
 pub fn calc_hand_roi(wrist: Vec2, image_width: u32, image_height: u32) -> (u32, u32, u32, u32) {
-    let roi_size = (image_width as f32 * 0.25).round() as u32;
+    let roi_size = (image_width as f32 * 0.18).round() as u32;
 
     let cx = (wrist.x * image_width as f32).round() as i32;
     let cy = (wrist.y * image_height as f32).round() as i32;

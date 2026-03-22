@@ -69,9 +69,13 @@ impl TrackerThread {
     }
 
     /// Set face-only mode at runtime.
-    #[allow(dead_code)]
     pub fn set_face_only(&self, face_only: bool) {
         self.face_only.store(face_only, Ordering::Relaxed);
+    }
+
+    /// Get current face-only mode.
+    pub fn is_face_only(&self) -> bool {
+        self.face_only.load(Ordering::Relaxed)
     }
 
     /// Send a frame to the tracker thread for processing.

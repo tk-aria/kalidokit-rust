@@ -2860,3 +2860,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - [ ] Lua Settings から light color 変更 → ライティング即反映
 - [ ] Lua Settings から background image 設定 → 背景画像変更
 - [ ] Rust Settings と Lua Settings が同じ状態を共有 (片方で変更→もう片方に反映)
+
+## Phase 19: Hand Tracking (PEND — 精度改善待ち)
+
+### 現状
+- [x] Palm detection: PINTO0309 `palm_detection_full_inf_post_192x192.onnx` (BGR/NCHW, ポスト処理統合済み)
+- [x] Hand landmark: MediaPipe `hand_landmark.onnx` (224x224, confidence + variance チェック)
+- [x] 2ステージパイプライン: Palm Detection → crop → Hand Landmark
+- [x] Hand solver: 21点 → RiggedHand (wrist + 15 finger joints)
+- [x] VRM 適用: 16ボーン × 2手 (apply_hand_bones)
+- [x] Settings で Face/Arm/Hand の個別 ON/OFF トグル
+- [x] 検出消失時の rig クリア (hand = None → ボーンリセット)
+
+### 未解決課題
+- [ ] **Palm BBox の座標変換精度**: パディング補正後も手の位置がずれる場合がある。PINTO0309 の Python 参照実装と厳密に比較して補正ロジックを検証する必要あり
+- [ ] **Hand Landmark のジッター**: 検出される 21 点が毎フレーム大きく変動し、指が暴れる。対策候補:
+  - landmark の時系列スムージング (EMA / one-euro filter)
+  - solver 出力の角度にローパスフィルタ
+  - 連続 N フレームの検出一致で初めて適用 (hysteresis)
+- [ ] **検出→未検出の繰り返し**: palm detection の score が閾値付近で振動し、手が映っていても検出→消失を繰り返す。対策候補:
+  - tracker 側でヒステリシス閾値 (検出開始: 0.5, 検出維持: 0.3)
+  - 前フレームの palm 位置をトラッカーに使用 (re-detection skip)
+- [ ] **Palm Detection のアスペクト比パディング補正**: 横長カメラ画像の場合の y 座標補正が不正確な可能性
+- [ ] **Hand ROI の回転補正**: PINTO0309 のリファレンスでは palm の rotation を使って ROI を回転クロップしているが、現在は矩形クロップのみ
+
+### 参考リンク
+- [PINTO0309/hand-gesture-recognition-using-onnx](https://github.com/PINTO0309/hand-gesture-recognition-using-onnx) — 検証済みの ONNX パイプライン
+- [PINTO0309/hand_landmark](https://github.com/PINTO0309/hand_landmark) — palm detection なしの hand landmark
+- [MediaPipe Hands](https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/hands.md) — 公式ドキュメント

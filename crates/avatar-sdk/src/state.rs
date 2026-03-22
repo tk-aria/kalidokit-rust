@@ -69,6 +69,10 @@ pub struct TrackingState {
     pub has_idle_animation: bool,
     pub vcam_enabled: bool,
     pub virtual_live_shading: bool,
+    /// Per-feature tracking toggles
+    pub face_tracking: bool,
+    pub arm_tracking: bool,
+    pub hand_tracking: bool,
 }
 
 impl Default for TrackingState {
@@ -80,6 +84,9 @@ impl Default for TrackingState {
             has_idle_animation: false,
             vcam_enabled: false,
             virtual_live_shading: true,
+            face_tracking: true,
+            arm_tracking: false,
+            hand_tracking: false,
         }
     }
 }
