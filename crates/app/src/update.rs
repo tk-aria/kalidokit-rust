@@ -414,7 +414,45 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             .render(&state.render_ctx, &view, &overlay_input)?;
     }
 
-    // 5c. ImGui overlay render
+    // 5c. Sync AppState → AvatarState (for Lua to read)
+    // Save snapshot so we can detect Lua-side changes in 5e.
+    let avatar_snapshot = {
+        let mut av = state.avatar_handle.state.lock().unwrap();
+        av.info.render_fps = state.fps_counter;
+        av.info.decode_fps = state.fps_decode_counter;
+        av.info.frame_ms = elapsed.as_secs_f32() * 1000.0;
+        av.info.shading_mode = state.stage_lighting.shading_mode.label().to_string();
+        av.info.idle_anim_status = state
+            .idle_animation
+            .as_ref()
+            .map_or("N/A".into(), |a| if a.enabled { "ON".into() } else { "OFF".into() });
+        av.info.imgui_version = imgui_renderer::imgui::dear_imgui_version().to_string();
+        av.display.mascot_enabled = state.mascot.enabled;
+        av.display.always_on_top = state.mascot.always_on_top;
+        av.display.fullscreen = state.fullscreen;
+        av.display.debug_overlay = state.show_debug_overlay;
+        av.display.camera_distance = state.camera_distance;
+        av.display.model_offset = state.model_offset;
+        av.display.bg_image_path = state.background.image_path.clone().unwrap_or_default();
+        av.tracking.tracking_enabled = state.tracking_enabled;
+        av.tracking.auto_blink = state.blink_mode == crate::auto_blink::BlinkMode::Auto;
+        av.tracking.idle_animation = state.idle_animation.as_ref().map_or(false, |a| a.enabled);
+        av.tracking.has_idle_animation = state.idle_animation.is_some();
+        av.tracking.vcam_enabled = state.vcam_enabled;
+        av.tracking.virtual_live_shading = state.stage_lighting.shading_mode == renderer::light::ShadingMode::VirtualLive;
+        av.lighting.key.intensity = state.stage_lighting.key.intensity;
+        av.lighting.key.color = state.stage_lighting.key.color;
+        av.lighting.key.preset = state.stage_lighting.key.preset.label().to_string();
+        av.lighting.fill.intensity = state.stage_lighting.fill.intensity;
+        av.lighting.fill.color = state.stage_lighting.fill.color;
+        av.lighting.fill.preset = state.stage_lighting.fill.preset.label().to_string();
+        av.lighting.back.intensity = state.stage_lighting.back.intensity;
+        av.lighting.back.color = state.stage_lighting.back.color;
+        av.lighting.back.preset = state.stage_lighting.back.preset.label().to_string();
+        av.clone()
+    };
+
+    // 5d. ImGui overlay render
     if state.show_imgui {
         if let Some(imgui) = &mut state.imgui {
             // Collect mutable state into temporaries to avoid borrow conflicts
@@ -478,6 +516,8 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                     Err(e) => log::warn!("Terminal init failed: {e}"),
                 }
             }
+            // Take lua_imgui out of state for use in closure
+            let mut lua_imgui = state.lua_imgui.take();
             // Take terminal out of state for use in closure
             let terminal = state.terminal.take();
 
@@ -511,6 +551,21 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         ui.checkbox("Log", &mut win.log);
                         ui.checkbox("Code Editor", &mut win.code_editor);
                         ui.checkbox("Terminal", &mut win.terminal);
+                        // Lua-ImGui windows (auto-detected)
+                        if let Some(ref mut li) = lua_imgui {
+                            if !li.window_visibility.is_empty() {
+                                ui.separator();
+                                ui.text_disabled("Lua");
+                                let mut names: Vec<String> = li.window_visibility.keys().cloned().collect();
+                                names.sort();
+                                for name in &names {
+                                    let mut visible = *li.window_visibility.get(name).unwrap_or(&true);
+                                    if ui.checkbox(name, &mut visible) {
+                                        li.window_visibility.insert(name.clone(), visible);
+                                    }
+                                }
+                            }
+                        }
                     });
 
                 // ── Debug Info ──
@@ -526,8 +581,8 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                     });
                 } // debug_info
 
-                // ── Settings ──
-                if win.settings {
+                // ── Settings (Rust) — disabled, now handled by Lua Settings ──
+                if false && win.settings {
                 ui.window("Settings")
                     .size([280.0, 0.0], imgui_renderer::imgui::Condition::FirstUseEver)
                     .opened(&mut win.settings)
@@ -821,18 +876,28 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         });
                     }
                 } // terminal
+
+                // ── Lua-ImGui overlay ──
+                if let Some(ref mut li) = lua_imgui {
+                    li.replay(ui, frame_ms / 1000.0);
+                }
             });
 
-            // Put code editor and terminal back into state
+            // Put code editor, terminal, lua_imgui back into state
             state.code_editor = code_editor;
             state.terminal = terminal;
+            state.lua_imgui = lua_imgui;
 
             // Apply window visibility changes back to state
             state.imgui_windows.apply_flags(&win);
 
-            // Apply non-surface changes immediately
+            // NOTE: Rust Settings apply is disabled — Lua Settings (via AvatarState
+            // sync in 5e/5f) now handles all state changes. Re-enable if Lua Settings
+            // is removed, or merge both paths into AvatarState-only flow.
+            // Apply window visibility only (not controlled by Lua).
+            #[allow(unreachable_code)]
+            if false {
             if mascot_enabled != state.mascot.enabled {
-                // Defer mascot toggle to after present (surface must be dropped first)
                 state.pending_mascot_toggle = true;
             }
             if always_on_top != state.mascot.always_on_top {
@@ -854,31 +919,25 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             state.stage_lighting.fill.color = fill_color;
             state.stage_lighting.back.color = back_color;
             state.model_offset = model_offset;
-            // Apply idle animation toggle (same logic as KeyI handler in app.rs)
             if let Some(anim) = &mut state.idle_animation {
                 if anim.enabled != idle_anim_on {
                     anim.enabled = idle_anim_on;
                     if !idle_anim_on {
-                        // Reset bones to bind pose when disabling
                         let node_transforms = &state.vrm_model.node_transforms;
                         state
                             .vrm_model
                             .humanoid_bones
                             .reset_to_bind_pose(node_transforms);
                     }
-                    log::info!("Idle animation: {}", if idle_anim_on { "ON" } else { "OFF" });
                     state.rig_dirty = true;
                 }
             }
-            // Apply shading mode toggle
             let new_shading = if shading_virtual_live {
                 renderer::light::ShadingMode::VirtualLive
             } else {
                 renderer::light::ShadingMode::Classic
             };
             state.stage_lighting.shading_mode = new_shading;
-
-            // Apply background image path change
             if apply_bg_image {
                 let new_path = if bg_image_path_buf.trim().is_empty() {
                     None
@@ -895,17 +954,149 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                     log::warn!("Failed to set background image: {e}");
                 }
             }
+            } // end if false
 
             imgui.render(&state.render_ctx.device, &state.render_ctx.queue, &view);
         }
     }
 
-    // 5c. Lua-ImGui overlay
-    if let Some(li) = &mut state.lua_imgui {
-        if let Err(e) = li.render(&state.render_ctx.device, &state.render_ctx.queue, &view) {
-            log::warn!("ImGui render error: {e}");
+    // 5e. Sync AvatarState → AppState (only Lua-modified fields)
+    // Compare current AvatarState against snapshot taken before Lua ran.
+    // Only apply values that Lua actually changed (avoids overwriting wheel/keyboard input).
+    {
+        let av = state.avatar_handle.state.lock().unwrap();
+        let snap = &avatar_snapshot;
+
+        // Display
+        if av.display.mascot_enabled != snap.display.mascot_enabled {
+            state.pending_mascot_toggle = true;
+        }
+        if av.display.always_on_top != snap.display.always_on_top {
+            state.mascot.toggle_always_on_top(&state.render_ctx.window);
+        }
+        if av.display.fullscreen != snap.display.fullscreen {
+            state.fullscreen = av.display.fullscreen;
+            state.render_ctx.window.set_maximized(av.display.fullscreen);
+        }
+        if av.display.debug_overlay != snap.display.debug_overlay {
+            state.show_debug_overlay = av.display.debug_overlay;
+        }
+        if av.display.camera_distance != snap.display.camera_distance {
+            state.camera_distance = av.display.camera_distance;
+        }
+        if av.display.model_offset != snap.display.model_offset {
+            state.model_offset = av.display.model_offset;
+        }
+        // Tracking
+        if av.tracking.tracking_enabled != snap.tracking.tracking_enabled {
+            state.tracking_enabled = av.tracking.tracking_enabled;
+        }
+        if av.tracking.auto_blink != snap.tracking.auto_blink {
+            state.blink_mode = if av.tracking.auto_blink {
+                crate::auto_blink::BlinkMode::Auto
+            } else {
+                crate::auto_blink::BlinkMode::Tracking
+            };
+        }
+        if av.tracking.vcam_enabled != snap.tracking.vcam_enabled {
+            state.vcam_enabled = av.tracking.vcam_enabled;
+        }
+        // Idle animation
+        if av.tracking.idle_animation != snap.tracking.idle_animation {
+            if let Some(anim) = &mut state.idle_animation {
+                anim.enabled = av.tracking.idle_animation;
+                if !av.tracking.idle_animation {
+                    let node_transforms = &state.vrm_model.node_transforms;
+                    state.vrm_model.humanoid_bones.reset_to_bind_pose(node_transforms);
+                }
+                state.rig_dirty = true;
+            }
+        }
+        // Shading
+        if av.tracking.virtual_live_shading != snap.tracking.virtual_live_shading {
+            state.stage_lighting.shading_mode = if av.tracking.virtual_live_shading {
+                renderer::light::ShadingMode::VirtualLive
+            } else {
+                renderer::light::ShadingMode::Classic
+            };
+        }
+        // Lighting
+        if av.lighting.key.intensity != snap.lighting.key.intensity {
+            state.stage_lighting.key.intensity = av.lighting.key.intensity;
+        }
+        if av.lighting.key.color != snap.lighting.key.color {
+            state.stage_lighting.key.color = av.lighting.key.color;
+        }
+        if av.lighting.fill.intensity != snap.lighting.fill.intensity {
+            state.stage_lighting.fill.intensity = av.lighting.fill.intensity;
+        }
+        if av.lighting.fill.color != snap.lighting.fill.color {
+            state.stage_lighting.fill.color = av.lighting.fill.color;
+        }
+        if av.lighting.back.intensity != snap.lighting.back.intensity {
+            state.stage_lighting.back.intensity = av.lighting.back.intensity;
+        }
+        if av.lighting.back.color != snap.lighting.back.color {
+            state.stage_lighting.back.color = av.lighting.back.color;
         }
     }
+
+    // 5f. Process avatar action queue
+    {
+        let actions = state.avatar_handle.actions.lock().unwrap().drain();
+        for action in actions {
+            match action {
+                avatar_sdk::AvatarAction::ApplyBackgroundImage(path) => {
+                    let new_path = if path.trim().is_empty() { None } else { Some(path) };
+                    state.background.image_path = new_path.clone();
+                    if let Err(e) = state.scene.set_background_image_from_path(
+                        &state.render_ctx.device,
+                        &state.render_ctx.queue,
+                        state.render_ctx.config.format,
+                        new_path.as_deref(),
+                    ) {
+                        log::warn!("Failed to set background image: {e}");
+                    }
+                }
+                avatar_sdk::AvatarAction::ToggleMascot => {
+                    state.pending_mascot_toggle = true;
+                }
+                avatar_sdk::AvatarAction::ResetIdlePose => {
+                    let node_transforms = &state.vrm_model.node_transforms;
+                    state.vrm_model.humanoid_bones.reset_to_bind_pose(node_transforms);
+                    state.rig_dirty = true;
+                }
+                avatar_sdk::AvatarAction::BrowseBackgroundImage => {
+                    use dear_file_browser::{FileDialog, DialogMode, FileFilter};
+                    let dialog = FileDialog::new(DialogMode::OpenFile)
+                        .filter(FileFilter::new("Images", vec![
+                            "png".into(), "jpg".into(), "jpeg".into(),
+                            "bmp".into(), "gif".into(), "webp".into(),
+                        ]))
+                        .filter(FileFilter::new("Video", vec![
+                            "mp4".into(), "mov".into(), "avi".into(),
+                            "mkv".into(), "webm".into(),
+                        ]));
+                    if let Ok(sel) = dialog.open_blocking() {
+                        if let Some(path) = sel.file_path_name() {
+                            let p = path.to_string_lossy().to_string();
+                            state.background.image_path = Some(p.clone());
+                            if let Err(e) = state.scene.set_background_image_from_path(
+                                &state.render_ctx.device,
+                                &state.render_ctx.queue,
+                                state.render_ctx.config.format,
+                                Some(p.as_str()),
+                            ) {
+                                log::warn!("Failed to set background image: {e}");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 5c. Lua-ImGui overlay — now rendered inside frame_with_nodes (see above)
 
     output.present();
 
