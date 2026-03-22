@@ -1,0 +1,35 @@
+// Example plugin service demonstrating all 4 gRPC streaming patterns.
+//
+// This proto is used by the E2E integration tests and serves as a
+// reference for plugin developers.
+
+syntax = "proto3";
+package example;
+
+// Greeter is an example plugin service that demonstrates
+// all four gRPC communication patterns.
+service Greeter {
+  // SayHello is a simple unary RPC.
+  // Receives a name and returns a greeting.
+  rpc SayHello(HelloRequest) returns (HelloReply);
+
+  // ServerStreamGreet is a server-streaming RPC.
+  // Receives a name and streams back multiple greetings in different languages.
+  rpc ServerStreamGreet(HelloRequest) returns (stream HelloReply);
+
+  // ClientStreamNames is a client-streaming RPC.
+  // Receives a stream of names and returns a single combined greeting.
+  rpc ClientStreamNames(stream HelloRequest) returns (HelloReply);
+
+  // BidiChat is a bidirectional streaming RPC.
+  // Each incoming name produces an immediate greeting response.
+  rpc BidiChat(stream HelloRequest) returns (stream HelloReply);
+}
+
+message HelloRequest {
+  string name = 1;
+}
+
+message HelloReply {
+  string message = 1;
+}

@@ -1,0 +1,13 @@
+[package]
+name = "dynplug"
+version = "0.1.0"
+edition = "2021"
+description = "Cross-platform dynamic plugin loading with layered abstraction"
+
+[dependencies]
+thiserror = { workspace = true }
+log = { workspace = true }
+libloading = "0.8"
+
+[dev-dependencies]
+env_logger = "0.11"

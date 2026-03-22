@@ -1,0 +1,1 @@
+//! dynplug-example - Sample plugin

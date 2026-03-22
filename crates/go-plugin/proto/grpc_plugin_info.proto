@@ -1,0 +1,46 @@
+// Copyright (c) kalidokit-rust contributors
+// SPDX-License-Identifier: MIT
+
+syntax = "proto3";
+package plugin;
+
+// PluginInfo provides runtime introspection of plugin services.
+// The host can query this service to discover what RPCs a plugin
+// offers and what each one does, using comments from .proto files.
+service PluginInfo {
+  // Describe returns metadata about all registered services,
+  // including method descriptions extracted from .proto comments.
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+}
+
+message DescribeRequest {}
+
+message DescribeResponse {
+  repeated ServiceInfo services = 1;
+}
+
+// ServiceInfo describes a single gRPC service.
+message ServiceInfo {
+  // Fully qualified service name (e.g., "myapp.Greeter").
+  string name = 1;
+  // Description from the .proto comment above the service definition.
+  string description = 2;
+  // Methods provided by this service.
+  repeated MethodInfo methods = 3;
+}
+
+// MethodInfo describes a single RPC method.
+message MethodInfo {
+  // Method name (e.g., "SayHello").
+  string name = 1;
+  // Description from the .proto comment above the rpc definition.
+  string description = 2;
+  // Fully qualified input type name.
+  string input_type = 3;
+  // Fully qualified output type name.
+  string output_type = 4;
+  // Whether the client sends a stream.
+  bool client_streaming = 5;
+  // Whether the server returns a stream.
+  bool server_streaming = 6;
+}
