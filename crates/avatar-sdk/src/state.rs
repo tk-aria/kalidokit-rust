@@ -41,6 +41,8 @@ pub struct DisplayState {
     pub camera_distance: f32,
     pub model_offset: [f32; 2],
     pub bg_image_path: String,
+    /// true = avatar renders on top of ImGui, false = ImGui on top (default).
+    pub avatar_on_top: bool,
 }
 
 impl Default for DisplayState {
@@ -53,6 +55,7 @@ impl Default for DisplayState {
             camera_distance: 3.0,
             model_offset: [0.0, 0.0],
             bg_image_path: String::new(),
+            avatar_on_top: false,
         }
     }
 }

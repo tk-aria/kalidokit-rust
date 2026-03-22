@@ -394,6 +394,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         terminal: None,
         drawio_graph: None,
         avatar_handle,
+        avatar_on_top: false,
     })
 }
 

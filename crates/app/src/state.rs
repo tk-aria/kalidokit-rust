@@ -102,6 +102,8 @@ pub struct AppState {
     pub drawio_graph: Option<crate::drawio::ImNodesGraph>,
     /// Avatar SDK handle for Lua ↔ AppState bridge.
     pub avatar_handle: crate::lua_avatar::AvatarHandle,
+    /// Render order: true = avatar on top of ImGui, false = ImGui on top (default).
+    pub avatar_on_top: bool,
 }
 
 /// Visibility state for each ImGui panel.

@@ -33,6 +33,9 @@ function settings_update(dt)
     local dist = imgui.slider_float("Camera Distance", 0.5, 10.0, avatar.get_camera_distance())
     avatar.set_camera_distance(dist)
 
+    local aot = imgui.checkbox("Avatar on Top", avatar.get_avatar_on_top())
+    avatar.set_avatar_on_top(aot)
+
     imgui.collapsing_header_end()
 
     -- ── Tracking (default open) ──

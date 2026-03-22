@@ -204,6 +204,26 @@ pub fn register(lua_imgui: &LuaImgui, handle: &AvatarHandle) -> anyhow::Result<(
         )?;
     }
 
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "get_avatar_on_top",
+            l.create_function(move |_, ()| {
+                Ok(h.lock().unwrap().display.avatar_on_top)
+            })?,
+        )?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "set_avatar_on_top",
+            l.create_function(move |_, v: bool| {
+                h.lock().unwrap().display.avatar_on_top = v;
+                Ok(())
+            })?,
+        )?;
+    }
+
     // ── Tracking ──
 
     {
