@@ -129,11 +129,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         assert!(manager.get("greeter").is_none());
         println!("[PASS] unload");
 
-        // Directory scan
-        let plugin_dir = lib_path.parent().unwrap();
-        let count = manager.load_from_directory(plugin_dir)?;
+        // Directory scan (use temp dir with only the compatible plugin)
+        let tmp = std::env::temp_dir().join("dynplug_host_example");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::copy(&lib_path, tmp.join(lib_path.file_name().unwrap())).unwrap();
+        let count = manager.load_from_directory(&tmp)?;
         println!("load_from_directory: {count} plugin(s)");
         assert!(count >= 1);
+        let _ = std::fs::remove_dir_all(&tmp);
         println!("[PASS] load_from_directory");
 
         // Drop releases all
