@@ -151,8 +151,8 @@ pub fn lib_filename(crate_name: &str) -> String { ... }
 
 ### Step 2-1: `loader.rs` — LoadedLibrary 構造体
 
-- [ ] `crates/dynplug/src/loader.rs` を作成
-- [ ] `LoadedLibrary` 構造体を定義（RFC Section 5.4）
+- [x] `crates/dynplug/src/loader.rs` を作成 <!-- 2026-03-23 01:33 JST -->
+- [x] `LoadedLibrary` 構造体を定義（RFC Section 5.4） <!-- 2026-03-23 01:33 JST -->
 
 ```rust
 use std::path::{Path, PathBuf};
@@ -179,11 +179,11 @@ impl LoadedLibrary {
 }
 ```
 
-- [ ] `lib.rs` に `pub mod loader;` と `pub use loader::LoadedLibrary;` を追加
+- [x] `lib.rs` に `pub mod loader;` と `pub use loader::LoadedLibrary;` を追加 <!-- 2026-03-23 01:33 JST -->
 
 ### Step 2-2: `loader.rs` — BoundFn + Deref
 
-- [ ] `BoundFn<'lib, F>` 構造体を `loader.rs` 内に定義（RFC Section 5.4）
+- [x] `BoundFn<'lib, F>` 構造体を `loader.rs` 内に定義（RFC Section 5.4） <!-- 2026-03-23 01:33 JST -->
 
 ```rust
 pub struct BoundFn<'lib, F> {
@@ -196,11 +196,11 @@ impl<F> std::ops::Deref for BoundFn<'_, F> {
 }
 ```
 
-- [ ] `lib.rs` の `pub use` に `BoundFn` を追加
+- [x] `lib.rs` の `pub use` に `BoundFn` を追加 <!-- 2026-03-23 01:33 JST -->
 
 ### Step 2-3: `loader.rs` — LoadedLibrary::bind()
 
-- [ ] `LoadedLibrary::bind::<F>(name: &str)` メソッドを実装
+- [x] `LoadedLibrary::bind::<F>(name: &str)` メソッドを実装 <!-- 2026-03-23 01:33 JST -->
 
 ```rust
 impl LoadedLibrary {
@@ -225,9 +225,9 @@ impl LoadedLibrary {
 
 ### Step 2-4: Phase 2 品質ゲート
 
-- [ ] `cargo check -p dynplug` が通る
-- [ ] `cargo clippy -p dynplug -- -D warnings` が通る
-- [ ] `cargo build -p dynplug` が通る（テストは Phase 3 後に cdylib が必要なため Phase 3 後に実行）
+- [x] `cargo check -p dynplug` が通る <!-- 2026-03-23 01:33 JST -->
+- [x] `cargo clippy -p dynplug -- -D warnings` が通る <!-- 2026-03-23 01:33 JST -->
+- [x] `cargo build -p dynplug` が通る（テストは Phase 3 後に cdylib が必要なため Phase 3 後に実行） <!-- 2026-03-23 01:33 JST -->
 
 ---
 
