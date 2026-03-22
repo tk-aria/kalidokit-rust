@@ -2772,3 +2772,91 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - [x] **動作確認 (Batch)**: `batch_stt` example を実行し:
   - 話し終わった後に一括でテキストが表示される
   - interim イベントは発火しない
+
+## Phase 17: ImGui 統合 (dear-imgui-rs + ImNodes)
+
+### Step 17.1: imgui-renderer クレート
+- [x] dear-imgui-rs 0.10 + dear-imgui-wgpu 0.10 + dear-imgui-winit 0.10 統合
+- [x] dear-imnodes 0.10 統合
+- [x] `ImGuiRenderer::new()` で ImGui + ImNodes コンテキスト初期化
+- [x] `frame()`, `frame_with_nodes()`, `render()` API
+- [x] YouTube dark gray テーマ (semi-transparent 75% opacity)
+- [x] wgpu 28 互換
+
+### Step 17.2: ImNodes ノードエディタ
+- [x] カスタム DrawList → 本物の dear-imnodes に置換
+- [x] Camera/Tracker/Solver/VRM Rig/Renderer/VAD/STT ノード
+- [x] 入出力ピン + リンク接続
+- [ ] drawio XML import でノード自動生成
+- [ ] drawio XML export
+
+### Step 17.3: ImGui Code Editor (ImGuiColorTextEdit)
+- [x] imgui-text-edit クレート: C++ ソースベンダリング + C API + Rust FFI
+- [x] C/C++/GLSL/HLSL/Lua/SQL シンタックスハイライト
+- [x] Windows マネージャーから ON/OFF
+- [ ] ファイル読み込み / 保存
+
+### Step 17.4: ImGui Terminal (portable-pty + vte)
+- [x] PTY スポーン + ANSI 16色パース + ImGui レンダリング
+- [x] 入力フィールドからコマンド送信
+- [x] Windows マネージャーから ON/OFF
+- [ ] 256色 / TrueColor 対応
+
+### Step 17.5: Settings ウィンドウ統合
+- [x] Info セクション (FPS, frame ms, shading, idle anim 等)
+- [x] Display セクション (Mascot, Always on Top, Fullscreen, Debug Overlay, Camera Distance, Model Offset)
+- [x] Background Image: テキスト入力 + Browse (OS ネイティブ file dialog) + Apply
+- [x] Tracking セクション (Tracking, Auto Blink, Idle Animation toggle + bind pose reset, VCam, Shading)
+- [x] Lighting セクション (Key/Fill/Back Intensity スライダー + Color ピッカー)
+
+### Step 17.6: lua-imgui コンテキスト共有
+- [x] lua-imgui から imgui 0.12 依存を除去 → dear-imgui-rs 0.10 に変更
+- [x] LuaImgui をコマンドバッファ方式に変更 (Context/Renderer 非所有)
+- [x] frame_with_nodes クロージャ内で replay() 呼び出し
+- [x] Lua ウィンドウ自動検出 + Windows マネージャー統合 (window_visibility)
+- [x] ウィンドウ X ボタンで閉じた場合の可視性同期
+
+## Phase 18: Avatar SDK + Lua Settings UI
+
+### Step 18.1: avatar-sdk クレート作成
+- [ ] `AvatarState` 定義 (InfoState, DisplayState, TrackingState, LightingState)
+- [ ] `AvatarAction` enum (ApplyBackgroundImage, ToggleMascot, ResetIdlePose 等)
+- [ ] `ActionQueue` (Vec<AvatarAction> ラッパー)
+- [ ] 外部依存なし (純粋データ構造)
+- [ ] `cargo check -p avatar-sdk` 通過
+
+### Step 18.2: AppState ↔ AvatarState 同期 (app 側)
+- [ ] `app/src/state.rs`: AppState に `Arc<Mutex<AvatarState>>` 追加
+- [ ] `app/src/init.rs`: AvatarState 初期化
+- [ ] `app/src/update.rs`: 毎フレーム AppState → AvatarState スナップショット書き込み
+- [ ] `app/src/update.rs`: 毎フレーム AvatarState 変更 → AppState 反映
+- [ ] `app/src/update.rs`: ActionQueue 処理 (背景画像適用, mascot トグル, idle pose リセット)
+
+### Step 18.3: Lua avatar バインディング (app 側)
+- [ ] `app/src/lua_avatar.rs`: avatar テーブル登録 (lua-imgui の lua() 経由)
+- [ ] `avatar.get_fps()`, `avatar.get_frame_ms()`
+- [ ] `avatar.get/set_camera_distance()`
+- [ ] `avatar.get/set_mascot_mode()`
+- [ ] `avatar.get/set_tracking()`
+- [ ] `avatar.get/set_idle_animation()`
+- [ ] `avatar.get/set_light_intensity(name)`
+- [ ] `avatar.get/set_light_color(name, r, g, b)`
+- [ ] `avatar.set_background(path)`, `avatar.browse_background()`
+- [ ] `app/src/main.rs`: mod lua_avatar 追加
+- [ ] `app/src/init.rs`: lua_avatar::register() 呼び出し
+
+### Step 18.4: Lua Settings スクリプト
+- [ ] `assets/scripts/settings.lua`: Info セクション
+- [ ] `assets/scripts/settings.lua`: Display セクション (Mascot, Camera Distance 等)
+- [ ] `assets/scripts/settings.lua`: Tracking セクション (Tracking, Idle Animation 等)
+- [ ] `assets/scripts/settings.lua`: Lighting セクション (Intensity + Color)
+- [ ] `assets/scripts/settings.lua`: Background Image (Browse + Apply)
+- [ ] Windows マネージャーに "Settings (Lua)" 自動表示確認
+
+### Step 18.5: 動作確認
+- [ ] Lua Settings から camera_distance 変更 → アバター即反映
+- [ ] Lua Settings から mascot mode トグル → ウィンドウ透過切替
+- [ ] Lua Settings から idle animation トグル → アニメーション ON/OFF
+- [ ] Lua Settings から light color 変更 → ライティング即反映
+- [ ] Lua Settings から background image 設定 → 背景画像変更
+- [ ] Rust Settings と Lua Settings が同じ状態を共有 (片方で変更→もう片方に反映)

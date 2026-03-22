@@ -1,24 +1,36 @@
--- Example UI script for kalidokit-rust
--- This function is called every frame by the Lua-ImGui runtime.
+-- Main UI entry point for kalidokit-rust Lua ImGui.
+-- Calls all registered UI modules each frame.
 
 local frame_count = 0
-local camera_dist = 3.0
-local show_debug = false
 
-function update(dt)
+-- Controls window
+local function draw_controls(dt)
     frame_count = frame_count + 1
 
     imgui.begin("Controls")
     imgui.text(string.format("Frame: %d  dt: %.1fms", frame_count, dt * 1000))
     imgui.separator()
 
-    camera_dist = imgui.slider_float("Camera Distance", 0.5, 10.0, camera_dist)
-    show_debug = imgui.checkbox("Show Debug Overlay", show_debug)
+    local dist = imgui.slider_float("Camera Distance", 0.5, 10.0, avatar.get_camera_distance())
+    avatar.set_camera_distance(dist)
+
+    local dbg = imgui.checkbox("Show Debug Overlay", avatar.get_debug_overlay())
+    avatar.set_debug_overlay(dbg)
 
     if imgui.button("Reset") then
-        camera_dist = 3.0
-        show_debug = false
+        avatar.set_camera_distance(3.0)
+        avatar.set_debug_overlay(false)
     end
 
     imgui.end_window()
+end
+
+-- Global update — called by lua-imgui each frame
+function update(dt)
+    draw_controls(dt)
+
+    -- Call settings UI if loaded
+    if settings_update then
+        settings_update(dt)
+    end
 end
