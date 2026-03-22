@@ -13,3 +13,6 @@ pub mod export;
 
 pub mod loader;
 pub use loader::{BoundFn, LoadedLibrary};
+
+pub mod vtable;
+pub use vtable::VTableValidate;

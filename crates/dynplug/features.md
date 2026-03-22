@@ -316,8 +316,8 @@ fn handle_invoke(method: &str, input: &[u8]) -> Result<Vec<u8>, String> {
 
 ### Step 4-1: `vtable.rs` — VTableValidate trait
 
-- [ ] `crates/dynplug/src/vtable.rs` を作成
-- [ ] `VTableValidate` unsafe trait を定義（RFC Section 5.5）
+- [x] `crates/dynplug/src/vtable.rs` を作成 <!-- 2026-03-23 01:39 JST -->
+- [x] `VTableValidate` unsafe trait を定義（RFC Section 5.5） <!-- 2026-03-23 01:39 JST -->
 
 ```rust
 /// # Safety
@@ -332,7 +332,7 @@ pub unsafe trait VTableValidate {
 
 ### Step 4-2: `vtable.rs` — PluginVTable への VTableValidate 実装
 
-- [ ] `api.rs` 内 または `vtable.rs` 内で `PluginVTable` に `VTableValidate` を実装
+- [x] `api.rs` 内 または `vtable.rs` 内で `PluginVTable` に `VTableValidate` を実装 <!-- 2026-03-23 01:39 JST -->
 
 ```rust
 unsafe impl VTableValidate for PluginVTable {
@@ -344,7 +344,7 @@ unsafe impl VTableValidate for PluginVTable {
 
 ### Step 4-3: `vtable.rs` — LoadedLibrary::vtable()
 
-- [ ] `LoadedLibrary::vtable::<V>(entry_symbol: Option<&str>)` を実装
+- [x] `LoadedLibrary::vtable::<V>(entry_symbol: Option<&str>)` を実装 <!-- 2026-03-23 01:39 JST -->
 
 ```rust
 impl LoadedLibrary {
@@ -384,27 +384,27 @@ impl LoadedLibrary {
 }
 ```
 
-- [ ] `lib.rs` に `pub mod vtable;` と `pub use vtable::VTableValidate;` を追加
+- [x] `lib.rs` に `pub mod vtable;` と `pub use vtable::VTableValidate;` を追加 <!-- 2026-03-23 01:39 JST -->
 
 > **ファイル行数見積もり:** `vtable.rs` は約 60 行。300 行を超えない。
 
 ### Step 4-4: Phase 4 テスト
 
-- [ ] `tests/integration.rs` を作成し、cdylib を使った以下のテストを実装する:
+- [x] `tests/integration.rs` を作成し、cdylib を使った以下のテストを実装する: <!-- 2026-03-23 01:39 JST -->
 
 **正常系:**
-- [ ] `test_load_and_bind_entry` — `LoadedLibrary::load` + `bind::<PluginEntryFn>("plugin_entry")` が成功し、関数を呼び出して VTable ポインタが non-null
-- [ ] `test_vtable_load_and_version_check` — `vtable::<PluginVTable>(None)` が成功。`name()` が `"greeter"` を返す。`version()` が 1 を返す
-- [ ] `test_invoke_greet` — `invoke("greet", b"World")` → rc=0, output=`"Hello, World!"`。`free_buffer` で解放
-- [ ] `test_invoke_add` — `invoke("add", 21_i32.to_le_bytes() ++ 21_i32.to_le_bytes())` → rc=0, output=42 (i32 LE)。`free_buffer` で解放
-- [ ] `test_invoke_noop_empty_output` — `invoke("noop", &[])` → rc=0, out_ptr=null, out_len=0。`free_buffer` を呼ぶ必要がない
+- [x] `test_load_and_bind_entry` <!-- 2026-03-23 01:39 JST -->
+- [x] `test_vtable_load_and_version_check` <!-- 2026-03-23 01:39 JST -->
+- [x] `test_invoke_greet` <!-- 2026-03-23 01:39 JST -->
+- [x] `test_invoke_add` <!-- 2026-03-23 01:39 JST -->
+- [x] `test_invoke_noop_empty_output` <!-- 2026-03-23 01:39 JST -->
 
 **異常系:**
-- [ ] `test_invoke_unknown_method_returns_error` — `invoke("unknown", &[])` → rc=-1。out_ptr にエラーメッセージ。`free_buffer` で解放
-- [ ] `test_invoke_panic_returns_minus2` — `invoke("panic_test", &[])` → rc=-2。out_ptr/out_len に触らない
-- [ ] `test_load_nonexistent_file` — `LoadedLibrary::load("/nonexistent/path.dylib")` → `PluginError::Load`
-- [ ] `test_bind_nonexistent_symbol` — 有効なライブラリに対して `bind::<...>("no_such_symbol")` → `PluginError::SymbolNotFound`
-- [ ] `test_vtable_with_wrong_entry_symbol` — `vtable::<PluginVTable>(Some("nonexistent"))` → `PluginError::SymbolNotFound`
+- [x] `test_invoke_unknown_method_returns_error` <!-- 2026-03-23 01:39 JST -->
+- [x] `test_invoke_panic_returns_minus2` <!-- 2026-03-23 01:39 JST -->
+- [x] `test_load_nonexistent_file` <!-- 2026-03-23 01:39 JST -->
+- [x] `test_bind_nonexistent_symbol` <!-- 2026-03-23 01:39 JST -->
+- [x] `test_vtable_with_wrong_entry_symbol` <!-- 2026-03-23 01:39 JST -->
 
 ```rust
 // テスト内で cdylib パスを取得するヘルパー:
@@ -418,10 +418,10 @@ fn plugin_path() -> std::path::PathBuf {
 
 ### Step 4-5: Phase 4 品質ゲート
 
-- [ ] `cargo build -p dynplug-example && cargo test -p dynplug` で全テスト通過
-- [ ] `cargo clippy -p dynplug -p dynplug-example -- -D warnings` が通る
-- [ ] テストカバレッジが loader.rs, vtable.rs, export.rs で 90% 以上。未カバーの分岐があれば追加テストを書く
-- [ ] `cargo build -p dynplug -p dynplug-example` が通る
+- [x] `cargo build -p dynplug-example && cargo test -p dynplug` で全テスト通過 <!-- 2026-03-23 01:40 JST -->
+- [x] `cargo clippy -p dynplug -p dynplug-example -- -D warnings` が通る <!-- 2026-03-23 01:40 JST -->
+- [x] テストカバレッジが loader.rs, vtable.rs, export.rs で 90% 以上。未カバーの分岐があれば追加テストを書く <!-- 2026-03-23 01:40 JST -->
+- [x] `cargo build -p dynplug -p dynplug-example` が通る <!-- 2026-03-23 01:40 JST -->
 
 ---
 
