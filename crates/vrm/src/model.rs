@@ -1,5 +1,6 @@
 use glam::{Mat4, Quat, Vec3};
 use renderer::vertex::Vertex;
+use spring_physics::SpringWorld;
 
 use crate::blendshape::BlendShapeGroup;
 use crate::bone::HumanoidBones;
@@ -82,5 +83,8 @@ pub struct VrmModel {
     pub blend_shapes: BlendShapeGroup,
     pub node_transforms: Vec<NodeTransform>,
     pub spring_bone_groups: Vec<SpringBoneGroup>,
+    /// New spring physics world built from VRM secondaryAnimation.
+    /// Replaces `spring_bone_groups` (which is kept for backward compatibility).
+    pub spring_world: SpringWorld,
     pub look_at: Option<LookAtApplyer>,
 }

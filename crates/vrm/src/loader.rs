@@ -6,7 +6,7 @@ use crate::bone::HumanoidBones;
 use crate::error::VrmError;
 use crate::look_at::LookAtApplyer;
 use crate::model::{Material, MeshData, MorphTargetData, NodeTransform, SkinJoint, VrmModel};
-use crate::spring_bone::SpringBoneGroup;
+use crate::spring_bone::{build_spring_world, SpringBoneGroup};
 
 /// glTFアクセサからバイト列を読む低レベルヘルパー
 fn read_accessor_data(blob: &[u8], accessor: &gltf::Accessor) -> Vec<u8> {
@@ -356,6 +356,46 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
     let spring_bone_groups = SpringBoneGroup::from_vrm_json(&vrm_json)?;
     let look_at = LookAtApplyer::from_vrm_json(&vrm_json).ok();
 
+    // Build node_parents from the glTF node hierarchy.
+    let node_count = node_transforms.len();
+    let mut node_parents: Vec<Option<usize>> = vec![None; node_count];
+    for (parent_idx, nt) in node_transforms.iter().enumerate() {
+        for &child_idx in &nt.children {
+            if child_idx < node_count {
+                node_parents[child_idx] = Some(parent_idx);
+            }
+        }
+    }
+
+    // Compute world-space positions for each node by walking root→leaf.
+    // NodeTransform stores local translation; we accumulate through the hierarchy.
+    let mut node_world_positions: Vec<Vec3> = node_transforms
+        .iter()
+        .map(|nt| nt.translation)
+        .collect();
+
+    // BFS from roots to accumulate parent world positions.
+    let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
+    for (i, parent) in node_parents.iter().enumerate() {
+        if parent.is_none() {
+            queue.push_back(i);
+        }
+    }
+    while let Some(idx) = queue.pop_front() {
+        for &child_idx in &node_transforms[idx].children {
+            if child_idx < node_count {
+                // Simple approximation: world_pos = parent_world_pos + child_local_translation.
+                // A full implementation would apply parent rotation & scale, but for spring bone
+                // initial positions this is a reasonable first pass.
+                node_world_positions[child_idx] =
+                    node_world_positions[idx] + node_transforms[child_idx].translation;
+                queue.push_back(child_idx);
+            }
+        }
+    }
+
+    let spring_world = build_spring_world(&vrm_json, &node_world_positions, &node_parents)?;
+
     Ok(VrmModel {
         meshes,
         materials,
@@ -364,6 +404,7 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
         blend_shapes,
         node_transforms,
         spring_bone_groups,
+        spring_world,
         look_at,
     })
 }
