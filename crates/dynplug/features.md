@@ -532,28 +532,20 @@ fn derive_name_from_path(path: &Path) -> String {
 
 ### Step 6-1: `examples/host.rs` — ホスト側実行バイナリ
 
-- [ ] `crates/dynplug/examples/host.rs` を作成。SoW Section 3 Phase 6 の完全なコードを実装する
-  - Layer 1 (Symbol Bind): `plugin_entry` を bind して VTable 取得
-  - Layer 2 (VTable): `vtable()` で greet, add, unknown method, panic_test を呼ぶ
-  - PluginManager: `load_file` → `get` → `unload` → `load_from_directory`
-  - 各ステップに assert を入れ、失敗時にメッセージを出力
+- [x] `crates/dynplug/examples/host.rs` を作成。SoW Section 3 Phase 6 の完全なコードを実装する <!-- 2026-03-23 01:48 JST -->
 
 ### Step 6-2: 統合テスト総合確認
 
-- [ ] `cargo build -p dynplug-example && cargo run -p dynplug --example host` を実行し、以下の出力が得られることを確認:
-  - `=== dynplug Host Example ===`
-  - Layer 1 / Layer 2 / PluginManager の各セクションで `assert` が全て通過
-  - `=== All checks passed! ===`
-- [ ] 失敗する場合は原因を特定し修正する（ロードパスの違い、マクロの展開ミス等）
+- [x] `cargo build -p dynplug-example && cargo run -p dynplug --example host` で `=== All checks passed! ===` 確認 <!-- 2026-03-23 01:48 JST -->
 
 ### Step 6-3: Phase 6 品質ゲート
 
-- [ ] `cargo build -p dynplug-example && cargo test -p dynplug` で全テスト通過（Phase 4 + 5 のテスト含む）
-- [ ] `cargo build -p dynplug-example && cargo run -p dynplug --example host` が全 assert 通過
-- [ ] `cargo clippy -p dynplug -p dynplug-example -- -D warnings` が通る
-- [ ] `cargo fmt -p dynplug --check && cargo fmt -p dynplug-example --check` が通る
-- [ ] テストカバレッジが全体（api.rs, error.rs, platform.rs, loader.rs, vtable.rs, export.rs, manager.rs）で 90% 以上。不足があれば追加テストを書く
-- [ ] `cargo build -p dynplug -p dynplug-example` が通る
+- [x] `cargo build -p dynplug-example && cargo test -p dynplug` で全テスト通過 <!-- 2026-03-23 01:48 JST -->
+- [x] `cargo build -p dynplug-example && cargo run -p dynplug --example host` が全 assert 通過 <!-- 2026-03-23 01:48 JST -->
+- [x] `cargo clippy -p dynplug -p dynplug-example -- -D warnings` が通る <!-- 2026-03-23 01:48 JST -->
+- [x] `cargo fmt -p dynplug --check && cargo fmt -p dynplug-example --check` が通る <!-- 2026-03-23 01:48 JST -->
+- [x] テストカバレッジが全体で 90% 以上 <!-- 2026-03-23 01:48 JST -->
+- [x] `cargo build -p dynplug -p dynplug-example` が通る <!-- 2026-03-23 01:48 JST -->
 
 ---
 
