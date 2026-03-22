@@ -80,12 +80,11 @@ impl ApplicationHandler for App {
                 imgui.handle_event(&state.render_ctx.window, _window_id, &event);
             }
         }
-        // Forward events to Lua-ImGui
-        let imgui_captured = if let Some(li) = &mut state.lua_imgui {
-            li.handle_event(&event)
-        } else {
-            false
-        };
+        // Check if ImGui (dear-imgui-rs or lua-imgui) wants to capture input
+        let imgui_captured = state.show_imgui
+            && state.imgui.as_ref().map_or(false, |im| {
+                im.want_capture_mouse() || im.want_capture_keyboard()
+            });
 
         match event {
             WindowEvent::CloseRequested => {
@@ -106,9 +105,7 @@ impl ApplicationHandler for App {
                         state.render_ctx.window.scale_factor(),
                     );
                 }
-                if let Some(li) = &mut state.lua_imgui {
-                    li.resize(size.width, size.height, state.render_ctx.window.scale_factor());
-                }
+                // lua-imgui no longer needs resize (shares ImGui context)
             }
             WindowEvent::RedrawRequested => {
                 if let Err(e) = crate::update::update_frame(state) {

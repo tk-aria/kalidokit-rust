@@ -1,6 +1,6 @@
 //! ImGui command buffer — collected from Lua, replayed during imgui frame.
 
-use imgui::Ui;
+use dear_imgui_rs::Ui;
 
 /// A single imgui command captured from Lua.
 #[derive(Debug, Clone)]
@@ -39,6 +39,16 @@ pub enum ImguiCommand {
         label: String,
         color: [f32; 3],
     },
+    CollapsingHeaderBegin {
+        label: String,
+        default_open: bool,
+    },
+    CollapsingHeaderEnd,
+    TextDisabled {
+        text: String,
+    },
+    Indent,
+    Unindent,
 }
 
 /// Replay collected commands against an active imgui frame.
@@ -100,6 +110,11 @@ pub fn replay(commands: &[ImguiCommand], ui: &Ui) {
                 let mut c = *color;
                 ui.color_edit3(label, &mut c);
             }
+            ImguiCommand::CollapsingHeaderBegin { .. }
+            | ImguiCommand::CollapsingHeaderEnd
+            | ImguiCommand::TextDisabled { .. }
+            | ImguiCommand::Indent
+            | ImguiCommand::Unindent => {}
         }
     }
     let _ = (in_window, in_tree);
@@ -129,8 +144,11 @@ pub fn replay_nested(commands: &[ImguiCommand], ui: &Ui) {
                     end += 1;
                 }
                 let inner = &commands[start..end];
+                let empty_outputs = std::sync::Arc::new(std::sync::Mutex::new(
+                    std::collections::HashMap::new(),
+                ));
                 ui.window(&name).build(|| {
-                    replay_inner(inner, ui);
+                    replay_inner(inner, ui, &empty_outputs);
                 });
                 i = end + 1; // skip past EndWindow
             }
@@ -142,33 +160,132 @@ pub fn replay_nested(commands: &[ImguiCommand], ui: &Ui) {
     }
 }
 
-fn replay_inner(commands: &[ImguiCommand], ui: &Ui) {
-    for cmd in commands {
-        match cmd {
-            ImguiCommand::Text { text } => ui.text(text),
+pub fn replay_inner(commands: &[ImguiCommand], ui: &Ui, outputs: &crate::WidgetOutputs) {
+    // Process commands, handling tree node groups recursively.
+    // Widget output values are written to `outputs` so Lua can read them next frame.
+    let mut i = 0;
+    while i < commands.len() {
+        match &commands[i] {
+            ImguiCommand::TreeNodeBegin { label } => {
+                let start = i + 1;
+                let mut depth = 1;
+                let mut end = start;
+                while end < commands.len() {
+                    match &commands[end] {
+                        ImguiCommand::TreeNodeBegin { .. } => depth += 1,
+                        ImguiCommand::TreeNodeEnd if depth == 1 => break,
+                        ImguiCommand::TreeNodeEnd => depth -= 1,
+                        _ => {}
+                    }
+                    end += 1;
+                }
+                let inner = &commands[start..end];
+                if let Some(_token) = ui.tree_node(label) {
+                    replay_inner(inner, ui, outputs);
+                }
+                i = end + 1;
+            }
+            ImguiCommand::TreeNodeEnd => {
+                i += 1;
+            }
+            ImguiCommand::Text { text } => {
+                ui.text(text);
+                i += 1;
+            }
             ImguiCommand::Button { label } => {
                 ui.button(label);
+                i += 1;
             }
-            ImguiCommand::SameLine => ui.same_line(),
-            ImguiCommand::Separator => ui.separator(),
-            ImguiCommand::SliderFloat {
-                label,
-                min,
-                max,
-                value,
-            } => {
+            ImguiCommand::SameLine => {
+                ui.same_line();
+                i += 1;
+            }
+            ImguiCommand::Separator => {
+                ui.separator();
+                i += 1;
+            }
+            ImguiCommand::SliderFloat { label, min, max, value } => {
                 let mut v = *value;
                 ui.slider(label, *min, *max, &mut v);
+                // Only store if user actually dragged (value changed).
+                // If unchanged, remove stale output so external changes take effect.
+                let mut out = outputs.lock().unwrap();
+                if (v - *value).abs() > f32::EPSILON {
+                    out.insert(label.clone(), crate::WidgetValue::Float(v));
+                } else {
+                    out.remove(label);
+                }
+                i += 1;
             }
             ImguiCommand::Checkbox { label, checked } => {
                 let mut c = *checked;
                 ui.checkbox(label, &mut c);
+                let mut out = outputs.lock().unwrap();
+                if c != *checked {
+                    out.insert(label.clone(), crate::WidgetValue::Bool(c));
+                } else {
+                    out.remove(label);
+                }
+                i += 1;
             }
             ImguiCommand::ColorEdit3 { label, color } => {
                 let mut c = *color;
                 ui.color_edit3(label, &mut c);
+                let mut out = outputs.lock().unwrap();
+                if c != *color {
+                    out.insert(label.clone(), crate::WidgetValue::Color3(c));
+                } else {
+                    out.remove(label);
+                }
+                i += 1;
             }
-            _ => {}
+            ImguiCommand::InputText { label, text } => {
+                let mut buf = text.clone();
+                ui.input_text(label, &mut buf).build();
+                i += 1;
+            }
+            ImguiCommand::CollapsingHeaderBegin { label, default_open } => {
+                let start = i + 1;
+                let mut depth = 1;
+                let mut end = start;
+                while end < commands.len() {
+                    match &commands[end] {
+                        ImguiCommand::CollapsingHeaderBegin { .. } => depth += 1,
+                        ImguiCommand::CollapsingHeaderEnd if depth == 1 => break,
+                        ImguiCommand::CollapsingHeaderEnd => depth -= 1,
+                        _ => {}
+                    }
+                    end += 1;
+                }
+                let inner = &commands[start..end];
+                let flags = if *default_open {
+                    dear_imgui_rs::TreeNodeFlags::DEFAULT_OPEN
+                } else {
+                    dear_imgui_rs::TreeNodeFlags::empty()
+                };
+                if ui.collapsing_header(label, flags) {
+                    replay_inner(inner, ui, outputs);
+                }
+                i = end + 1;
+            }
+            ImguiCommand::CollapsingHeaderEnd => {
+                i += 1;
+            }
+            ImguiCommand::TextDisabled { text } => {
+                ui.text_disabled(text);
+                i += 1;
+            }
+            ImguiCommand::Indent => {
+                ui.indent();
+                i += 1;
+            }
+            ImguiCommand::Unindent => {
+                ui.unindent();
+                i += 1;
+            }
+            ImguiCommand::BeginWindow { .. } | ImguiCommand::EndWindow => {
+                i += 1;
+            }
         }
     }
 }

@@ -1,72 +1,62 @@
-//! Lua scripting for Dear ImGui over wgpu.
+//! Lua scripting for Dear ImGui — command buffer approach.
 //!
-//! Provides `LuaImgui` which embeds a Lua 5.4 runtime, registers imgui
-//! API bindings, and renders Dear ImGui draw data via wgpu.
+//! `LuaImgui` does NOT own an ImGui context or renderer. Instead it:
+//! 1. Collects ImGui commands from Lua scripts into a buffer
+//! 2. Replays them against an existing `&dear_imgui_rs::Ui` during the frame
+//! 3. Feeds widget output values back to Lua via a shared map
+//!
+//! The host application (app crate) owns the ImGui context via `ImGuiRenderer`
+//! and calls `lua_imgui.replay(ui)` inside `frame_with_nodes()`.
 
 pub mod bindings;
 pub mod commands;
 pub mod events;
-pub mod renderer;
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use lua_runtime::LuaRuntime;
-use winit::window::Window;
 
-/// Lua-driven Dear ImGui overlay rendered via wgpu.
+/// Widget output values stored after replay, keyed by widget label.
+/// These are fed back to Lua on the next frame so sliders/checkboxes
+/// return user-modified values instead of always returning the initial value.
+#[derive(Debug, Clone)]
+pub enum WidgetValue {
+    Float(f32),
+    Bool(bool),
+    Color3([f32; 3]),
+}
+
+/// Shared widget output map — written by replay, read by Lua bindings.
+pub type WidgetOutputs = Arc<Mutex<HashMap<String, WidgetValue>>>;
+
+/// Lua-driven Dear ImGui command buffer.
+///
+/// Does not own an ImGui context — commands are replayed against an external `Ui`.
 pub struct LuaImgui {
     lua: LuaRuntime,
-    imgui: imgui::Context,
-    renderer: renderer::ImguiRenderer,
-    commands: Arc<std::sync::Mutex<Vec<commands::ImguiCommand>>>,
-    last_frame_time: std::time::Instant,
+    commands: Arc<Mutex<Vec<commands::ImguiCommand>>>,
+    /// Widget output values from last replay (fed back to Lua).
+    pub widget_outputs: WidgetOutputs,
+    /// Lua window visibility: window name → visible.
+    pub window_visibility: HashMap<String, bool>,
 }
 
 impl LuaImgui {
-    /// Create a new Lua-ImGui instance.
-    pub fn new(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        surface_format: wgpu::TextureFormat,
-        window: &Window,
-    ) -> Result<Self> {
+    /// Create a new Lua-ImGui command buffer (no ImGui context created).
+    pub fn new() -> Result<Self> {
         let lua = LuaRuntime::new()?;
-        let mut imgui = imgui::Context::create();
 
-        // Configure imgui
-        imgui.set_ini_filename(None);
-        let io = imgui.io_mut();
-        let size = window.inner_size();
-        let scale = window.scale_factor() as f32;
-        io.display_size = [size.width as f32 / scale, size.height as f32 / scale];
-        io.display_framebuffer_scale = [scale, scale];
-        io.font_global_scale = 1.0;
-
-        // Build font atlas
-        let fonts = imgui.fonts();
-        fonts.add_font(&[imgui::FontSource::DefaultFontData {
-            config: Some(imgui::FontConfig {
-                size_pixels: 14.0 * scale,
-                ..Default::default()
-            }),
-        }]);
-        let font_tex = fonts.build_rgba32_texture();
-
-        // Create renderer
-        let renderer =
-            renderer::ImguiRenderer::new(device, queue, surface_format, &font_tex)?;
-
-        // Register Lua bindings
-        let commands = Arc::new(std::sync::Mutex::new(Vec::new()));
-        bindings::register(&lua, commands.clone())?;
+        let commands = Arc::new(Mutex::new(Vec::new()));
+        let widget_outputs: WidgetOutputs = Arc::new(Mutex::new(HashMap::new()));
+        bindings::register(&lua, commands.clone(), widget_outputs.clone())?;
 
         Ok(Self {
             lua,
-            imgui,
-            renderer,
             commands,
-            last_frame_time: std::time::Instant::now(),
+            widget_outputs,
+            window_visibility: HashMap::new(),
         })
     }
 
@@ -80,61 +70,66 @@ impl LuaImgui {
         &self.lua
     }
 
-    /// Forward a winit event to imgui. Returns true if imgui wants to capture it.
-    pub fn handle_event(&mut self, event: &winit::event::WindowEvent) -> bool {
-        events::handle_event(&mut self.imgui, event)
-    }
-
-    /// Update display size on window resize.
-    pub fn resize(&mut self, width: u32, height: u32, scale_factor: f64) {
-        let scale = scale_factor as f32;
-        let io = self.imgui.io_mut();
-        io.display_size = [width as f32 / scale, height as f32 / scale];
-        io.display_framebuffer_scale = [scale, scale];
-    }
-
-    /// Run one imgui frame: call Lua update(), collect commands, render.
-    ///
-    /// Creates its own command encoder and submits to the queue.
-    pub fn render(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        view: &wgpu::TextureView,
-    ) -> Result<()> {
-        // Update delta time
-        let now = std::time::Instant::now();
-        self.imgui.io_mut().delta_time = (now - self.last_frame_time).as_secs_f32();
-        self.last_frame_time = now;
-
-        // Clear command buffer
+    /// Call Lua `update(dt)` to collect commands, then replay them on the Ui.
+    pub fn replay(&mut self, ui: &dear_imgui_rs::Ui, dt: f32) {
         self.commands.lock().unwrap().clear();
 
-        // Call Lua update(dt)
-        let dt = self.imgui.io().delta_time;
         if let Err(e) = self.lua.call_global::<_, ()>("update", dt) {
-            // Only warn if function exists but errored (not if missing)
             let msg = format!("{e}");
             if !msg.contains("not found") && !msg.contains("is not a function") {
                 log::warn!("Lua update error: {e}");
             }
         }
 
-        // Build imgui frame from commands
-        let ui = self.imgui.new_frame();
-        {
-            let cmds = self.commands.lock().unwrap();
-            commands::replay_nested(&cmds, ui);
+        let cmds: Vec<_> = self.commands.lock().unwrap().clone();
+        let outputs = self.widget_outputs.clone();
+        self.replay_nested_filtered(&cmds, ui, &outputs);
+    }
+
+    fn replay_nested_filtered(
+        &mut self,
+        commands: &[commands::ImguiCommand],
+        ui: &dear_imgui_rs::Ui,
+        outputs: &WidgetOutputs,
+    ) {
+        let mut i = 0;
+        while i < commands.len() {
+            match &commands[i] {
+                commands::ImguiCommand::BeginWindow { name } => {
+                    let name = name.clone();
+                    self.window_visibility.entry(name.clone()).or_insert(true);
+
+                    let start = i + 1;
+                    let mut depth = 1;
+                    let mut end = start;
+                    while end < commands.len() {
+                        match &commands[end] {
+                            commands::ImguiCommand::BeginWindow { .. } => depth += 1,
+                            commands::ImguiCommand::EndWindow if depth == 1 => break,
+                            commands::ImguiCommand::EndWindow => depth -= 1,
+                            _ => {}
+                        }
+                        end += 1;
+                    }
+
+                    if *self.window_visibility.get(&name).unwrap_or(&true) {
+                        let inner = &commands[start..end];
+                        let mut opened = true;
+                        let out = outputs.clone();
+                        ui.window(&name).opened(&mut opened).build(|| {
+                            commands::replay_inner(inner, ui, &out);
+                        });
+                        if !opened {
+                            self.window_visibility.insert(name, false);
+                        }
+                    }
+
+                    i = end + 1;
+                }
+                _ => {
+                    i += 1;
+                }
+            }
         }
-
-        // Render
-        let draw_data = self.imgui.render();
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        self.renderer
-            .render(device, queue, view, &mut encoder, draw_data)?;
-        queue.submit(std::iter::once(encoder.finish()));
-
-        Ok(())
     }
 }

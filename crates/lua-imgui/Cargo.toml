@@ -2,14 +2,12 @@
 name = "lua-imgui"
 version = "0.1.0"
 edition = "2021"
-description = "Lua scripting for Dear ImGui over wgpu"
+description = "Lua scripting for Dear ImGui (command buffer, shares existing ImGui context)"
 
 [dependencies]
 lua-runtime = { path = "../lua" }
 mlua = { workspace = true }
-imgui = { workspace = true }
-wgpu = { workspace = true }
+dear-imgui-rs = "0.10"
 winit = { workspace = true }
-bytemuck = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }
