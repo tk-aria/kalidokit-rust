@@ -394,28 +394,45 @@ impl Scene {
 
     /// Render the 3D scene to a texture view (does not acquire or present the surface).
     pub fn render_to_view(&self, ctx: &RenderContext, view: &wgpu::TextureView) {
-        self.render_to_view_with_depth(ctx, view, &self.depth.view);
+        self.render_internal(ctx, view, &self.depth.view, false);
     }
 
-    /// Render the 3D scene to a texture view with a specified depth buffer.
-    fn render_to_view_with_depth(
+    /// Render the 3D scene as an overlay (LoadOp::Load, no clear).
+    /// Use this when rendering the avatar on top of existing content (e.g. ImGui).
+    pub fn render_to_view_overlay(&self, ctx: &RenderContext, view: &wgpu::TextureView) {
+        self.render_internal(ctx, view, &self.depth.view, true);
+    }
+
+    /// Internal render with optional overlay mode (skip background clear).
+    fn render_internal(
         &self,
         ctx: &RenderContext,
         view: &wgpu::TextureView,
         depth_view: &wgpu::TextureView,
+        overlay: bool,
     ) {
         let mut encoder = ctx
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        // Background: video takes priority over static image
-        let has_background = if let Some(bg_video) = &self.bg_video {
+        // Background: video takes priority over static image.
+        // In overlay mode, use LoadOp::Load to preserve existing content (ImGui).
+        // Skip background entirely in mascot mode (transparent, alpha < 1.0).
+        let is_transparent = self.clear_color.a < 1.0;
+        let bg_load_op = if overlay {
+            wgpu::LoadOp::Load
+        } else {
+            wgpu::LoadOp::Clear(self.clear_color)
+        };
+        let has_background = if overlay && is_transparent {
+            false // mascot + overlay: skip background to keep transparency
+        } else if let Some(bg_video) = &self.bg_video {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("bg_video_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(self.clear_color),
+                        load: bg_load_op,
                         store: wgpu::StoreOp::Store,
                     },
                     depth_slice: None,
@@ -434,7 +451,7 @@ impl Scene {
                     view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(self.clear_color),
+                        load: bg_load_op,
                         store: wgpu::StoreOp::Store,
                     },
                     depth_slice: None,
@@ -451,9 +468,9 @@ impl Scene {
         };
         // Main 3D scene pass
         {
-            // When the clear color is transparent (alpha < 1.0, i.e. mascot mode),
-            // always clear to prevent stale/ghost pixels from previous frames.
-            let clear_or_load = if has_background && self.clear_color.a >= 1.0 {
+            let clear_or_load = if overlay {
+                wgpu::LoadOp::Load // overlay mode: preserve existing content (ImGui)
+            } else if has_background && self.clear_color.a >= 1.0 {
                 wgpu::LoadOp::Load // preserve background image (opaque mode only)
             } else {
                 wgpu::LoadOp::Clear(self.clear_color)
@@ -498,7 +515,7 @@ impl Scene {
     /// Render the 3D scene to the frame capture texture (uses its own depth buffer).
     pub fn render_to_capture(&self, ctx: &RenderContext) {
         if let (Some(view), Some(depth)) = (self.frame_capture_view(), &self.frame_capture_depth) {
-            self.render_to_view_with_depth(ctx, &view, &depth.view);
+            self.render_internal(ctx, &view, &depth.view, false);
         }
     }
 
