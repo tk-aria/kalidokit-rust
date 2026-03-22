@@ -106,13 +106,7 @@ mod tests {
         // Horizontal bone: center at origin, tail at (1,0,0).
         // Gravity (-Y) is perpendicular to the bone, so it creates angular displacement
         // that length_constraint cannot cancel.
-        let bone = SpringBone::new(
-            1,
-            Some(0),
-            1.0,
-            Vec3::X,
-            Vec3::new(1.0, 0.0, 0.0),
-        );
+        let bone = SpringBone::new(1, Some(0), 1.0, Vec3::X, Vec3::new(1.0, 0.0, 0.0));
         BoneChain::new(vec![bone], default_config())
     }
 
@@ -150,7 +144,13 @@ mod tests {
         let matrices = vec![Mat4::IDENTITY];
 
         for _ in 0..50 {
-            solve_chain(&mut chain, &[collider.clone()], &matrices, Vec3::ZERO, 0.016);
+            solve_chain(
+                &mut chain,
+                &[collider.clone()],
+                &matrices,
+                Vec3::ZERO,
+                0.016,
+            );
         }
 
         let tail = chain.bones[0].current_tail;
@@ -206,6 +206,36 @@ mod tests {
         // Should not panic
         solve_chain(&mut chain, &[], &matrices, Vec3::ZERO, 0.016);
         assert!(chain.bones.is_empty());
+    }
+
+    #[test]
+    fn rotation_identity_when_tail_at_center() {
+        let initial_dir = Vec3::Y;
+        let center = Vec3::ZERO;
+        let tail = center; // tail == center → current_dir is zero
+        let parent_rot = Quat::from_rotation_z(0.5);
+
+        let rot = compute_bone_rotation(initial_dir, tail, center, parent_rot);
+        // Should return parent_world_rotation unchanged
+        assert!(
+            rot.angle_between(parent_rot) < 1e-4,
+            "rotation should equal parent rotation when tail is at center"
+        );
+    }
+
+    #[test]
+    fn rotation_identity_when_initial_dir_zero() {
+        let initial_dir = Vec3::ZERO; // zero initial direction
+        let center = Vec3::ZERO;
+        let tail = Vec3::new(1.0, 0.0, 0.0);
+        let parent_rot = Quat::from_rotation_x(0.3);
+
+        let rot = compute_bone_rotation(initial_dir, tail, center, parent_rot);
+        // initial_world_dir = parent_rot * ZERO = ZERO → early return
+        assert!(
+            rot.angle_between(parent_rot) < 1e-4,
+            "rotation should equal parent rotation when initial_dir is zero"
+        );
     }
 
     #[test]

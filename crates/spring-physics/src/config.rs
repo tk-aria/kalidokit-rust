@@ -86,6 +86,24 @@ mod tests {
     }
 
     #[test]
+    fn all_negative_values_clamped_to_zero() {
+        let mut cfg = SpringConfig {
+            stiffness: -1.0,
+            gravity_power: -5.0,
+            drag_force: -0.5,
+            hit_radius: -0.1,
+            wind_scale: -2.0,
+            ..Default::default()
+        };
+        cfg.validate();
+        assert_eq!(cfg.stiffness, 0.0);
+        assert_eq!(cfg.gravity_power, 0.0);
+        assert_eq!(cfg.drag_force, 0.0);
+        assert_eq!(cfg.hit_radius, 0.0);
+        assert_eq!(cfg.wind_scale, 0.0);
+    }
+
+    #[test]
     fn drag_force_above_one_clamped() {
         let mut cfg = SpringConfig {
             drag_force: 1.5,

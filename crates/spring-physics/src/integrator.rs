@@ -48,7 +48,15 @@ mod tests {
         };
         let prev = Vec3::ZERO;
         let current = Vec3::new(1.0, 0.0, 0.0);
-        let result = verlet_step(current, prev, &config, current, Vec3::ZERO, Vec3::ZERO, 0.016);
+        let result = verlet_step(
+            current,
+            prev,
+            &config,
+            current,
+            Vec3::ZERO,
+            Vec3::ZERO,
+            0.016,
+        );
         // velocity = (1,0,0) - (0,0,0) = (1,0,0), no drag → full velocity preserved
         // result = current + velocity = (2,0,0)
         assert!((result.x - 2.0).abs() < 1e-5);
@@ -66,7 +74,15 @@ mod tests {
         };
         let prev = Vec3::ZERO;
         let current = Vec3::new(1.0, 0.0, 0.0);
-        let result = verlet_step(current, prev, &config, current, Vec3::ZERO, Vec3::ZERO, 0.016);
+        let result = verlet_step(
+            current,
+            prev,
+            &config,
+            current,
+            Vec3::ZERO,
+            Vec3::ZERO,
+            0.016,
+        );
         // velocity = (1,0,0) * (1 - 1.0) = (0,0,0)
         // result = current + 0 = current (no stiffness/gravity/wind)
         assert!((result - current).length() < 1e-5);
@@ -99,8 +115,15 @@ mod tests {
         };
         let initial = Vec3::new(0.0, 3.0, 0.0);
         let current = Vec3::new(0.0, 1.0, 0.0); // displaced downward from initial
-        let result =
-            verlet_step(current, current, &config, initial, Vec3::ZERO, Vec3::ZERO, 0.016);
+        let result = verlet_step(
+            current,
+            current,
+            &config,
+            initial,
+            Vec3::ZERO,
+            Vec3::ZERO,
+            0.016,
+        );
         // Stiffness should pull current toward initial (upward)
         assert!(result.y > current.y);
     }

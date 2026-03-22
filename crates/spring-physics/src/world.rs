@@ -250,6 +250,39 @@ mod tests {
         );
     }
 
+    #[test]
+    fn time_scale_affects_simulation_speed() {
+        let mut world_fast = single_chain_world();
+        world_fast.time_scale = 2.0;
+        let mut world_normal = single_chain_world();
+        world_normal.time_scale = 1.0;
+        let matrices = vec![Mat4::IDENTITY, Mat4::IDENTITY];
+
+        for _ in 0..10 {
+            world_fast.update(0.016, &matrices);
+            world_normal.update(0.016, &matrices);
+        }
+
+        let fast_displacement =
+            (world_fast.chains[0].bones[0].current_tail - Vec3::new(1.0, 0.0, 0.0)).length();
+        let normal_displacement =
+            (world_normal.chains[0].bones[0].current_tail - Vec3::new(1.0, 0.0, 0.0)).length();
+        assert!(
+            fast_displacement > normal_displacement,
+            "faster time_scale should cause more displacement; fast={fast_displacement}, normal={normal_displacement}"
+        );
+    }
+
+    #[test]
+    fn default_trait_creates_empty_world() {
+        let world: SpringWorld = Default::default();
+        assert!(world.chains.is_empty());
+        assert!(world.colliders.is_empty());
+        assert_eq!(world.wind, Vec3::ZERO);
+        assert_eq!(world.time_scale, 1.0);
+        assert!(world.enabled);
+    }
+
     // --- Edge / error cases ---
 
     #[test]

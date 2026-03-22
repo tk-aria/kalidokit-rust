@@ -105,6 +105,17 @@ mod tests {
     }
 
     #[test]
+    fn hit_radius_extends_collision_volume() {
+        let c = sphere_collider(0.5, Vec3::ZERO);
+        // Tail at distance 0.7 from center, with hit_radius=0.3 → min_dist = 0.5+0.3 = 0.8
+        let tail = Vec3::new(0.7, 0.0, 0.0);
+        let result = c.resolve_collision(tail, 0.3);
+        // Should be pushed out to min_dist=0.8 along +X
+        assert!((result.x - 0.8).abs() < 1e-5);
+        assert!(result.y.abs() < 1e-5);
+    }
+
+    #[test]
     fn point_at_center_pushed_out_safely() {
         let c = sphere_collider(1.0, Vec3::ZERO);
         // Tail exactly at collider center
