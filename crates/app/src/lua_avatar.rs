@@ -224,6 +224,26 @@ pub fn register(lua_imgui: &LuaImgui, handle: &AvatarHandle) -> anyhow::Result<(
         )?;
     }
 
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "get_spring_physics",
+            l.create_function(move |_, ()| {
+                Ok(h.lock().unwrap().display.spring_physics_enabled)
+            })?,
+        )?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "set_spring_physics",
+            l.create_function(move |_, v: bool| {
+                h.lock().unwrap().display.spring_physics_enabled = v;
+                Ok(())
+            })?,
+        )?;
+    }
+
     // ── Tracking ──
 
     {

@@ -457,6 +457,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         av.display.model_offset = state.model_offset;
         av.display.bg_image_path = state.background.image_path.clone().unwrap_or_default();
         av.display.avatar_on_top = state.avatar_on_top;
+        av.display.spring_physics_enabled = state.spring_physics_enabled;
         av.tracking.tracking_enabled = state.tracking_enabled;
         av.tracking.auto_blink = state.blink_mode == crate::auto_blink::BlinkMode::Auto;
         av.tracking.idle_animation = state.idle_animation.as_ref().map_or(false, |a| a.enabled);
@@ -1020,6 +1021,9 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         }
         if av.display.avatar_on_top != snap.display.avatar_on_top {
             state.avatar_on_top = av.display.avatar_on_top;
+        }
+        if av.display.spring_physics_enabled != snap.display.spring_physics_enabled {
+            state.spring_physics_enabled = av.display.spring_physics_enabled;
         }
         // Tracking
         if av.tracking.tracking_enabled != snap.tracking.tracking_enabled {

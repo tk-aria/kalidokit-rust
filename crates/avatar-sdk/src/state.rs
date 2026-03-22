@@ -43,6 +43,8 @@ pub struct DisplayState {
     pub bg_image_path: String,
     /// true = avatar renders on top of ImGui, false = ImGui on top (default).
     pub avatar_on_top: bool,
+    /// Enable spring-physics simulation on the avatar (hair/cloth secondary motion).
+    pub spring_physics_enabled: bool,
 }
 
 impl Default for DisplayState {
@@ -56,6 +58,7 @@ impl Default for DisplayState {
             model_offset: [0.0, 0.0],
             bg_image_path: String::new(),
             avatar_on_top: false,
+            spring_physics_enabled: true,
         }
     }
 }

@@ -36,6 +36,9 @@ function settings_update(dt)
     local aot = imgui.checkbox("Avatar on Top", avatar.get_avatar_on_top())
     avatar.set_avatar_on_top(aot)
 
+    local sp = imgui.checkbox("Spring Physics", avatar.get_spring_physics())
+    avatar.set_spring_physics(sp)
+
     imgui.collapsing_header_end()
 
     -- ── Tracking (default open) ──
