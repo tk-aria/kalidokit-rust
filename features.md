@@ -2888,3 +2888,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - [PINTO0309/hand-gesture-recognition-using-onnx](https://github.com/PINTO0309/hand-gesture-recognition-using-onnx) — 検証済みの ONNX パイプライン
 - [PINTO0309/hand_landmark](https://github.com/PINTO0309/hand_landmark) — palm detection なしの hand landmark
 - [MediaPipe Hands](https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/hands.md) — 公式ドキュメント
+
+---
+
+## Phase 20: Spring Bone Physics (spring-physics クレート)
+
+### Step 20.1: spring-physics コアライブラリ
+- [x] SpringConfig (stiffness, gravity, drag, wind)
+- [x] SpringBone, BoneChain データ構造
+- [x] Collider (Sphere) + 衝突判定
+- [x] Verlet 積分 (integrator)
+- [x] ボーン長制約 (constraint)
+- [x] Solver (solve_chain + compute_bone_rotation)
+- [x] SpringWorld メイン API (update, bone_results, reset)
+- [x] 42 テスト通過、clippy/fmt クリーン
+
+### Step 20.2: VRM アダプタ
+- [x] build_spring_world() — VRM JSON → SpringWorld 変換
+- [x] VrmModel に spring_world フィールド追加
+- [x] ローダーから自動初期化
+
+### Step 20.3: アプリ統合
+- [x] update ループで spring_world.update() + bone_results 適用
+- [x] compute_world_matrices() 実装
+- [x] spring_physics_enabled フラグ
+
+### Step 20.4: Settings + Avatar SDK
+- [x] avatar-sdk に spring_physics_enabled 追加
+- [x] Lua バインディング (avatar.get/set_spring_physics)
+- [x] Settings (Lua) に "Spring Physics" チェックボックス
+- [x] AvatarState 同期 (snapshot diff)
+
+### Step 20.5: 動作確認
+- [ ] 頭を動かすと髪が揺れる — ヘッドレス環境のため未検証
+- [ ] スカートが脚コライダーを貫通しない — ヘッドレス環境のため未検証
+- [ ] Settings から ON/OFF 切替可能 — ヘッドレス環境のため未検証

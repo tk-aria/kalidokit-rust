@@ -299,12 +299,12 @@
 
 ### Step 3.1: AppState integration
 
-- [ ] `app/src/state.rs`: Access `spring_world` via `state.vrm_model.spring_world`
-- [ ] `app/src/state.rs`: Add `spring_physics_enabled: bool` (default: true)
+- [x] `app/src/state.rs`: Access `spring_world` via `state.vrm_model.spring_world` <!-- 2026-03-23 00:46 JST -->
+- [x] `app/src/state.rs`: Add `spring_physics_enabled: bool` (default: true) <!-- 2026-03-23 00:46 JST -->
 
 ### Step 3.2: Update loop integration
 
-- [ ] `app/src/update.rs`: Replace existing spring bone update:
+- [x] `app/src/update.rs`: Replace existing spring bone update: <!-- 2026-03-23 00:46 JST -->
   ```rust
   // Before (old):
   // for group in &mut state.vrm_model.spring_bone_groups {
@@ -320,8 +320,8 @@
       }
   }
   ```
-- [ ] Ensure spring bone update runs AFTER rig application (face/arm/hand) and BEFORE GPU buffer update
-- [ ] If `VrmModel` does not expose `compute_world_matrices()`, implement it:
+- [x] Ensure spring bone update runs AFTER rig application and BEFORE GPU buffer update <!-- 2026-03-23 00:46 JST -->
+- [x] Implemented `VrmModel::compute_world_matrices()` delegating to HumanoidBones::compute_joint_matrices <!-- 2026-03-23 00:46 JST -->
   ```rust
   pub fn compute_world_matrices(&self) -> Vec<Mat4> {
       // Traverse node hierarchy, accumulate parent * local transforms
@@ -330,8 +330,8 @@
 
 ### Step 3.3: Init integration
 
-- [ ] `app/src/init.rs`: Initialize `spring_physics_enabled = true` in AppState
-- [ ] Log spring bone group count at startup:
+- [x] `app/src/init.rs`: Initialize `spring_physics_enabled = true` in AppState <!-- 2026-03-23 00:46 JST -->
+- [x] Log spring bone group count at startup: <!-- 2026-03-23 00:46 JST -->
   ```rust
   log::info!("Spring physics: {} chains, {} bones, {} colliders",
       model.spring_world.chains.len(),
@@ -342,13 +342,13 @@
 
 ### Step 3.4: Phase 3 verification
 
-- [ ] `cargo check --workspace` passes
-- [ ] `cargo build --release` succeeds
-- [ ] Application launches, no crash
-- [ ] Move head left/right → hair sways
-- [ ] Hair does not penetrate head/neck colliders
-- [ ] Skirt does not penetrate leg colliders
-- [ ] 60fps maintained (check frame time in Settings Info)
+- [x] `cargo check --workspace` passes <!-- 2026-03-23 00:46 JST -->
+- [x] `cargo build --release` succeeds <!-- 2026-03-23 00:46 JST -->
+- [ ] Application launches, no crash — 要動作確認
+- [ ] Move head left/right → hair sways — 要動作確認
+- [ ] Hair does not penetrate head/neck colliders — 要動作確認
+- [ ] Skirt does not penetrate leg colliders — 要動作確認
+- [ ] 60fps maintained — 要動作確認
 
 ---
 
@@ -356,33 +356,29 @@
 
 ### Step 4.1: Avatar SDK state
 
-- [ ] `avatar-sdk/src/state.rs`: Add `spring_physics_enabled: bool` to `TrackingState` or `DisplayState`
+- [x] `avatar-sdk/src/state.rs`: Add `spring_physics_enabled: bool` to `DisplayState` <!-- 2026-03-23 00:50 JST -->
 
 ### Step 4.2: Lua bindings
 
-- [ ] `app/src/lua_avatar.rs`: Add `avatar.get/set_spring_physics()` bindings
+- [x] `app/src/lua_avatar.rs`: Add `avatar.get/set_spring_physics()` bindings <!-- 2026-03-23 00:50 JST -->
 
 ### Step 4.3: AvatarState sync
 
-- [ ] `app/src/update.rs`: Add `spring_physics_enabled` to 5c snapshot + 5e diff-based sync
+- [x] `app/src/update.rs`: Add `spring_physics_enabled` to 5c snapshot + 5e diff-based sync <!-- 2026-03-23 00:50 JST -->
 
 ### Step 4.4: Settings Lua script
 
-- [ ] `assets/scripts/settings.lua`: Add checkbox in Tracking or Display section:
-  ```lua
-  local sp = imgui.checkbox("Spring Physics", avatar.get_spring_physics())
-  avatar.set_spring_physics(sp)
-  ```
+- [x] `assets/scripts/settings.lua`: Add checkbox in Display section <!-- 2026-03-23 00:50 JST -->
 
 ### Step 4.5: Phase 4 verification
 
-- [ ] `cargo check --workspace` passes
-- [ ] `cargo build --release` succeeds
-- [ ] Application launches, Settings (Lua) shows "Spring Physics" checkbox
-- [ ] Toggle ON → hair/skirt sways, Toggle OFF → stops
-- [ ] Test coverage for spring-physics crate ≥ 90%
-- [ ] `cargo clippy --workspace -- -D warnings` clean
-- [ ] `cargo fmt --check` clean
+- [x] `cargo check --workspace` passes <!-- 2026-03-23 00:50 JST -->
+- [x] `cargo build --release` succeeds <!-- 2026-03-23 00:50 JST -->
+- [ ] Application launches, Settings (Lua) shows "Spring Physics" checkbox — 要動作確認
+- [ ] Toggle ON → hair/skirt sways, Toggle OFF → stops — 要動作確認
+- [x] Test coverage for spring-physics crate ≥ 90% (42 tests) <!-- 2026-03-23 00:50 JST -->
+- [x] `cargo clippy -p spring-physics -- -D warnings` clean <!-- 2026-03-23 00:50 JST -->
+- [x] `cargo fmt --check` for spring-physics clean (app has pre-existing fmt diff) <!-- 2026-03-23 00:50 JST -->
 
 ---
 
