@@ -207,11 +207,25 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             .vrm_model
             .spring_world
             .update(delta_time, &node_matrices);
-        // Apply physics results to node transforms
+        // Apply physics results to node transforms.
+        // bone_results() returns world-space rotations, but node_transforms stores
+        // local-space rotations. Convert: local = inverse(parent_world) * world.
         for result in state.vrm_model.spring_world.bone_results() {
-            if result.node_index < state.vrm_model.node_transforms.len() {
-                state.vrm_model.node_transforms[result.node_index].rotation =
-                    result.world_rotation;
+            let idx = result.node_index;
+            if idx < state.vrm_model.node_transforms.len() {
+                // Get parent world rotation from the matrices we just computed
+                let parent_world_rot = state
+                    .vrm_model
+                    .node_parents()
+                    .get(idx)
+                    .copied()
+                    .flatten()
+                    .and_then(|parent_idx| node_matrices.get(parent_idx))
+                    .map(|m| glam::Quat::from_mat4(m))
+                    .unwrap_or(glam::Quat::IDENTITY);
+
+                let local_rotation = parent_world_rot.inverse() * result.world_rotation;
+                state.vrm_model.node_transforms[idx].rotation = local_rotation;
             }
         }
     }

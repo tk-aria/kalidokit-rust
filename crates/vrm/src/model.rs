@@ -86,10 +86,17 @@ pub struct VrmModel {
     /// New spring physics world built from VRM secondaryAnimation.
     /// Replaces `spring_bone_groups` (which is kept for backward compatibility).
     pub spring_world: SpringWorld,
+    /// Parent index for each glTF node (None for root nodes).
+    pub node_parent_indices: Vec<Option<usize>>,
     pub look_at: Option<LookAtApplyer>,
 }
 
 impl VrmModel {
+    /// Get node parent indices.
+    pub fn node_parents(&self) -> &[Option<usize>] {
+        &self.node_parent_indices
+    }
+
     /// Compute world-space matrices for all nodes via forward kinematics.
     ///
     /// Delegates to `HumanoidBones::compute_joint_matrices` which performs

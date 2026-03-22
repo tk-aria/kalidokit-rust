@@ -405,6 +405,7 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
         node_transforms,
         spring_bone_groups,
         spring_world,
+        node_parent_indices: node_parents,
         look_at,
     })
 }
