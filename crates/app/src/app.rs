@@ -324,6 +324,13 @@ impl ApplicationHandler for App {
                                     log::info!("Always on top: {}", state.mascot.always_on_top);
                                 }
                             }
+                            KeyCode::KeyL => {
+                                state.avatar_on_top = !state.avatar_on_top;
+                                log::info!(
+                                    "Render order: {}",
+                                    if state.avatar_on_top { "Avatar on top" } else { "ImGui on top" }
+                                );
+                            }
                             _ => {}
                         }
                     }

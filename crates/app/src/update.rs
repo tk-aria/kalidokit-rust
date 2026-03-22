@@ -374,8 +374,11 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             .tick_background(&state.render_ctx.queue, elapsed);
     }
 
-    // 5b. Main 3D scene render
-    state.scene.render_to_view(&state.render_ctx, &view);
+    // 5b. Main 3D scene render (order depends on avatar_on_top setting)
+    if !state.avatar_on_top {
+        // Default: avatar first, ImGui on top
+        state.scene.render_to_view(&state.render_ctx, &view);
+    }
 
     // 5b. Debug overlay: camera preview + landmark visualization
     if let Some(camera_frame) = &state.last_camera_frame {
@@ -434,6 +437,7 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         av.display.camera_distance = state.camera_distance;
         av.display.model_offset = state.model_offset;
         av.display.bg_image_path = state.background.image_path.clone().unwrap_or_default();
+        av.display.avatar_on_top = state.avatar_on_top;
         av.tracking.tracking_enabled = state.tracking_enabled;
         av.tracking.auto_blink = state.blink_mode == crate::auto_blink::BlinkMode::Auto;
         av.tracking.idle_animation = state.idle_animation.as_ref().map_or(false, |a| a.enabled);
@@ -960,6 +964,11 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         }
     }
 
+    // 5d-2. Avatar on top mode: render 3D scene AFTER ImGui (overlay, no clear)
+    if state.avatar_on_top {
+        state.scene.render_to_view_overlay(&state.render_ctx, &view);
+    }
+
     // 5e. Sync AvatarState → AppState (only Lua-modified fields)
     // Compare current AvatarState against snapshot taken before Lua ran.
     // Only apply values that Lua actually changed (avoids overwriting wheel/keyboard input).
@@ -986,6 +995,9 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         }
         if av.display.model_offset != snap.display.model_offset {
             state.model_offset = av.display.model_offset;
+        }
+        if av.display.avatar_on_top != snap.display.avatar_on_top {
+            state.avatar_on_top = av.display.avatar_on_top;
         }
         // Tracking
         if av.tracking.tracking_enabled != snap.tracking.tracking_enabled {
