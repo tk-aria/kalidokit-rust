@@ -72,3 +72,30 @@ pub struct PluginVTable {
 ///
 /// Plugins export: `#[no_mangle] pub extern "C" fn plugin_entry() -> *const PluginVTable`
 pub type PluginEntryFn = extern "C" fn() -> *const PluginVTable;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_interface_version() {
+        assert_eq!(INTERFACE_VERSION, 1);
+    }
+
+    #[test]
+    fn test_plugin_entry_symbol() {
+        assert_eq!(PLUGIN_ENTRY_SYMBOL, "plugin_entry");
+    }
+
+    #[test]
+    fn test_plugin_vtable_is_repr_c_size() {
+        // PluginVTable has 6 fields:
+        // u32 (+ padding) + 5 fn pointers
+        // On 64-bit: u32(4) + padding(4) + 5*8 = 48 bytes
+        let size = std::mem::size_of::<PluginVTable>();
+        #[cfg(target_pointer_width = "64")]
+        assert_eq!(size, 48, "PluginVTable should be 48 bytes on 64-bit");
+        #[cfg(target_pointer_width = "32")]
+        assert_eq!(size, 24, "PluginVTable should be 24 bytes on 32-bit");
+    }
+}

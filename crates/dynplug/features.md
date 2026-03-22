@@ -123,16 +123,16 @@ pub fn lib_filename(crate_name: &str) -> String { ... }
 
 ### Step 1-5: Phase 1 テスト
 
-- [ ] `platform.rs` に `#[cfg(test)] mod tests` を追加し、以下のテストを実装:
+- [x] `platform.rs` に `#[cfg(test)] mod tests` を追加し、以下のテストを実装: <!-- 2026-03-23 01:29 JST -->
   - 正常系: `lib_extension()` が現在の OS で正しい値を返す（macOS なら `"dylib"`）
   - 正常系: `lib_prefix()` が現在の OS で正しい値を返す
   - 正常系: `lib_filename("my-plugin")` → `"libmy_plugin.dylib"` (macOS) etc.
   - 正常系: `lib_filename("simple")` → ハイフンなしのケース
   - 異常系: `lib_filename("")` → 空文字列でもパニックしない（空のファイル名が返る）
-- [ ] `error.rs` に `#[cfg(test)] mod tests` を追加し、以下のテストを実装:
+- [x] `error.rs` に `#[cfg(test)] mod tests` を追加し、以下のテストを実装: <!-- 2026-03-23 01:29 JST -->
   - 正常系: 各 `PluginError` バリアントの `Display` 出力が期待通りか
   - 正常系: `PluginError::Io` への `From<std::io::Error>` 変換が動作するか
-- [ ] `api.rs` に `#[cfg(test)] mod tests` を追加し、以下のテストを実装:
+- [x] `api.rs` に `#[cfg(test)] mod tests` を追加し、以下のテストを実装: <!-- 2026-03-23 01:29 JST -->
   - 正常系: `INTERFACE_VERSION` が 1 であること
   - 正常系: `PLUGIN_ENTRY_SYMBOL` が `"plugin_entry"` であること
   - 正常系: `PluginVTable` が `#[repr(C)]` であり `std::mem::size_of` が期待通りか（ポインタサイズ依存）
