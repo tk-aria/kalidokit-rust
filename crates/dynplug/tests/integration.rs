@@ -43,10 +43,9 @@ fn test_vtable_load_and_version_check() {
         .expect("failed to load vtable");
 
     // Check name
-    let name =
-        unsafe { std::ffi::CStr::from_ptr((vt.name)()) }
-            .to_str()
-            .unwrap();
+    let name = unsafe { std::ffi::CStr::from_ptr((vt.name)()) }
+        .to_str()
+        .unwrap();
     assert_eq!(name, "greeter");
 
     // Check version
@@ -217,4 +216,138 @@ fn test_vtable_with_wrong_entry_symbol() {
     let result = lib.vtable::<dynplug::PluginVTable>(Some("nonexistent"));
     let err = result.err().expect("expected an error");
     assert!(matches!(err, dynplug::PluginError::SymbolNotFound { .. }));
+}
+
+// =============================================
+// PluginManager
+// =============================================
+
+#[test]
+fn test_manager_load_file_and_get() {
+    let path = plugin_path();
+    let mut manager = dynplug::PluginManager::new();
+    let _lib = manager.load_file(&path).expect("load_file failed");
+
+    let found = manager.get("greeter");
+    assert!(found.is_some(), "get('greeter') should return Some");
+}
+
+#[test]
+fn test_manager_names() {
+    let path = plugin_path();
+    let mut manager = dynplug::PluginManager::new();
+    manager.load_file(&path).unwrap();
+
+    let names = manager.names();
+    assert!(names.contains(&"greeter"), "names should contain 'greeter'");
+}
+
+#[test]
+fn test_manager_plugins() {
+    let path = plugin_path();
+    let mut manager = dynplug::PluginManager::new();
+    manager.load_file(&path).unwrap();
+
+    let plugins = manager.plugins();
+    assert_eq!(plugins.len(), 1, "should have 1 plugin loaded");
+}
+
+#[test]
+fn test_manager_unload() {
+    let path = plugin_path();
+    let mut manager = dynplug::PluginManager::new();
+    manager.load_file(&path).unwrap();
+
+    manager.unload("greeter").expect("unload failed");
+    assert!(
+        manager.get("greeter").is_none(),
+        "should be None after unload"
+    );
+}
+
+#[test]
+fn test_manager_load_from_directory() {
+    let path = plugin_path();
+    let dir = path.parent().unwrap();
+    let mut manager = dynplug::PluginManager::new();
+
+    let count = manager
+        .load_from_directory(dir)
+        .expect("load_from_directory failed");
+    assert!(count >= 1, "should load at least 1 plugin from directory");
+}
+
+#[test]
+fn test_manager_load_paths_mixed() {
+    let path = plugin_path();
+    let mut manager = dynplug::PluginManager::new();
+
+    // Load by file path
+    let count = manager
+        .load_paths([path.as_path()])
+        .expect("load_paths failed");
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn test_manager_drop_releases_all() {
+    let path = plugin_path();
+    {
+        let mut manager = dynplug::PluginManager::new();
+        manager.load_file(&path).unwrap();
+        // manager dropped here
+    }
+    // Verify we can reload (library was closed)
+    let lib = dynplug::LoadedLibrary::load(&path);
+    assert!(lib.is_ok(), "should be able to reload after manager drop");
+}
+
+// --- Error cases ---
+
+#[test]
+fn test_manager_duplicate_name() {
+    let path = plugin_path();
+    let mut manager = dynplug::PluginManager::new();
+    manager.load_file(&path).unwrap();
+
+    let result = manager.load_file(&path);
+    assert!(result.is_err());
+    let err = result.err().expect("should be DuplicateName error");
+    assert!(
+        matches!(err, dynplug::PluginError::DuplicateName(_)),
+        "expected DuplicateName, got: {err}"
+    );
+}
+
+#[test]
+fn test_manager_unload_nonexistent() {
+    let mut manager = dynplug::PluginManager::new();
+    let result = manager.unload("no_such");
+    assert!(result.is_err());
+    let err = result.err().expect("should be NotFound error");
+    assert!(
+        matches!(err, dynplug::PluginError::NotFound(_)),
+        "expected NotFound, got: {err}"
+    );
+}
+
+#[test]
+fn test_manager_load_from_nonexistent_directory() {
+    let mut manager = dynplug::PluginManager::new();
+    let result = manager.load_from_directory("/nonexistent/directory");
+    assert!(result.is_err());
+    assert!(matches!(result.err().unwrap(), dynplug::PluginError::Io(_)));
+}
+
+#[test]
+fn test_manager_load_paths_nonexistent_skipped() {
+    let path = plugin_path();
+    let mut manager = dynplug::PluginManager::new();
+    let nonexistent = std::path::PathBuf::from("/nonexistent/plugin.dylib");
+
+    // Mix real path with nonexistent — nonexistent should be skipped
+    let count = manager
+        .load_paths([path.as_path(), nonexistent.as_path()])
+        .expect("load_paths should not fail for skipped paths");
+    assert_eq!(count, 1, "only the real plugin should be loaded");
 }

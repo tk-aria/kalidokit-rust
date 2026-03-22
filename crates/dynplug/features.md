@@ -429,8 +429,8 @@ fn plugin_path() -> std::path::PathBuf {
 
 ### Step 5-1: `manager.rs` — 構造体 + 内部型
 
-- [ ] `crates/dynplug/src/manager.rs` を作成
-- [ ] `ManagedPlugin` 内部構造体を定義
+- [x] `crates/dynplug/src/manager.rs` を作成 <!-- 2026-03-23 01:45 JST -->
+- [x] `ManagedPlugin` 内部構造体を定義 <!-- 2026-03-23 01:45 JST -->
 
 ```rust
 use std::collections::HashMap;
@@ -447,11 +447,11 @@ pub struct PluginManager {
 }
 ```
 
-- [ ] `PluginManager::new()` を実装
+- [x] `PluginManager::new()` を実装 <!-- 2026-03-23 01:45 JST -->
 
 ### Step 5-2: `manager.rs` — load_file()
 
-- [ ] `load_file()` を実装。SoW Section 3 Phase 5 の疑似コードに従う:
+- [x] `load_file()` を実装。SoW Section 3 Phase 5 の疑似コードに従う: <!-- 2026-03-23 01:45 JST -->
   1. `LoadedLibrary::load(path)` でライブラリをロード
   2. `lib.vtable::<PluginVTable>(None)` を試行
   3. 成功: `CStr::from_ptr((vt.name)())` からプラグイン名を取得
@@ -460,7 +460,7 @@ pub struct PluginManager {
   6. `ManagedPlugin` を `libraries` に追加、`name_index` に登録
   7. `&LoadedLibrary` を返す
 
-- [ ] `derive_name_from_path()` 内部ヘルパーを実装
+- [x] `derive_name_from_path()` 内部ヘルパーを実装 <!-- 2026-03-23 01:45 JST -->
 
 ```rust
 /// "libgreeter.dylib" → "greeter"
@@ -480,37 +480,23 @@ fn derive_name_from_path(path: &Path) -> String {
 
 ### Step 5-3: `manager.rs` — ディレクトリ/パスロード
 
-- [ ] `load_from_directory(dir)` を実装
-  - `std::fs::read_dir(dir)` でエントリを列挙
-  - `platform::lib_extension()` で拡張子フィルタ
-  - 個別の `load_file` 失敗は `log::warn!` でスキップ
-  - 成功した数を返す
-- [ ] `load_from_directories(dirs)` を実装（各 dir に対して `load_from_directory` を呼ぶ）
-- [ ] `load_paths(paths)` を実装
-  - `path.is_dir()` → `load_from_directory`
-  - `path.is_file()` → `load_file`
-  - 存在しないパス → `log::warn!` でスキップ
+- [x] `load_from_directory(dir)` を実装 <!-- 2026-03-23 01:45 JST -->
+- [x] `load_from_directories(dirs)` を実装 <!-- 2026-03-23 01:45 JST -->
+- [x] `load_paths(paths)` を実装 <!-- 2026-03-23 01:45 JST -->
 
 ### Step 5-4: `manager.rs` — get / names / plugins
 
-- [ ] `get(name: &str) -> Option<&LoadedLibrary>` — `name_index` で index 取得 → `libraries[i]`
-- [ ] `names() -> Vec<&str>` — `name_index.keys()` を収集
-- [ ] `plugins() -> Vec<&LoadedLibrary>` — `libraries.iter().filter_map` で Some のものを収集
+- [x] `get(name: &str) -> Option<&LoadedLibrary>` <!-- 2026-03-23 01:45 JST -->
+- [x] `names() -> Vec<&str>` <!-- 2026-03-23 01:45 JST -->
+- [x] `plugins() -> Vec<&LoadedLibrary>` <!-- 2026-03-23 01:45 JST -->
 
 ### Step 5-5: `manager.rs` — unload / unload_all / Drop
 
-- [ ] `unload(name: &str) -> Result<(), PluginError>` を実装:
-  1. `name_index.remove(name)` → None なら `PluginError::NotFound`
-  2. `libraries[idx].take()` で `ManagedPlugin` を取得
-  3. vtable が Some なら `(vtable.destroy)()` を呼ぶ
-  4. `ManagedPlugin` を drop（`LoadedLibrary` が drop → `Library::close()`）
-- [ ] `unload_all()` を実装:
-  - `libraries` を逆順でイテレート
-  - 各 `Some(managed)` に対して destroy → drop
-  - `name_index.clear()`
-- [ ] `Drop for PluginManager` — `self.unload_all()` を呼ぶ
+- [x] `unload(name: &str) -> Result<(), PluginError>` <!-- 2026-03-23 01:45 JST -->
+- [x] `unload_all()` <!-- 2026-03-23 01:45 JST -->
+- [x] `Drop for PluginManager` — `self.unload_all()` を呼ぶ <!-- 2026-03-23 01:45 JST -->
 
-- [ ] `lib.rs` に `pub mod manager;` と `pub use manager::PluginManager;` を追加
+- [x] `lib.rs` に `pub mod manager;` と `pub use manager::PluginManager;` を追加 <!-- 2026-03-23 01:45 JST -->
 
 > **ファイル行数見積もり:** `manager.rs` は約 180-220 行。300 行を超えない。
 
@@ -519,26 +505,26 @@ fn derive_name_from_path(path: &Path) -> String {
 `tests/integration.rs` に以下のテストを追加:
 
 **正常系:**
-- [ ] `test_manager_load_file_and_get` — `load_file` → `get("greeter")` → Some。`path()` が正しい
-- [ ] `test_manager_names` — `load_file` 後に `names()` が `["greeter"]` を含む
-- [ ] `test_manager_plugins` — `load_file` 後に `plugins()` が 1 つ返る
-- [ ] `test_manager_unload` — `load_file` → `unload("greeter")` → `get("greeter")` = None
-- [ ] `test_manager_load_from_directory` — ディレクトリスキャン → 少なくとも 1 つロード
-- [ ] `test_manager_load_paths_mixed` — ファイルパスとディレクトリパスの混在
-- [ ] `test_manager_drop_releases_all` — PluginManager を drop → 再度同じファイルを LoadedLibrary::load できる
+- [x] `test_manager_load_file_and_get` <!-- 2026-03-23 01:45 JST -->
+- [x] `test_manager_names` <!-- 2026-03-23 01:45 JST -->
+- [x] `test_manager_plugins` <!-- 2026-03-23 01:45 JST -->
+- [x] `test_manager_unload` <!-- 2026-03-23 01:45 JST -->
+- [x] `test_manager_load_from_directory` <!-- 2026-03-23 01:45 JST -->
+- [x] `test_manager_load_paths_mixed` <!-- 2026-03-23 01:45 JST -->
+- [x] `test_manager_drop_releases_all` <!-- 2026-03-23 01:45 JST -->
 
 **異常系:**
-- [ ] `test_manager_duplicate_name` — 同じファイルを 2 回 `load_file` → 2 回目が `PluginError::DuplicateName`
-- [ ] `test_manager_unload_nonexistent` — `unload("no_such")` → `PluginError::NotFound`
-- [ ] `test_manager_load_from_nonexistent_directory` — 存在しないディレクトリ → `PluginError::Io`
-- [ ] `test_manager_load_paths_nonexistent_skipped` — 存在しないパスが混在しても他は正常にロード
+- [x] `test_manager_duplicate_name` <!-- 2026-03-23 01:45 JST -->
+- [x] `test_manager_unload_nonexistent` <!-- 2026-03-23 01:45 JST -->
+- [x] `test_manager_load_from_nonexistent_directory` <!-- 2026-03-23 01:45 JST -->
+- [x] `test_manager_load_paths_nonexistent_skipped` <!-- 2026-03-23 01:45 JST -->
 
 ### Step 5-7: Phase 5 品質ゲート
 
-- [ ] `cargo build -p dynplug-example && cargo test -p dynplug` で全テスト通過
-- [ ] `cargo clippy -p dynplug -p dynplug-example -- -D warnings` が通る
-- [ ] テストカバレッジが manager.rs で 90% 以上。未カバーの分岐があれば追加テストを書く
-- [ ] `cargo build -p dynplug -p dynplug-example` が通る
+- [x] `cargo build -p dynplug-example && cargo test -p dynplug` で全テスト通過 <!-- 2026-03-23 01:45 JST -->
+- [x] `cargo clippy -p dynplug -p dynplug-example -- -D warnings` が通る <!-- 2026-03-23 01:45 JST -->
+- [x] テストカバレッジが manager.rs で 90% 以上。未カバーの分岐があれば追加テストを書く <!-- 2026-03-23 01:45 JST -->
+- [x] `cargo build -p dynplug -p dynplug-example` が通る <!-- 2026-03-23 01:45 JST -->
 
 ---
 

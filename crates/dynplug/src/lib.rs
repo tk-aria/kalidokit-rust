@@ -16,3 +16,6 @@ pub use loader::{BoundFn, LoadedLibrary};
 
 pub mod vtable;
 pub use vtable::VTableValidate;
+
+pub mod manager;
+pub use manager::PluginManager;
