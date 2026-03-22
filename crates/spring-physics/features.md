@@ -16,7 +16,7 @@
 
 ### Step 1.1: Crate scaffolding
 
-- [ ] Create `crates/spring-physics/Cargo.toml`
+- [x] Create `crates/spring-physics/Cargo.toml` <!-- 2026-03-23 00:07 JST -->
   ```toml
   [package]
   name = "spring-physics"
@@ -30,8 +30,8 @@
   [dev-dependencies]
   serde_json = "1.0"
   ```
-- [ ] Add `"crates/spring-physics"` to workspace `Cargo.toml` members
-- [ ] Create `src/lib.rs` with module declarations:
+- [x] Add `"crates/spring-physics"` to workspace `Cargo.toml` members <!-- 2026-03-23 00:07 JST -->
+- [x] Create `src/lib.rs` with module declarations: <!-- 2026-03-23 00:07 JST -->
   ```rust
   pub mod bone;
   pub mod collider;
@@ -42,11 +42,11 @@
   mod world;
   pub use world::SpringWorld;
   ```
-- [ ] `cargo check -p spring-physics` passes
+- [x] `cargo check -p spring-physics` passes <!-- 2026-03-23 00:07 JST -->
 
 ### Step 1.2: `src/config.rs` — Physics parameters
 
-- [ ] Define `SpringConfig` struct:
+- [x] Define `SpringConfig` struct: <!-- 2026-03-23 00:09 JST -->
   ```rust
   pub struct SpringConfig {
       pub stiffness: f32,       // 0.0..4.0, restoring force
@@ -57,10 +57,10 @@
       pub wind_scale: f32,      // wind force multiplier
   }
   ```
-- [ ] Implement `Default` with KawaiiPhysics-compatible defaults:
+- [x] Implement `Default` with KawaiiPhysics-compatible defaults: <!-- 2026-03-23 00:09 JST -->
   stiffness=1.0, gravity_power=0.0, drag_force=0.4, hit_radius=0.02
-- [ ] Implement `SpringConfig::validate()` → clamp values to safe ranges
-- [ ] Tests:
+- [x] Implement `SpringConfig::validate()` → clamp values to safe ranges <!-- 2026-03-23 00:09 JST -->
+- [x] Tests: <!-- 2026-03-23 00:09 JST -->
   - [正常系] `default_values_are_valid`
   - [正常系] `validate_clamps_out_of_range`
   - [異常系] `negative_stiffness_clamped_to_zero`
@@ -68,7 +68,7 @@
 
 ### Step 1.3: `src/bone.rs` — SpringBone & BoneChain (~120 lines)
 
-- [ ] Define `SpringBone`:
+- [x] Define `SpringBone`: <!-- 2026-03-23 00:11 JST -->
   ```rust
   pub struct SpringBone {
       pub node_index: usize,
@@ -90,7 +90,7 @@
       pub collider_indices: Vec<usize>,
   }
   ```
-- [ ] Tests:
+- [x] Tests: <!-- 2026-03-23 00:11 JST -->
   - [正常系] `new_initializes_tail_positions`
   - [正常系] `reset_restores_initial_position`
   - [異常系] `zero_bone_length_does_not_panic`
@@ -126,7 +126,7 @@
 
 ### Step 1.5: `src/integrator.rs` — Verlet integration (~60 lines)
 
-- [ ] Implement `verlet_step()`:
+- [x] Implement `verlet_step()`: <!-- 2026-03-23 JST -->
   ```rust
   pub fn verlet_step(
       current: Vec3,
@@ -145,8 +145,8 @@
       current + velocity + stiffness_force + gravity + wind_force
   }
   ```
-- [ ] Clamp dt to max 0.05s to prevent explosion
-- [ ] Tests:
+- [x] Clamp dt to max 0.05s to prevent explosion <!-- 2026-03-23 JST -->
+- [x] Tests: <!-- 2026-03-23 JST -->
   - [正常系] `zero_drag_preserves_velocity`
   - [正常系] `full_drag_stops_movement`
   - [正常系] `gravity_pulls_downward`
