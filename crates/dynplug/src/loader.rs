@@ -60,13 +60,12 @@ impl LoadedLibrary {
             path: self.path.display().to_string(),
         })?;
         unsafe {
-            let sym = self
-                .lib
-                .get::<F>(c_name.as_bytes_with_nul())
-                .map_err(|_| PluginError::SymbolNotFound {
+            let sym = self.lib.get::<F>(c_name.as_bytes_with_nul()).map_err(|_| {
+                PluginError::SymbolNotFound {
                     symbol: name.to_string(),
                     path: self.path.display().to_string(),
-                })?;
+                }
+            })?;
             Ok(BoundFn { sym })
         }
     }

@@ -235,8 +235,8 @@ impl LoadedLibrary {
 
 ### Step 3-1: `export.rs` — export_plugin! マクロ
 
-- [ ] `crates/dynplug/src/export.rs` を作成
-- [ ] `export_plugin!` マクロを実装する。RFC Section 5.6 の展開例に従い、以下の関数を生成する:
+- [x] `crates/dynplug/src/export.rs` を作成 <!-- 2026-03-23 01:35 JST -->
+- [x] `export_plugin!` マクロを実装する。RFC Section 5.6 の展開例に従い、以下の関数を生成する: <!-- 2026-03-23 01:35 JST -->
 
 ```rust
 /// マクロの入力形式:
@@ -264,13 +264,13 @@ impl LoadedLibrary {
 macro_rules! export_plugin { ... }
 ```
 
-- [ ] `lib.rs` に `pub mod export;` を追加（マクロは `#[macro_export]` で自動的にクレートルートにエクスポートされる）
+- [x] `lib.rs` に `pub mod export;` を追加（マクロは `#[macro_export]` で自動的にクレートルートにエクスポートされる） <!-- 2026-03-23 01:35 JST -->
 
 > **ファイル行数見積もり:** `export.rs` は約 100-120 行。300 行を超えない。
 
 ### Step 3-2: `dynplug-example/src/lib.rs` — サンプルプラグイン実装
 
-- [ ] SoW Section 3 Phase 3 の完全なコードをそのまま実装する:
+- [x] SoW Section 3 Phase 3 の完全なコードをそのまま実装する: <!-- 2026-03-23 01:35 JST -->
 
 ```rust
 dynplug::export_plugin! {
@@ -303,12 +303,12 @@ fn handle_invoke(method: &str, input: &[u8]) -> Result<Vec<u8>, String> {
 
 ### Step 3-3: Phase 3 品質ゲート
 
-- [ ] `cargo build -p dynplug-example` で cdylib が生成されることを確認:
+- [x] `cargo build -p dynplug-example` で cdylib が生成されることを確認: <!-- 2026-03-23 01:35 JST -->
   - macOS: `target/debug/libdynplug_example.dylib`
   - Linux: `target/debug/libdynplug_example.so`
   - Windows: `target/debug/dynplug_example.dll`
-- [ ] `cargo clippy -p dynplug -p dynplug-example -- -D warnings` が通る
-- [ ] `cargo build -p dynplug` が通る
+- [x] `cargo clippy -p dynplug -p dynplug-example -- -D warnings` が通る <!-- 2026-03-23 01:35 JST -->
+- [x] `cargo build -p dynplug` が通る <!-- 2026-03-23 01:35 JST -->
 
 ---
 
