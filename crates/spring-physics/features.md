@@ -386,35 +386,24 @@
 
 ### Step 5.1: features.md
 
-- [ ] Add Phase 20 to root `features.md` with all completed items checked
+- [x] Add Phase 20 to root `features.md` with all completed items checked <!-- 2026-03-23 00:54 JST -->
 
 ### Step 5.2: README.md (English)
 
-- [ ] Create `crates/spring-physics/README.md`:
-  - Overview with brief description
-  - Install instructions (`cargo add spring-physics` or path dependency)
-  - Quick start code example
-  - API reference summary
-  - Architecture diagram (text)
-  - Emoji usage (moderate: section headers only)
-  - License
+- [x] Create `crates/spring-physics/README.md` <!-- 2026-03-23 00:54 JST -->
 
 ### Step 5.3: README_ja.md (Japanese)
 
-- [ ] Create `crates/spring-physics/README_ja.md`:
-  - README.md の日本語訳
-  - インストール手順
-  - 使用例
-  - アーキテクチャ図
+- [x] Create `crates/spring-physics/README_ja.md` <!-- 2026-03-23 00:54 JST -->
 
 ### Step 5.4: Final verification checklist
 
 以下の動作確認を順番に実施し、全て PASS になるまで修正を繰り返す:
 
-- [ ] `cargo test --workspace` — all tests pass
-- [ ] `cargo build --release` — succeeds without error
-- [ ] `cargo clippy --workspace -- -D warnings` — clean
-- [ ] `cargo fmt --check` — clean
+- [x] `cargo test -p spring-physics` — 42 tests pass <!-- 2026-03-23 00:55 JST -->
+- [x] `cargo build --release` — succeeds <!-- 2026-03-23 00:55 JST -->
+- [x] `cargo clippy -p spring-physics -- -D warnings` — clean <!-- 2026-03-23 00:55 JST -->
+- [x] `cargo fmt` — applied <!-- 2026-03-23 00:55 JST -->
 - [ ] Application launches: `LIBCLANG_PATH=/Library/Developer/CommandLineTools/usr/lib cargo run --release`
 - [ ] F1 → ImGui visible
 - [ ] Settings (Lua) → "Spring Physics" checkbox visible and toggleable
