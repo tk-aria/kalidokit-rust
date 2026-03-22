@@ -17,5 +17,11 @@ pub use loader::{BoundFn, LoadedLibrary};
 pub mod vtable;
 pub use vtable::VTableValidate;
 
+pub mod define;
+
 pub mod manager;
 pub use manager::PluginManager;
+
+// Re-export paste for use in define_plugin! macro.
+#[doc(hidden)]
+pub use paste;

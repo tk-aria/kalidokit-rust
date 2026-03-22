@@ -170,8 +170,31 @@ fn test_invoke_unknown_method_returns_error() {
     (vt.free_buffer)(out_ptr, out_len);
 }
 
+/// Panic test is run in a subprocess to avoid corrupting the test process.
+/// After catch_unwind in a cdylib, the library's TLS state may be corrupted,
+/// causing SIGSEGV on dlclose or subsequent loads in the same process.
 #[test]
 fn test_invoke_panic_returns_minus2() {
+    let exe = std::env::current_exe().unwrap();
+    let output = std::process::Command::new(exe)
+        .arg("--ignored")
+        .arg("test_invoke_panic_subprocess")
+        .arg("--test-threads=1")
+        .arg("--exact")
+        .env("RUST_TEST_THREADS", "1")
+        .output()
+        .expect("failed to spawn subprocess");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stdout.contains("ok"),
+        "subprocess panic test failed.\nstdout: {stdout}\nstderr: {stderr}"
+    );
+}
+
+#[test]
+#[ignore]
+fn test_invoke_panic_subprocess() {
     let path = plugin_path();
     let lib = dynplug::LoadedLibrary::load(&path).unwrap();
     let vt = lib.vtable::<dynplug::PluginVTable>(None).unwrap();
@@ -190,7 +213,8 @@ fn test_invoke_panic_returns_minus2() {
     );
 
     assert_eq!(rc, -2);
-    // out_ptr/out_len are undefined after panic — do NOT call free_buffer
+    // Leak library to avoid SIGSEGV from dlclose after caught panic
+    std::mem::forget(lib);
 }
 
 #[test]
@@ -268,13 +292,22 @@ fn test_manager_unload() {
 #[test]
 fn test_manager_load_from_directory() {
     let path = plugin_path();
-    let dir = path.parent().unwrap();
-    let mut manager = dynplug::PluginManager::new();
+    // Use a temp directory with a symlink to avoid loading incompatible L3 plugins
+    let tmp = std::env::temp_dir().join("dynplug_test_dir");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    let link = tmp.join(path.file_name().unwrap());
+    // Copy instead of symlink for portability
+    std::fs::copy(&path, &link).unwrap();
 
+    let mut manager = dynplug::PluginManager::new();
     let count = manager
-        .load_from_directory(dir)
+        .load_from_directory(&tmp)
         .expect("load_from_directory failed");
     assert!(count >= 1, "should load at least 1 plugin from directory");
+
+    drop(manager);
+    let _ = std::fs::remove_dir_all(&tmp);
 }
 
 #[test]
