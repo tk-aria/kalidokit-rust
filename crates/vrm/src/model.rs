@@ -88,3 +88,14 @@ pub struct VrmModel {
     pub spring_world: SpringWorld,
     pub look_at: Option<LookAtApplyer>,
 }
+
+impl VrmModel {
+    /// Compute world-space matrices for all nodes via forward kinematics.
+    ///
+    /// Delegates to `HumanoidBones::compute_joint_matrices` which performs
+    /// BFS traversal of the node hierarchy.
+    pub fn compute_world_matrices(&self) -> Vec<Mat4> {
+        self.humanoid_bones
+            .compute_joint_matrices(&self.node_transforms)
+    }
+}

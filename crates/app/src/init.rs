@@ -104,6 +104,19 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
             .emit();
     }
 
+    // Log spring physics configuration
+    log::info!(
+        "Spring physics: {} chains, {} bones, {} colliders",
+        vrm_model.spring_world.chains.len(),
+        vrm_model
+            .spring_world
+            .chains
+            .iter()
+            .map(|c| c.bones.len())
+            .sum::<usize>(),
+        vrm_model.spring_world.colliders.len(),
+    );
+
     // 3. Create GPU scene from VRM model meshes
     let vertices_list: Vec<(&[Vertex], &[u32])> = vrm_model
         .meshes
@@ -398,6 +411,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         drawio_graph: None,
         avatar_handle,
         avatar_on_top: false,
+        spring_physics_enabled: true,
     })
 }
 

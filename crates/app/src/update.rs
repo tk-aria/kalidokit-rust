@@ -198,10 +198,22 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         state.rig_dirty = false;
     }
 
-    // 3.5. Update spring bone physics
-    let delta_time = elapsed.as_secs_f32();
-    for group in &mut state.vrm_model.spring_bone_groups {
-        group.update(delta_time, glam::Vec3::ZERO);
+    // 3.5. Update spring bone physics (using spring-physics crate)
+    if state.spring_physics_enabled {
+        let delta_time = elapsed.as_secs_f32();
+        // Compute world matrices for all nodes
+        let node_matrices = state.vrm_model.compute_world_matrices();
+        state
+            .vrm_model
+            .spring_world
+            .update(delta_time, &node_matrices);
+        // Apply physics results to node transforms
+        for result in state.vrm_model.spring_world.bone_results() {
+            if result.node_index < state.vrm_model.node_transforms.len() {
+                state.vrm_model.node_transforms[result.node_index].rotation =
+                    result.world_rotation;
+            }
+        }
     }
 
     // 4. Update GPU buffers

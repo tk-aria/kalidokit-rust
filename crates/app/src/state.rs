@@ -108,6 +108,8 @@ pub struct AppState {
     pub avatar_handle: crate::lua_avatar::AvatarHandle,
     /// Render order: true = avatar on top of ImGui, false = ImGui on top (default).
     pub avatar_on_top: bool,
+    /// Whether spring bone physics simulation is enabled.
+    pub spring_physics_enabled: bool,
 }
 
 /// Visibility state for each ImGui panel.
