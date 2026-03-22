@@ -316,21 +316,28 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         scene.set_clear_alpha(0.0);
     }
 
-    // 7. Initialize Lua-ImGui overlay
-    let lua_imgui = match lua_imgui::LuaImgui::new(
-        &render_ctx.device,
-        &render_ctx.queue,
-        render_ctx.config.format,
-        &render_ctx.window,
-    ) {
-        Ok(mut li) => {
+    // 7. Initialize Lua-ImGui overlay (command buffer only — shares ImGui context)
+    let avatar_handle = crate::lua_avatar::AvatarHandle::new();
+    let lua_imgui = match lua_imgui::LuaImgui::new() {
+        Ok(li) => {
+            // Register avatar SDK bindings on the Lua runtime
+            if let Err(e) = crate::lua_avatar::register(&li, &avatar_handle) {
+                log::warn!("Failed to register avatar Lua bindings: {e}");
+            }
+            // Load UI scripts
             let script_path = std::path::Path::new("assets/scripts/ui.lua");
             if script_path.exists() {
                 if let Err(e) = li.load_script(script_path) {
                     log::warn!("Failed to load UI script: {e}");
                 }
             }
-            log::info!("Lua-ImGui initialized");
+            let settings_path = std::path::Path::new("assets/scripts/settings.lua");
+            if settings_path.exists() {
+                if let Err(e) = li.load_script(settings_path) {
+                    log::warn!("Failed to load settings script: {e}");
+                }
+            }
+            log::info!("Lua-ImGui initialized (command buffer mode + avatar SDK)");
             Some(li)
         }
         Err(e) => {
@@ -386,6 +393,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         code_editor: None,
         terminal: None,
         drawio_graph: None,
+        avatar_handle,
     })
 }
 

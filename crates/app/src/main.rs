@@ -2,6 +2,7 @@ mod app;
 mod auto_blink;
 mod drawio;
 mod init;
+mod lua_avatar;
 mod mascot;
 mod rig_config;
 mod state;

@@ -32,3 +32,4 @@ portable-pty = "0.8"
 vte = "0.13"
 dear-imgui-rs = "0.10"
 dear-file-browser = "0.10"
+avatar-sdk = { path = "../avatar-sdk" }

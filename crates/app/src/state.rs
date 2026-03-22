@@ -100,6 +100,8 @@ pub struct AppState {
     pub terminal: Option<crate::terminal::ImGuiTerminal>,
     /// Imported drawio graph for the node editor.
     pub drawio_graph: Option<crate::drawio::ImNodesGraph>,
+    /// Avatar SDK handle for Lua ↔ AppState bridge.
+    pub avatar_handle: crate::lua_avatar::AvatarHandle,
 }
 
 /// Visibility state for each ImGui panel.
