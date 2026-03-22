@@ -139,11 +139,11 @@ pub fn lib_filename(crate_name: &str) -> String { ... }
 
 ### Step 1-6: Phase 1 品質ゲート
 
-- [ ] `cargo test -p dynplug` で全テスト通過
-- [ ] `cargo clippy -p dynplug -p dynplug-example -- -D warnings` が通る
-- [ ] `cargo fmt -p dynplug --check` が通る
-- [ ] `cargo check -p dynplug && cargo check -p dynplug-example` が通る
-- [ ] テストカバレッジが Phase 1 対象コード（error.rs, platform.rs, api.rs）で 90% 以上。未カバーの行があれば追加テストを書く
+- [x] `cargo test -p dynplug` で全テスト通過 <!-- 2026-03-23 01:31 JST -->
+- [x] `cargo clippy -p dynplug -p dynplug-example -- -D warnings` が通る <!-- 2026-03-23 01:31 JST -->
+- [x] `cargo fmt -p dynplug --check` が通る <!-- 2026-03-23 01:31 JST -->
+- [x] `cargo check -p dynplug && cargo check -p dynplug-example` が通る <!-- 2026-03-23 01:31 JST -->
+- [x] テストカバレッジが Phase 1 対象コード（error.rs, platform.rs, api.rs）で 90% 以上。未カバーの行があれば追加テストを書く <!-- 2026-03-23 01:31 JST -->
 
 ---
 

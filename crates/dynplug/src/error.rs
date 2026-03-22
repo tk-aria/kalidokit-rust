@@ -12,8 +12,14 @@ pub enum PluginError {
     SymbolNotFound { symbol: String, path: String },
 
     /// Interface version mismatch between host and plugin
-    #[error("interface version mismatch: host expects {host}, plugin has {plugin} (library: {path})")]
-    VersionMismatch { host: u32, plugin: u32, path: String },
+    #[error(
+        "interface version mismatch: host expects {host}, plugin has {plugin} (library: {path})"
+    )]
+    VersionMismatch {
+        host: u32,
+        plugin: u32,
+        path: String,
+    },
 
     /// Plugin entry function returned null vtable pointer
     #[error("plugin entry returned null vtable (library: {path})")]
@@ -62,10 +68,7 @@ mod tests {
             symbol: "foo".to_string(),
             path: "/tmp/test.so".to_string(),
         };
-        assert_eq!(
-            e.to_string(),
-            "symbol not found: 'foo' in '/tmp/test.so'"
-        );
+        assert_eq!(e.to_string(), "symbol not found: 'foo' in '/tmp/test.so'");
     }
 
     #[test]

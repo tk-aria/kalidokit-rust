@@ -42,11 +42,9 @@ pub struct PluginVTable {
     /// - out_len: On success, plugin writes output buffer length here
     ///
     /// # Return values
-    /// -  0: Success. *out_ptr/*out_len contain output. Host must call free_buffer after use.
-    ///       If output is empty, *out_ptr = null, *out_len = 0 (no free_buffer needed).
-    /// - -1: Application error from plugin. *out_ptr/*out_len contain UTF-8 error message.
-    ///       Host must read then call free_buffer.
-    /// - -2: Plugin panicked. out_ptr/out_len are undefined. Do NOT call free_buffer.
+    /// - `0`: Success. Host must call `free_buffer` after use. Empty output: `*out_ptr = null`.
+    /// - `-1`: Application error. `*out_ptr`/`*out_len` contain UTF-8 error message. Call `free_buffer`.
+    /// - `-2`: Plugin panicked. `out_ptr`/`out_len` are undefined. Do NOT call `free_buffer`.
     pub invoke: extern "C" fn(
         method_ptr: *const u8,
         method_len: usize,
