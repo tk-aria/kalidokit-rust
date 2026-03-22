@@ -56,14 +56,15 @@ dynplug = { path = "../dynplug" }
 
 ### Step 1-2: `error.rs` — エラー型定義
 
-- [ ] `crates/dynplug/src/error.rs` を作成。RFC Section 5.2 のコードをそのまま実装する
+- [x] `crates/dynplug/src/error.rs` を作成。RFC Section 5.2 のコードをそのまま実装する <!-- 2026-03-23 01:27 JST -->
 
 ```rust
 // 参考: 全バリアントと derive, From 実装
+// NOTE: thiserror が `source` フィールド名を #[source] として解釈するため `reason` に変更
 #[derive(Debug, thiserror::Error)]
 pub enum PluginError {
-    #[error("failed to load library '{path}': {source}")]
-    Load { path: String, source: String },
+    #[error("failed to load library '{path}': {reason}")]
+    Load { path: String, reason: String },
 
     #[error("symbol not found: '{symbol}' in '{path}'")]
     SymbolNotFound { symbol: String, path: String },
@@ -91,11 +92,11 @@ pub enum PluginError {
 }
 ```
 
-- [ ] `lib.rs` に `pub mod error;` と `pub use error::PluginError;` を追加
+- [x] `lib.rs` に `pub mod error;` と `pub use error::PluginError;` を追加 <!-- 2026-03-23 01:27 JST -->
 
 ### Step 1-3: `platform.rs` — プラットフォーム抽象
 
-- [ ] `crates/dynplug/src/platform.rs` を作成。以下の 3 関数を実装する（RFC Section 5.3）
+- [x] `crates/dynplug/src/platform.rs` を作成。以下の 3 関数を実装する（RFC Section 5.3） <!-- 2026-03-23 01:27 JST -->
 
 ```rust
 /// "so" / "dylib" / "dll" を返す
@@ -109,16 +110,16 @@ pub fn lib_prefix() -> &'static str { ... }
 pub fn lib_filename(crate_name: &str) -> String { ... }
 ```
 
-- [ ] `lib.rs` に `pub mod platform;` と `pub use platform::lib_filename;` を追加
+- [x] `lib.rs` に `pub mod platform;` と `pub use platform::lib_filename;` を追加 <!-- 2026-03-23 01:27 JST -->
 
 ### Step 1-4: `api.rs` — C ABI 共通型
 
-- [ ] `crates/dynplug/src/api.rs` を作成。RFC Section 5.1 の全コードを実装する
+- [x] `crates/dynplug/src/api.rs` を作成。RFC Section 5.1 の全コードを実装する <!-- 2026-03-23 01:27 JST -->
   - `INTERFACE_VERSION: u32 = 1`
   - `PLUGIN_ENTRY_SYMBOL: &str = "plugin_entry"`
   - `#[repr(C)] pub struct PluginVTable { ... }` — 全 6 フィールド（RFC のドキュメントコメント含む）
   - `pub type PluginEntryFn = extern "C" fn() -> *const PluginVTable;`
-- [ ] `lib.rs` に `pub mod api;` と `pub use api::{PluginVTable, PluginEntryFn, INTERFACE_VERSION, PLUGIN_ENTRY_SYMBOL};` を追加
+- [x] `lib.rs` に `pub mod api;` と `pub use api::{PluginVTable, PluginEntryFn, INTERFACE_VERSION, PLUGIN_ENTRY_SYMBOL};` を追加 <!-- 2026-03-23 01:27 JST -->
 
 ### Step 1-5: Phase 1 テスト
 
