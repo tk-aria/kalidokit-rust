@@ -34,7 +34,8 @@ impl SpringConfig {
     /// Clamp all fields to their valid ranges.
     pub fn validate(&mut self) {
         self.stiffness = self.stiffness.clamp(0.0, 4.0);
-        self.drag_force = self.drag_force.clamp(0.0, 1.0);
+        // Minimum drag to prevent undamped oscillation
+        self.drag_force = self.drag_force.clamp(0.3, 1.0);
         self.gravity_power = self.gravity_power.clamp(0.0, 10.0);
         self.hit_radius = self.hit_radius.clamp(0.0, 1.0);
         self.wind_scale = self.wind_scale.clamp(0.0, 10.0);
@@ -98,7 +99,7 @@ mod tests {
         cfg.validate();
         assert_eq!(cfg.stiffness, 0.0);
         assert_eq!(cfg.gravity_power, 0.0);
-        assert_eq!(cfg.drag_force, 0.0);
+        assert_eq!(cfg.drag_force, 0.3); // minimum drag to prevent undamped oscillation
         assert_eq!(cfg.hit_radius, 0.0);
         assert_eq!(cfg.wind_scale, 0.0);
     }

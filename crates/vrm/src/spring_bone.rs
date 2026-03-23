@@ -301,6 +301,7 @@ fn parse_vec3(value: &serde_json::Value, default: Vec3) -> Vec3 {
 pub fn build_spring_world(
     vrm_ext: &serde_json::Value,
     node_world_positions: &[Vec3],
+    node_world_rotations: &[glam::Quat],
     node_parents: &[Option<usize>],
 ) -> Result<SpringWorld, VrmError> {
     let secondary = match vrm_ext.get("secondaryAnimation") {
@@ -428,13 +429,16 @@ pub fn build_spring_world(
                     .unwrap_or(Vec3::ZERO);
 
                 let bone_length = (child_pos - parent_pos).length().max(1e-4);
-                let initial_local_dir = (child_pos - parent_pos).normalize_or_zero();
+                let world_dir = (child_pos - parent_pos).normalize_or_zero();
 
-                // If normalize produced zero (coincident positions), default to -Y.
-                let initial_local_dir = if initial_local_dir == Vec3::ZERO {
+                // Convert world direction to parent-local direction using parent's world rotation.
+                let parent_world_rot = parent_index
+                    .and_then(|pi| node_world_rotations.get(pi).copied())
+                    .unwrap_or(glam::Quat::IDENTITY);
+                let initial_local_dir = if world_dir == Vec3::ZERO {
                     Vec3::new(0.0, -1.0, 0.0)
                 } else {
-                    initial_local_dir
+                    parent_world_rot.inverse() * world_dir
                 };
 
                 bones.push(PhysSpringBone::new(
@@ -654,9 +658,10 @@ mod tests {
             Vec3::new(0.0, 1.0, 0.0),
             Vec3::new(0.0, 2.0, 0.0),
         ];
+        let rotations: Vec<glam::Quat> = positions.iter().map(|_| glam::Quat::IDENTITY).collect();
         let parents = vec![None, Some(0), Some(1)];
 
-        let world = build_spring_world(&json, &positions, &parents).unwrap();
+        let world = build_spring_world(&json, &positions, &rotations, &parents).unwrap();
         assert_eq!(world.chains.len(), 1, "should have 1 chain");
         assert_eq!(world.chains[0].bones.len(), 1, "chain should have 1 bone");
 
@@ -703,9 +708,10 @@ mod tests {
         .unwrap();
 
         let positions = vec![Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0)];
+        let rotations: Vec<glam::Quat> = positions.iter().map(|_| glam::Quat::IDENTITY).collect();
         let parents = vec![None, Some(0)];
 
-        let world = build_spring_world(&json, &positions, &parents).unwrap();
+        let world = build_spring_world(&json, &positions, &rotations, &parents).unwrap();
 
         // 2 colliders from the single collider group
         assert_eq!(world.colliders.len(), 2);
@@ -730,7 +736,7 @@ mod tests {
     #[test]
     fn missing_secondary_animation_returns_empty_world() {
         let json: serde_json::Value = serde_json::from_str(r#"{"title": "test"}"#).unwrap();
-        let world = build_spring_world(&json, &[], &[]).unwrap();
+        let world = build_spring_world(&json, &[], &[], &[]).unwrap();
         assert!(world.chains.is_empty());
         assert!(world.colliders.is_empty());
     }
@@ -757,9 +763,10 @@ mod tests {
 
         // Only 2 nodes available (indices 0 and 1); node 99 is out of bounds.
         let positions = vec![Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0)];
+        let rotations: Vec<glam::Quat> = positions.iter().map(|_| glam::Quat::IDENTITY).collect();
         let parents = vec![None, Some(0)];
 
-        let world = build_spring_world(&json, &positions, &parents).unwrap();
+        let world = build_spring_world(&json, &positions, &rotations, &parents).unwrap();
 
         // Only node 1 should be present; node 99 is skipped.
         assert_eq!(world.chains.len(), 1);

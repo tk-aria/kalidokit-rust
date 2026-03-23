@@ -5,10 +5,13 @@ use crate::collider::Collider;
 use crate::solver;
 
 /// Result of a spring bone physics step — rotation to apply to a node.
+///
+/// `local_rotation` should be set directly on the node's local rotation
+/// (i.e., `node_transforms[node_index].rotation = local_rotation`).
 #[derive(Debug, Clone, Copy)]
 pub struct BoneResult {
     pub node_index: usize,
-    pub world_rotation: Quat,
+    pub local_rotation: Quat,
 }
 
 /// Top-level container that owns all spring bone chains and colliders,
@@ -96,12 +99,15 @@ impl SpringWorld {
                     Quat::IDENTITY
                 };
 
-                bone.world_rotation = solver::compute_bone_rotation(
+                let world_rotation = solver::compute_bone_rotation(
                     bone.initial_local_dir,
                     bone.current_tail,
                     center,
                     parent_world_rotation,
                 );
+                // Convert world rotation to local rotation for node_transforms:
+                // local = inverse(parent_world) * world
+                bone.world_rotation = parent_world_rotation.inverse() * world_rotation;
             }
         }
     }
@@ -113,7 +119,7 @@ impl SpringWorld {
             .flat_map(|chain| {
                 chain.bones.iter().map(|bone| BoneResult {
                     node_index: bone.node_index,
-                    world_rotation: bone.world_rotation,
+                    local_rotation: bone.world_rotation, // now stores local rotation
                 })
             })
             .collect()

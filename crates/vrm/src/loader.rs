@@ -394,7 +394,31 @@ pub fn load(path: &str) -> Result<VrmModel, VrmError> {
         }
     }
 
-    let spring_world = build_spring_world(&vrm_json, &node_world_positions, &node_parents)?;
+    // Compute world-space rotations for spring bone initialization.
+    let mut node_world_rotations: Vec<glam::Quat> = node_transforms
+        .iter()
+        .map(|nt| nt.rotation)
+        .collect();
+    // BFS accumulate parent rotations
+    {
+        let mut q2: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
+        for (i, parent) in node_parents.iter().enumerate() {
+            if parent.is_none() {
+                q2.push_back(i);
+            }
+        }
+        while let Some(idx) = q2.pop_front() {
+            for &child_idx in &node_transforms[idx].children {
+                if child_idx < node_count {
+                    node_world_rotations[child_idx] =
+                        node_world_rotations[idx] * node_transforms[child_idx].rotation;
+                    q2.push_back(child_idx);
+                }
+            }
+        }
+    }
+
+    let spring_world = build_spring_world(&vrm_json, &node_world_positions, &node_world_rotations, &node_parents)?;
 
     Ok(VrmModel {
         meshes,

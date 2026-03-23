@@ -411,7 +411,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         drawio_graph: None,
         avatar_handle,
         avatar_on_top: false,
-        spring_physics_enabled: false, // Disabled by default — physics pipeline needs calibration
+        spring_physics_enabled: true,
     })
 }
 

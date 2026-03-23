@@ -201,31 +201,46 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
     // 3.5. Update spring bone physics (using spring-physics crate)
     if state.spring_physics_enabled {
         let delta_time = elapsed.as_secs_f32();
-        // Compute world matrices for all nodes
+
+        // Step 1: Save original rotations for all spring bone nodes,
+        // then reset them to bind-pose (identity) so world matrices
+        // don't include previous frame's spring rotation (prevents feedback loop).
+        let spring_node_indices: Vec<usize> = state
+            .vrm_model
+            .spring_world
+            .chains
+            .iter()
+            .flat_map(|c| c.bones.iter().map(|b| b.node_index))
+            .collect();
+
+        let mut saved_rotations: Vec<(usize, glam::Quat)> = Vec::new();
+        for &idx in &spring_node_indices {
+            if idx < state.vrm_model.node_transforms.len() {
+                saved_rotations.push((idx, state.vrm_model.node_transforms[idx].rotation));
+                // Reset to identity so world_matrices are clean
+                state.vrm_model.node_transforms[idx].rotation = glam::Quat::IDENTITY;
+            }
+        }
+
+        // Step 2: Compute world matrices from clean (non-spring) rotations
         let node_matrices = state.vrm_model.compute_world_matrices();
+
+        // Step 3: Restore original rotations (tracking/animation)
+        for (idx, rot) in &saved_rotations {
+            state.vrm_model.node_transforms[*idx].rotation = *rot;
+        }
+
+        // Step 4: Run spring physics with clean matrices
         state
             .vrm_model
             .spring_world
             .update(delta_time, &node_matrices);
-        // Apply physics results to node transforms.
-        // bone_results() returns world-space rotations, but node_transforms stores
-        // local-space rotations. Convert: local = inverse(parent_world) * world.
-        for result in state.vrm_model.spring_world.bone_results() {
-            let idx = result.node_index;
-            if idx < state.vrm_model.node_transforms.len() {
-                // Get parent world rotation from the matrices we just computed
-                let parent_world_rot = state
-                    .vrm_model
-                    .node_parents()
-                    .get(idx)
-                    .copied()
-                    .flatten()
-                    .and_then(|parent_idx| node_matrices.get(parent_idx))
-                    .map(|m| glam::Quat::from_mat4(m))
-                    .unwrap_or(glam::Quat::IDENTITY);
 
-                let local_rotation = parent_world_rot.inverse() * result.world_rotation;
-                state.vrm_model.node_transforms[idx].rotation = local_rotation;
+        // Step 5: Apply spring results
+        for result in state.vrm_model.spring_world.bone_results() {
+            if result.node_index < state.vrm_model.node_transforms.len() {
+                state.vrm_model.node_transforms[result.node_index].rotation =
+                    result.local_rotation;
             }
         }
     }

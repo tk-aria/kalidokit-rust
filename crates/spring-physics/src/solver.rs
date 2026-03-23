@@ -25,7 +25,8 @@ pub fn solve_chain(
             Vec3::ZERO
         };
 
-        // Compute initial world tail from parent transform + local direction
+        // Compute initial world tail from parent transform + local direction.
+        // initial_local_dir is in parent-local space.
         let initial_world_tail = if let Some(parent_idx) = bone.parent_index {
             if parent_idx < node_world_matrices.len() {
                 let parent_mat = node_world_matrices[parent_idx];
@@ -66,7 +67,12 @@ pub fn solve_chain(
     }
 }
 
-/// Compute world rotation for a spring bone based on current tail displacement.
+/// Compute the LOCAL rotation delta for a spring bone.
+///
+/// Returns a quaternion that, when applied to the node's LOCAL rotation,
+/// produces the desired spring bone displacement. This is computed as
+/// the rotation from the rest-pose world direction to the current tail direction,
+/// transformed into the parent's local space.
 pub fn compute_bone_rotation(
     initial_dir: Vec3,
     current_tail: Vec3,
@@ -74,6 +80,7 @@ pub fn compute_bone_rotation(
     parent_world_rotation: Quat,
 ) -> Quat {
     let current_dir = (current_tail - center).normalize_or_zero();
+    // initial_dir is in parent-local space; transform to world.
     let initial_world_dir = parent_world_rotation * initial_dir;
 
     if current_dir.length_squared() < 1e-6 || initial_world_dir.length_squared() < 1e-6 {
