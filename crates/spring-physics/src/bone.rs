@@ -18,6 +18,9 @@ pub struct SpringBone {
     pub current_tail: Vec3,
     /// Previous frame world-space position of the bone tail.
     pub prev_tail: Vec3,
+    /// FK-derived rest position, updated every frame from node_world_matrices.
+    /// This is the "target" position that stiffness pulls toward.
+    pub pose_location: Vec3,
     /// Computed rotation output from physics simulation.
     pub world_rotation: Quat,
 }
@@ -41,6 +44,7 @@ impl SpringBone {
             initial_local_dir,
             current_tail: world_tail_pos,
             prev_tail: world_tail_pos,
+            pose_location: world_tail_pos,
             world_rotation: Quat::IDENTITY,
         }
     }

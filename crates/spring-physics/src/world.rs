@@ -4,14 +4,16 @@ use crate::bone::BoneChain;
 use crate::collider::Collider;
 use crate::solver;
 
-/// Result of a spring bone physics step — rotation to apply to a node.
+/// Result of a spring bone physics step.
 ///
-/// `local_rotation` should be set directly on the node's local rotation
-/// (i.e., `node_transforms[node_index].rotation = local_rotation`).
+/// KawaiiPhysics method: the rotation is applied to the PARENT bone,
+/// not the spring bone itself. `parent_node_index` is the node whose
+/// rotation should be updated. `rotation` is in component/world space.
 #[derive(Debug, Clone, Copy)]
 pub struct BoneResult {
-    pub node_index: usize,
-    pub local_rotation: Quat,
+    pub parent_node_index: usize,
+    /// Component-space rotation to set on the parent bone.
+    pub rotation: Quat,
 }
 
 /// Top-level container that owns all spring bone chains and colliders,
@@ -75,39 +77,31 @@ impl SpringWorld {
                 effective_dt,
             );
 
-            // Compute world rotation for each bone in the chain.
+            // Compute parent rotation for each bone (KawaiiPhysics method).
+            // The rotation is derived from displacement between FK pose and physics result,
+            // and is applied to the PARENT bone.
             for bone in &mut chain.bones {
-                let center = if let Some(parent_idx) = bone.parent_index {
-                    if parent_idx < node_world_matrices.len() {
+                if let Some(parent_idx) = bone.parent_index {
+                    let parent_location = if parent_idx < node_world_matrices.len() {
                         node_world_matrices[parent_idx].transform_point3(Vec3::ZERO)
                     } else {
                         Vec3::ZERO
-                    }
-                } else {
-                    Vec3::ZERO
-                };
-
-                let parent_world_rotation = if let Some(parent_idx) = bone.parent_index {
-                    if parent_idx < node_world_matrices.len() {
+                    };
+                    let parent_pose_rotation = if parent_idx < node_world_matrices.len() {
                         let (_, rot, _) =
                             node_world_matrices[parent_idx].to_scale_rotation_translation();
                         rot
                     } else {
                         Quat::IDENTITY
-                    }
-                } else {
-                    Quat::IDENTITY
-                };
+                    };
 
-                let world_rotation = solver::compute_bone_rotation(
-                    bone.initial_local_dir,
-                    bone.current_tail,
-                    center,
-                    parent_world_rotation,
-                );
-                // Convert world rotation to local rotation for node_transforms:
-                // local = inverse(parent_world) * world
-                bone.world_rotation = parent_world_rotation.inverse() * world_rotation;
+                    bone.world_rotation = solver::compute_parent_rotation(
+                        bone.pose_location,
+                        bone.current_tail,
+                        parent_location,
+                        parent_pose_rotation,
+                    );
+                }
             }
         }
     }
@@ -117,9 +111,11 @@ impl SpringWorld {
         self.chains
             .iter()
             .flat_map(|chain| {
-                chain.bones.iter().map(|bone| BoneResult {
-                    node_index: bone.node_index,
-                    local_rotation: bone.world_rotation, // now stores local rotation
+                chain.bones.iter().filter_map(|bone| {
+                    bone.parent_index.map(|parent_idx| BoneResult {
+                        parent_node_index: parent_idx,
+                        rotation: bone.world_rotation,
+                    })
                 })
             })
             .collect()
@@ -202,9 +198,9 @@ mod tests {
 
         let results = world.bone_results();
         assert_eq!(results.len(), 3, "should have 3 bone results total");
-        assert_eq!(results[0].node_index, 1);
-        assert_eq!(results[1].node_index, 2);
-        assert_eq!(results[2].node_index, 4);
+        assert_eq!(results[0].parent_node_index, 0);
+        assert_eq!(results[1].parent_node_index, 1);
+        assert_eq!(results[2].parent_node_index, 3);
     }
 
     #[test]
@@ -328,6 +324,6 @@ mod tests {
 
         let results = world.bone_results();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].node_index, 10);
+        assert_eq!(results[0].parent_node_index, 9);
     }
 }

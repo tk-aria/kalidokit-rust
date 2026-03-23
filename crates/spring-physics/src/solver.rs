@@ -5,7 +5,15 @@ use crate::collider::Collider;
 use crate::constraint::length_constraint;
 use crate::integrator::verlet_step;
 
-/// Solve one physics step for a bone chain.
+/// Solve one physics step for a bone chain (KawaiiPhysics algorithm).
+///
+/// For each bone:
+/// 1. Update pose_location from current FK matrices
+/// 2. Compute velocity from position history (with damping)
+/// 3. Apply gravity and wind
+/// 4. Apply stiffness (position-based pull toward pose_location)
+/// 5. Collider resolution
+/// 6. Bone length constraint
 pub fn solve_chain(
     chain: &mut BoneChain,
     colliders: &[Collider],
@@ -13,9 +21,17 @@ pub fn solve_chain(
     wind: Vec3,
     dt: f32,
 ) {
+    let dt = dt.clamp(0.0, 0.05); // prevent explosion
+
     for bone in &mut chain.bones {
-        // Get parent world position (center of rotation)
-        let center = if let Some(parent_idx) = bone.parent_index {
+        // Step 1: Update pose_location from FK (the "rest position" this frame)
+        if bone.node_index < node_world_matrices.len() {
+            bone.pose_location = node_world_matrices[bone.node_index]
+                .transform_point3(Vec3::ZERO);
+        }
+
+        // Get parent world position
+        let parent_location = if let Some(parent_idx) = bone.parent_index {
             if parent_idx < node_world_matrices.len() {
                 node_world_matrices[parent_idx].transform_point3(Vec3::ZERO)
             } else {
@@ -25,65 +41,66 @@ pub fn solve_chain(
             Vec3::ZERO
         };
 
-        // Initial world tail = the actual node's world position from FK.
-        // This is the "rest position" that stiffness pulls toward.
-        let initial_world_tail = if bone.node_index < node_world_matrices.len() {
-            node_world_matrices[bone.node_index].transform_point3(Vec3::ZERO)
-        } else {
-            center + bone.initial_local_dir * bone.bone_length
-        };
+        // Step 2: Verlet velocity with damping
+        let velocity = (bone.current_tail - bone.prev_tail) * (1.0 - chain.config.drag_force);
+        bone.prev_tail = bone.current_tail;
 
-        // Verlet integration
-        let next = verlet_step(
-            bone.current_tail,
-            bone.prev_tail,
-            &chain.config,
-            initial_world_tail,
-            center,
-            wind,
-            dt,
-        );
+        // Step 3: Apply velocity + gravity + wind
+        let gravity = chain.config.gravity_dir * chain.config.gravity_power * dt;
+        let wind_force = wind * chain.config.wind_scale * dt;
+        bone.current_tail = bone.current_tail + velocity + gravity + wind_force;
 
-        // Collider resolution (2 iterations for stability)
-        let mut resolved = next;
+        // Step 4: Stiffness — pull toward pose_location (KawaiiPhysics method)
+        // BaseLocation = where the bone SHOULD be based on current FK
+        let exponent = dt * 60.0; // normalize to 60fps
+        let stiffness_factor = 1.0 - (1.0 - chain.config.stiffness).powf(exponent);
+        bone.current_tail = bone.current_tail
+            + (bone.pose_location - bone.current_tail) * stiffness_factor;
+
+        // Step 5: Collider resolution
         for _ in 0..2 {
             for &collider_idx in &chain.collider_indices {
                 if let Some(collider) = colliders.get(collider_idx) {
-                    resolved = collider.resolve_collision(resolved, chain.config.hit_radius);
+                    bone.current_tail =
+                        collider.resolve_collision(bone.current_tail, chain.config.hit_radius);
                 }
             }
         }
 
-        // Length constraint
-        let constrained = length_constraint(resolved, center, bone.bone_length);
-
-        bone.prev_tail = bone.current_tail;
-        bone.current_tail = constrained;
+        // Step 6: Bone length constraint — maintain distance from parent
+        bone.current_tail =
+            length_constraint(bone.current_tail, parent_location, bone.bone_length);
     }
 }
 
-/// Compute the LOCAL rotation delta for a spring bone.
+/// Compute the rotation for the PARENT bone based on child displacement.
 ///
-/// Returns a quaternion that, when applied to the node's LOCAL rotation,
-/// produces the desired spring bone displacement. This is computed as
-/// the rotation from the rest-pose world direction to the current tail direction,
-/// transformed into the parent's local space.
-pub fn compute_bone_rotation(
-    initial_dir: Vec3,
-    current_tail: Vec3,
-    center: Vec3,
-    parent_world_rotation: Quat,
+/// KawaiiPhysics algorithm:
+/// 1. PoseVector = child.pose_location - parent_location (FK rest direction)
+/// 2. SimVector = child.current_tail - parent_location (physics direction)
+/// 3. DeltaRotation = FindBetweenVectors(PoseVector, SimVector)
+/// 4. Result = DeltaRotation * parent.pose_rotation
+///
+/// The result is the new **component-space rotation** for the parent bone.
+pub fn compute_parent_rotation(
+    child_pose_location: Vec3,
+    child_current_tail: Vec3,
+    parent_location: Vec3,
+    parent_pose_rotation: Quat,
 ) -> Quat {
-    let current_dir = (current_tail - center).normalize_or_zero();
-    // initial_dir is in parent-local space; transform to world.
-    let initial_world_dir = parent_world_rotation * initial_dir;
+    let pose_vector = (child_pose_location - parent_location).normalize_or_zero();
+    let sim_vector = (child_current_tail - parent_location).normalize_or_zero();
 
-    if current_dir.length_squared() < 1e-6 || initial_world_dir.length_squared() < 1e-6 {
-        return parent_world_rotation;
+    if pose_vector.length_squared() < 1e-6 || sim_vector.length_squared() < 1e-6 {
+        return parent_pose_rotation;
     }
 
-    let rotation_delta = Quat::from_rotation_arc(initial_world_dir.normalize(), current_dir);
-    rotation_delta * parent_world_rotation
+    if (pose_vector - sim_vector).length_squared() < 1e-8 {
+        return parent_pose_rotation; // no displacement
+    }
+
+    let delta = Quat::from_rotation_arc(pose_vector, sim_vector);
+    delta * parent_pose_rotation
 }
 
 #[cfg(test)]
@@ -186,14 +203,12 @@ mod tests {
 
     #[test]
     fn rotation_reflects_tail_displacement() {
-        let initial_dir = Vec3::Y;
-        let center = Vec3::ZERO;
-        // Displace tail to the side
-        let displaced_tail = Vec3::new(1.0, 0.5, 0.0);
+        let parent_location = Vec3::ZERO;
+        let child_pose = Vec3::new(0.0, 1.0, 0.0); // rest: straight up
+        let child_sim = Vec3::new(1.0, 0.5, 0.0);  // displaced to side
         let parent_rot = Quat::IDENTITY;
 
-        let rot = compute_bone_rotation(initial_dir, displaced_tail, center, parent_rot);
-        // The rotation should not be identity since the tail is displaced
+        let rot = compute_parent_rotation(child_pose, child_sim, parent_location, parent_rot);
         let angle = rot.angle_between(Quat::IDENTITY);
         assert!(
             angle > 1e-4,
@@ -211,32 +226,30 @@ mod tests {
     }
 
     #[test]
-    fn rotation_identity_when_tail_at_center() {
-        let initial_dir = Vec3::Y;
-        let center = Vec3::ZERO;
-        let tail = center; // tail == center → current_dir is zero
+    fn rotation_identity_when_tail_at_parent() {
+        let parent_location = Vec3::ZERO;
+        let child_pose = Vec3::new(0.0, 1.0, 0.0);
+        let child_sim = parent_location; // sim tail == parent → zero direction
         let parent_rot = Quat::from_rotation_z(0.5);
 
-        let rot = compute_bone_rotation(initial_dir, tail, center, parent_rot);
-        // Should return parent_world_rotation unchanged
+        let rot = compute_parent_rotation(child_pose, child_sim, parent_location, parent_rot);
         assert!(
             rot.angle_between(parent_rot) < 1e-4,
-            "rotation should equal parent rotation when tail is at center"
+            "rotation should equal parent rotation when sim tail is at parent"
         );
     }
 
     #[test]
-    fn rotation_identity_when_initial_dir_zero() {
-        let initial_dir = Vec3::ZERO; // zero initial direction
-        let center = Vec3::ZERO;
-        let tail = Vec3::new(1.0, 0.0, 0.0);
+    fn rotation_identity_when_pose_at_parent() {
+        let parent_location = Vec3::ZERO;
+        let child_pose = parent_location; // pose == parent → zero pose direction
+        let child_sim = Vec3::new(1.0, 0.0, 0.0);
         let parent_rot = Quat::from_rotation_x(0.3);
 
-        let rot = compute_bone_rotation(initial_dir, tail, center, parent_rot);
-        // initial_world_dir = parent_rot * ZERO = ZERO → early return
+        let rot = compute_parent_rotation(child_pose, child_sim, parent_location, parent_rot);
         assert!(
             rot.angle_between(parent_rot) < 1e-4,
-            "rotation should equal parent rotation when initial_dir is zero"
+            "rotation should equal parent rotation when pose is at parent"
         );
     }
 
