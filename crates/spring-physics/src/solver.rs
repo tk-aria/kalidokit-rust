@@ -25,15 +25,10 @@ pub fn solve_chain(
             Vec3::ZERO
         };
 
-        // Compute initial world tail from parent transform + local direction.
-        // initial_local_dir is in parent-local space.
-        let initial_world_tail = if let Some(parent_idx) = bone.parent_index {
-            if parent_idx < node_world_matrices.len() {
-                let parent_mat = node_world_matrices[parent_idx];
-                parent_mat.transform_point3(bone.initial_local_dir * bone.bone_length)
-            } else {
-                center + bone.initial_local_dir * bone.bone_length
-            }
+        // Initial world tail = the actual node's world position from FK.
+        // This is the "rest position" that stiffness pulls toward.
+        let initial_world_tail = if bone.node_index < node_world_matrices.len() {
+            node_world_matrices[bone.node_index].transform_point3(Vec3::ZERO)
         } else {
             center + bone.initial_local_dir * bone.bone_length
         };

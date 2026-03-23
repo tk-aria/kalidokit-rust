@@ -82,7 +82,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
     let mut render_ctx = RenderContext::new(window).await?;
 
     // 2. Load VRM model
-    let vrm_model = vrm::loader::load(DEFAULT_VRM_PATH)
+    let mut vrm_model = vrm::loader::load(DEFAULT_VRM_PATH)
         .context("Failed to load VRM avatar. Run: sh scripts/setup.sh download-models")?;
 
     // Log VRM model stats for debugging skinning pipeline
@@ -102,6 +102,57 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
             .field("materials", vrm_model.materials.len())
             .field("node_transforms", vrm_model.node_transforms.len())
             .emit();
+    }
+
+    // Recalibrate spring bone initial positions using accurate FK world matrices.
+    // The loader's node_world_positions are approximate (translation-only BFS);
+    // compute_world_matrices() gives exact positions including rotations.
+    {
+        // Reset spring bone node rotations to identity before computing FK
+        // (same as update.rs does each frame to prevent feedback)
+        let spring_indices: Vec<usize> = vrm_model.spring_world.chains
+            .iter().flat_map(|c| c.bones.iter().map(|b| b.node_index)).collect();
+        let saved: Vec<(usize, glam::Quat)> = spring_indices.iter()
+            .filter(|&&i| i < vrm_model.node_transforms.len())
+            .map(|&i| (i, vrm_model.node_transforms[i].rotation))
+            .collect();
+        for &(i, _) in &saved {
+            vrm_model.node_transforms[i].rotation = glam::Quat::IDENTITY;
+        }
+        let world_matrices = vrm_model.compute_world_matrices();
+        for (i, rot) in &saved {
+            vrm_model.node_transforms[*i].rotation = *rot;
+        }
+        for chain in &mut vrm_model.spring_world.chains {
+            for bone in &mut chain.bones {
+                if let Some(parent_idx) = bone.parent_index {
+                    if let (Some(parent_mat), Some(node_mat)) = (
+                        world_matrices.get(parent_idx),
+                        world_matrices.get(bone.node_index),
+                    ) {
+                        // Get accurate world positions from FK
+                        let parent_pos = parent_mat.transform_point3(glam::Vec3::ZERO);
+                        let node_pos = node_mat.transform_point3(glam::Vec3::ZERO);
+
+                        // Recompute bone_length and local_dir from accurate positions
+                        let world_dir = (node_pos - parent_pos).normalize_or_zero();
+                        bone.bone_length = (node_pos - parent_pos).length().max(1e-4);
+
+                        // Convert world dir to parent-local dir
+                        let (_, parent_rot, _) = parent_mat.to_scale_rotation_translation();
+                        bone.initial_local_dir = if world_dir == glam::Vec3::ZERO {
+                            glam::Vec3::new(0.0, -1.0, 0.0)
+                        } else {
+                            parent_rot.inverse() * world_dir
+                        };
+
+                        // Set current/prev tail to exact node position
+                        bone.current_tail = node_pos;
+                        bone.prev_tail = node_pos;
+                    }
+                }
+            }
+        }
     }
 
     // Log spring physics configuration

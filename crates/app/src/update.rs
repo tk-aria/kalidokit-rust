@@ -225,6 +225,38 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
         // Step 2: Compute world matrices from clean (non-spring) rotations
         let node_matrices = state.vrm_model.compute_world_matrices();
 
+        // Debug: check initial state mismatch (only first frame)
+        static mut SPRING_INIT_CHECKED: bool = false;
+        if !unsafe { SPRING_INIT_CHECKED } {
+            unsafe { SPRING_INIT_CHECKED = true };
+            if let Some(chain) = state.vrm_model.spring_world.chains.first() {
+                for (i, bone) in chain.bones.iter().enumerate().take(3) {
+                    let runtime_parent_pos = bone.parent_index
+                        .and_then(|pi| node_matrices.get(pi))
+                        .map(|m| m.transform_point3(glam::Vec3::ZERO))
+                        .unwrap_or(glam::Vec3::ZERO);
+                    let runtime_tail_pos = node_matrices.get(bone.node_index)
+                        .map(|m| m.transform_point3(glam::Vec3::ZERO))
+                        .unwrap_or(glam::Vec3::ZERO);
+                    let runtime_node_pos = node_matrices.get(bone.node_index)
+                        .map(|m| m.transform_point3(glam::Vec3::ZERO))
+                        .unwrap_or(glam::Vec3::ZERO);
+                    let init_mismatch = (bone.current_tail - runtime_tail_pos).length();
+                    let node_vs_tail = (runtime_node_pos - bone.current_tail).length();
+                    log::info!(
+                        "[spring init check] bone[{}] node={} parent={:?}\n  current_tail=({:.4},{:.4},{:.4})\n  runtime_rest=({:.4},{:.4},{:.4})\n  runtime_node=({:.4},{:.4},{:.4})\n  init_mismatch={:.5} node_vs_tail={:.5}\n  local_dir=({:.4},{:.4},{:.4}) bone_len={:.5}",
+                        i, bone.node_index, bone.parent_index,
+                        bone.current_tail.x, bone.current_tail.y, bone.current_tail.z,
+                        runtime_tail_pos.x, runtime_tail_pos.y, runtime_tail_pos.z,
+                        runtime_node_pos.x, runtime_node_pos.y, runtime_node_pos.z,
+                        init_mismatch, node_vs_tail,
+                        bone.initial_local_dir.x, bone.initial_local_dir.y, bone.initial_local_dir.z,
+                        bone.bone_length,
+                    );
+                }
+            }
+        }
+
         // Step 3: Restore original rotations (tracking/animation)
         for (idx, rot) in &saved_rotations {
             state.vrm_model.node_transforms[*idx].rotation = *rot;
