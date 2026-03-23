@@ -646,3 +646,89 @@ fn derive_name_from_path(path: &Path) -> String {
 - [x] `cargo build -p dynplug-example && cargo run -p dynplug --example host` が再度 PASS <!-- 2026-03-23 01:59 JST -->
 - [x] `cargo build -p dynplug-example && cargo test -p dynplug` が再度全テスト通過 <!-- 2026-03-23 01:59 JST -->
 - [x] 全ファイルが 300 行以下であることを確認 <!-- 2026-03-23 01:59 JST -->
+
+---
+
+## Phase 9: Extism Backend — Wasm 多言語プラグイン対応
+
+> **依存:** `extism = "1.20"` (optional, feature flag `wasm`)
+> **対応言語:** Rust, Go, JavaScript, Python, C, Zig, Haskell 等 (wasm32 target)
+
+### Step 9-1: `PluginBackend` trait 抽出
+
+- [x] `crates/dynplug/src/backend.rs` を作成 — `PluginBackend` trait 定義 <!-- 2026-03-23 02:30 JST -->
+  - `name()`, `invoke()`, `path()`, `kind()`, `as_any()`
+- [x] `lib.rs` に `pub mod backend;` + `pub use backend::PluginBackend;` を追加 <!-- 2026-03-23 02:30 JST -->
+
+### Step 9-2: `native.rs` — NativeBackend
+
+- [x] `crates/dynplug/src/native.rs` を作成 <!-- 2026-03-23 02:30 JST -->
+  - `LoadedLibrary` + `PluginVTable` をラップ
+  - `PluginBackend` trait を実装
+  - `Drop` で `vtable.destroy()` を呼び出し
+- [x] `lib.rs` に `pub mod native;` + `pub use native::NativeBackend;` を追加 <!-- 2026-03-23 02:30 JST -->
+
+### Step 9-3: `wasm.rs` — WasmBackend (Extism)
+
+- [x] `crates/dynplug/src/wasm.rs` を作成 (`#[cfg(feature = "wasm")]` ゲート) <!-- 2026-03-23 02:30 JST -->
+  - `WasmBackend::load(path)` — `.wasm` ファイルロード (WASI 有効)
+  - `WasmBackend::load_with_wasi(path, wasi)` — WASI 切り替え可能
+  - `WasmBackend::load_manifest(name, manifest, wasi)` — Manifest 経由 (URL, bytes 等)
+  - `PluginBackend` trait を実装
+- [x] `lib.rs` に `#[cfg(feature = "wasm")] pub mod wasm;` + re-exports を追加 <!-- 2026-03-23 02:30 JST -->
+
+### Step 9-4: `manager.rs` リファクタ
+
+- [x] `ManagedPlugin` 内部を `Box<dyn PluginBackend>` に変更 <!-- 2026-03-23 02:30 JST -->
+- [x] `load_wasm(path)` メソッド追加 (`#[cfg(feature = "wasm")]`) <!-- 2026-03-23 02:30 JST -->
+- [x] `load_wasm_manifest(name, manifest, wasi)` メソッド追加 <!-- 2026-03-23 02:30 JST -->
+- [x] `invoke(plugin_name, method, input)` 統一 API 追加 <!-- 2026-03-23 02:30 JST -->
+- [x] `plugin_kind(name)` メソッド追加 ("native" / "wasm") <!-- 2026-03-23 02:30 JST -->
+- [x] `load_from_directory` が `.wasm` もスキャン (`wasm` feature 有効時) <!-- 2026-03-23 02:30 JST -->
+- [x] 既存 API (`load_file`, `get`, `names`, `plugins`, `unload`) の互換性を維持 <!-- 2026-03-23 02:30 JST -->
+
+### Step 9-5: Feature Flag 設計
+
+- [x] `Cargo.toml` に `[features] wasm = ["extism"]` を追加 <!-- 2026-03-23 02:30 JST -->
+- [x] `extism = { version = "1.20", optional = true }` で依存追加 <!-- 2026-03-23 02:30 JST -->
+- [x] `wasm` feature 無効時は既存コードと完全互換 <!-- 2026-03-23 02:30 JST -->
+
+### Step 9-6: Wasm サンプルプラグイン
+
+- [x] `crates/dynplug-example-wasm/` クレート作成 <!-- 2026-03-23 02:30 JST -->
+  - `extism-pdk` 使用、`crate-type = ["cdylib"]`
+  - `greet`, `add`, `noop` メソッド実装
+- [x] `cargo build -p dynplug-example-wasm --target wasm32-unknown-unknown` でビルド確認 <!-- 2026-03-23 02:30 JST -->
+- [x] ワークスペース `members` に追加 <!-- 2026-03-23 02:30 JST -->
+
+### Step 9-7: テスト (tests/wasm_integration.rs)
+
+- [x] 16テスト: WasmBackend 直接テスト (8) + PluginManager Wasm テスト (8) <!-- 2026-03-23 02:30 JST -->
+
+**WasmBackend 直接テスト:**
+- [x] `test_wasm_load` — `.wasm` ファイルロード成功 <!-- 2026-03-23 02:30 JST -->
+- [x] `test_wasm_name` — プラグイン名取得 <!-- 2026-03-23 02:30 JST -->
+- [x] `test_wasm_invoke_greet` — `invoke("greet", b"World")` → `"Hello, World!"` <!-- 2026-03-23 02:30 JST -->
+- [x] `test_wasm_invoke_add` — `invoke("add", &[21, 21])` → `42` <!-- 2026-03-23 02:30 JST -->
+- [x] `test_wasm_invoke_noop` — 空出力 <!-- 2026-03-23 02:30 JST -->
+- [x] `test_wasm_invoke_unknown_method` — 存在しないメソッド → エラー <!-- 2026-03-23 02:30 JST -->
+- [x] `test_wasm_load_nonexistent` — 不正パス → `PluginError::Load` <!-- 2026-03-23 02:30 JST -->
+- [x] `test_wasm_kind` — `kind()` == `"wasm"` <!-- 2026-03-23 02:30 JST -->
+
+**PluginManager Wasm テスト:**
+- [x] `test_manager_load_wasm` — ロード成功 <!-- 2026-03-23 02:30 JST -->
+- [x] `test_manager_invoke_wasm` — invoke 経由で呼び出し <!-- 2026-03-23 02:30 JST -->
+- [x] `test_manager_invoke_native` — native invoke も動作 <!-- 2026-03-23 02:30 JST -->
+- [x] `test_manager_mixed_plugins` — native + wasm 同時ロード <!-- 2026-03-23 02:30 JST -->
+- [x] `test_manager_plugin_kind` — native/wasm 判定 <!-- 2026-03-23 02:30 JST -->
+- [x] `test_manager_unload_wasm` — wasm アンロード <!-- 2026-03-23 02:30 JST -->
+- [x] `test_manager_wasm_duplicate_name` — 重複名エラー <!-- 2026-03-23 02:30 JST -->
+- [x] `test_manager_directory_mixed` — .dylib + .wasm 混在ディレクトリスキャン <!-- 2026-03-23 02:30 JST -->
+
+### Step 9-8: 品質ゲート
+
+- [x] `cargo test -p dynplug` (wasm feature なし) で既存 44 テスト全パス <!-- 2026-03-23 02:30 JST -->
+- [x] `cargo test -p dynplug --features wasm` で全 60 テスト通過 <!-- 2026-03-23 02:30 JST -->
+- [x] `cargo clippy -p dynplug --features wasm -- -D warnings` クリーン <!-- 2026-03-23 02:30 JST -->
+- [x] `cargo clippy -p dynplug -- -D warnings` クリーン (wasm なし) <!-- 2026-03-23 02:30 JST -->
+- [x] `cargo fmt -p dynplug --check` クリーン <!-- 2026-03-23 02:30 JST -->

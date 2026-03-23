@@ -1,0 +1,11 @@
+[package]
+name = "dynplug-example-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "Example Extism WASM plugin for dynplug"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+extism-pdk = "1.4"
