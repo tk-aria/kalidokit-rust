@@ -51,9 +51,11 @@ pub fn solve_chain(
         bone.current_tail = bone.current_tail + velocity + gravity + wind_force;
 
         // Step 4: Stiffness — pull toward pose_location (KawaiiPhysics method)
-        // BaseLocation = where the bone SHOULD be based on current FK
+        // VRM stiffness range is 0-4; map to a gentle pull range for visible spring effect.
+        // /16 gives: VRM 0.75 → 0.047, VRM 1.5 → 0.094, VRM 4.0 → 0.25
+        let normalized_stiffness = (chain.config.stiffness / 16.0).clamp(0.0, 0.5);
         let exponent = dt * 60.0; // normalize to 60fps
-        let stiffness_factor = 1.0 - (1.0 - chain.config.stiffness).powf(exponent);
+        let stiffness_factor = 1.0 - (1.0 - normalized_stiffness).powf(exponent);
         bone.current_tail = bone.current_tail
             + (bone.pose_location - bone.current_tail) * stiffness_factor;
 

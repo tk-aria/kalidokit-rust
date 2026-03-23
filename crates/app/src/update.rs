@@ -236,6 +236,51 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
             .spring_world
             .update(delta_time, &node_matrices);
 
+        // Monitor: log spring bone state once per second
+        {
+            static mut SPRING_LOG_TIMER: f32 = 0.0;
+            unsafe { SPRING_LOG_TIMER += delta_time };
+            if unsafe { SPRING_LOG_TIMER } >= 1.0 {
+                unsafe { SPRING_LOG_TIMER = 0.0 };
+                if let Some(chain) = state.vrm_model.spring_world.chains.first() {
+                    if let Some(bone) = chain.bones.first() {
+                        let drift = (bone.current_tail - bone.pose_location).length();
+                        let vel = (bone.current_tail - bone.prev_tail).length();
+                        // pose_location movement = how much the FK rest position changed this frame
+                        let pose_vel = (bone.pose_location - bone.current_tail).length();
+                        log::info!(
+                            "[spring monitor] node={} drift={:.5} vel={:.5} pose_move={:.5} stiff_norm={:.4}",
+                            bone.node_index, drift, vel, pose_vel,
+                            chain.config.stiffness / 16.0,
+                        );
+                    }
+                }
+                let results = state.vrm_model.spring_world.bone_results();
+                if let Some(chain) = state.vrm_model.spring_world.chains.first() {
+                    if let Some(bone) = chain.bones.first() {
+                        if let Some(parent_idx) = bone.parent_index {
+                            let parent_loc = node_matrices.get(parent_idx)
+                                .map(|m| m.transform_point3(glam::Vec3::ZERO))
+                                .unwrap_or(glam::Vec3::ZERO);
+                            let (_, parent_rot, _) = node_matrices.get(parent_idx)
+                                .map(|m| m.to_scale_rotation_translation())
+                                .unwrap_or((glam::Vec3::ONE, glam::Quat::IDENTITY, glam::Vec3::ZERO));
+                            let pose_dir = (bone.pose_location - parent_loc).normalize_or_zero();
+                            let sim_dir = (bone.current_tail - parent_loc).normalize_or_zero();
+                            let dir_angle = pose_dir.angle_between(sim_dir).to_degrees();
+                            log::info!(
+                                "[spring monitor] pose_dir=({:.3},{:.3},{:.3}) sim_dir=({:.3},{:.3},{:.3}) dir_angle={:.2}° parent_rot_angle={:.2}°",
+                                pose_dir.x, pose_dir.y, pose_dir.z,
+                                sim_dir.x, sim_dir.y, sim_dir.z,
+                                dir_angle,
+                                parent_rot.angle_between(glam::Quat::IDENTITY).to_degrees(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         // Step 5: Apply spring results to PARENT bones (KawaiiPhysics method).
         // The rotation is in component/world space; convert to local.
         for result in state.vrm_model.spring_world.bone_results() {
