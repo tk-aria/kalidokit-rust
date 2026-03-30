@@ -33,3 +33,5 @@ vte = "0.13"
 dear-imgui-rs = "0.10"
 dear-file-browser = "0.10"
 avatar-sdk = { path = "../avatar-sdk" }
+speech-capture = { path = "../speech-capture", features = ["stt-metal", "end-of-turn"] }
+chrono = "0.4"

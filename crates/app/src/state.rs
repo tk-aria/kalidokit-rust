@@ -110,6 +110,8 @@ pub struct AppState {
     pub avatar_on_top: bool,
     /// Whether spring bone physics simulation is enabled.
     pub spring_physics_enabled: bool,
+    /// Speech capture (VAD + STT) running in a background thread.
+    pub speech_capture: Option<speech_capture::SpeechCapture>,
 }
 
 /// Visibility state for each ImGui panel.

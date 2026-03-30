@@ -85,10 +85,24 @@ impl VadSegmenter {
     }
 
     /// Feed one frame of VAD results. Returns 0-2 events.
+    ///
+    /// `samples` are used for ETD prediction (denoised is fine).
+    /// `raw_samples` are stored in audio_buffer for Whisper/SpeechFilter (original audio).
     pub fn feed(
         &mut self,
         is_voice: bool,
         samples: &[i16],
+        timestamp: Duration,
+    ) -> Vec<SpeechEvent> {
+        self.feed_with_raw(is_voice, samples, samples, timestamp)
+    }
+
+    /// Feed with separate raw (original) audio for the audio buffer.
+    pub fn feed_with_raw(
+        &mut self,
+        is_voice: bool,
+        samples: &[i16],
+        raw_samples: &[i16],
         timestamp: Duration,
     ) -> Vec<SpeechEvent> {
         let mut events = Vec::new();
@@ -98,13 +112,13 @@ impl VadSegmenter {
                 if is_voice {
                     self.voice_start = timestamp;
                     self.audio_buffer.clear();
-                    self.audio_buffer.extend_from_slice(samples);
+                    self.audio_buffer.extend_from_slice(raw_samples);
                     self.state = State::Speaking;
                     events.push(SpeechEvent::VoiceStart { timestamp });
                 }
             }
             State::Speaking => {
-                self.audio_buffer.extend_from_slice(samples);
+                self.audio_buffer.extend_from_slice(raw_samples);
                 if !is_voice {
                     // Streaming ETD: check at silence onset.
                     let mut etd_incomplete = false;
@@ -119,6 +133,8 @@ impl VadSegmenter {
                                         audio: std::mem::take(&mut self.audio_buffer),
                                         duration: speech_dur,
                                         transcript: None,
+                                        whisper_latency_ms: 0,
+                                        perceived_latency_ms: 0,
                                         end_of_turn: Some(true),
                                         turn_probability: Some(etd_result.probability),
                                     });
@@ -143,7 +159,7 @@ impl VadSegmenter {
                 silence_start,
                 etd_incomplete,
             } => {
-                self.audio_buffer.extend_from_slice(samples);
+                self.audio_buffer.extend_from_slice(raw_samples);
                 if is_voice {
                     // Voice resumed before timeout → merge into same segment.
                     self.state = State::Speaking;
@@ -163,6 +179,8 @@ impl VadSegmenter {
                                 audio: std::mem::take(&mut self.audio_buffer),
                                 duration: speech_dur,
                                 transcript: None,
+                                whisper_latency_ms: 0,
+                                        perceived_latency_ms: 0,
                                 end_of_turn: Some(!etd_incomplete),
                                 turn_probability: None,
                             });

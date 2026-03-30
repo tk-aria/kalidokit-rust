@@ -38,9 +38,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     sc.start(|event| match event {
         speech_capture::SpeechEvent::VoiceStart { timestamp } => {
+            log::info!("[STT] Voice start at {:.1}s", timestamp.as_secs_f64());
             println!("[{:>7.1}s] Voice start", timestamp.as_secs_f64());
         }
         speech_capture::SpeechEvent::TranscriptInterim { timestamp, text } => {
+            log::info!("[STT] Interim transcript at {:.1}s: {text}", timestamp.as_secs_f64());
             println!("[{:>7.1}s] (interim) {text}", timestamp.as_secs_f64());
         }
         speech_capture::SpeechEvent::VoiceEnd {
@@ -54,9 +56,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 duration.as_secs_f64(),
                 audio.len()
             );
-            match transcript {
-                Some(text) => println!("           >>> {text}"),
-                None => println!("           (no transcript)"),
+            match &transcript {
+                Some(text) => {
+                    log::info!("[STT] Final transcript ({:.1}s): {text}", duration.as_secs_f64());
+                    println!("           >>> {text}");
+                }
+                None => {
+                    log::warn!("[STT] No transcript for {:.1}s utterance", duration.as_secs_f64());
+                    println!("           (no transcript)");
+                }
             }
         }
         _ => {}

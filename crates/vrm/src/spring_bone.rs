@@ -384,9 +384,14 @@ pub fn build_spring_world(
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.02) as f32;
 
+            // Ensure a minimum gravity so bones have baseline displacement
+            // even when VRM specifies gravityPower=0.  Without this, there is
+            // no external force to create visible sway.
+            let effective_gravity = if gravity_power < 0.1 { 0.3 } else { gravity_power };
+
             let mut config = SpringConfig {
                 stiffness,
-                gravity_power,
+                gravity_power: effective_gravity,
                 gravity_dir,
                 drag_force,
                 hit_radius,

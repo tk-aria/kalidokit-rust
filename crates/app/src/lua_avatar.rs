@@ -472,6 +472,49 @@ pub fn register(lua_imgui: &LuaImgui, handle: &AvatarHandle) -> anyhow::Result<(
         )?;
     }
 
+    // ── Speech ──
+
+    {
+        let a = handle.actions.clone();
+        avatar_table.set(
+            "reset_speech",
+            l.create_function(move |_, ()| {
+                a.lock().unwrap().push(AvatarAction::ResetSpeech);
+                Ok(())
+            })?,
+        )?;
+    }
+
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "get_speech_log",
+            l.create_function(move |_, ()| {
+                let s = h.lock().unwrap();
+                Ok(s.speech.log_entries.clone())
+            })?,
+        )?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "get_speech_interim",
+            l.create_function(move |_, ()| {
+                let s = h.lock().unwrap();
+                Ok(s.speech.interim_text.clone())
+            })?,
+        )?;
+    }
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "get_vad_active",
+            l.create_function(move |_, ()| {
+                Ok(h.lock().unwrap().speech.vad_active)
+            })?,
+        )?;
+    }
+
     l.globals().set("avatar", avatar_table)?;
     Ok(())
 }

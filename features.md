@@ -2923,3 +2923,66 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - [ ] 頭を動かすと髪が揺れる — ヘッドレス環境のため未検証
 - [ ] スカートが脚コライダーを貫通しない — ヘッドレス環境のため未検証
 - [ ] Settings から ON/OFF 切替可能 — ヘッドレス環境のため未検証
+
+---
+
+## Phase 21: 音声認識 (Speech Capture + Whisper STT)
+
+### Step 21.1: speech-capture → app 統合
+- [x] app Cargo.toml に speech-capture 依存追加 (stt-metal feature)
+- [x] AppState に SpeechCapture フィールド追加
+- [x] init_speech_capture() で VAD + Whisper STT を自動起動
+- [x] コールバックで文字起こし結果をログ出力
+
+### Step 21.2: ノイズ抑制 (nnnoiseless/RNNoise)
+- [x] speech-capture に nnnoiseless 依存追加
+- [x] denoise.rs: 16kHz→48kHz アップサンプル → denoise → 48kHz→16kHz ダウンサンプル
+- [x] vad_worker で VAD 前に denoise 処理を挟む
+- [x] reframe バッファで denoise 出力を VAD フレームサイズに再分割
+
+### Step 21.3: SpeechFilter (RMS + スペクトル音声判定)
+- [x] speech_filter.rs: RMS エネルギー計算
+- [x] speech_filter.rs: FFT で音声帯域 (85-4000Hz) エネルギー比率計算
+- [x] Whisper 呼び出し前に SpeechFilter で非音声セグメントをスキップ
+- [x] min_audio_ms: 短い衝撃音 (800ms未満) をスキップ
+- [x] 直列/並列ベンチマーク実装・計測 (直列が高速: RMS 早期リターンが効く)
+- [x] segmenter で raw (denoise 前) 音声を保持し SpeechFilter/Whisper に渡す
+
+### Step 21.4: F0 検出 + 性別判定
+- [x] FFT 結果から F0 (85-400Hz) ピーク検出
+- [x] classify_gender(): Male (<165Hz) / Female (<255Hz) / Child (≤400Hz)
+- [x] SpeechFilter ログに F0 と gender を出力
+
+### Step 21.5: Speech Log ウィンドウ (Lua-ImGui)
+- [x] AvatarState に SpeechState 追加 (log_entries, vad_active, interim_text)
+- [x] Lua バインディング (get_speech_log, get_speech_interim, get_vad_active, reset_speech)
+- [x] speech_log.lua: VAD 状態表示 + ログエントリ表示
+- [x] CJK フォント対応 (PixelMplus12 マージ)
+- [x] 体感/Whisper レイテンシの dual logging
+
+### Step 21.6: VAD リセット機能
+- [x] SpeechCapture に reset_flag (AtomicBool) 追加
+- [x] vad_worker でフラグ検知時にキュー/バッファ/segmenter をフラッシュ
+- [x] AvatarAction::ResetSpeech → Lua ボタンから呼び出し
+- [x] speech_log.lua に "Reset VAD" ボタン追加
+
+### Step 21.7: Whisper プログレスベース・ハートビート
+- [x] whisper_engine に heartbeat (AtomicU64) + abort_flag (AtomicBool) 追加 <!-- 2026-03-30T19:11:43+09:00 -->
+- [x] abort_callback 内で heartbeat 更新 + abort_flag チェック <!-- 2026-03-30T19:11:43+09:00 -->
+- [ ] heartbeat_age() で最後の進捗からの経過時間を取得
+- [ ] abort() で推論中断を signal
+- [ ] app 側で heartbeat_age > 閾値 → "Whisper stalled" 表示
+
+### Step 21.8: ETD (End-of-Turn Detection) 統合
+- [x] speech-capture に end-of-turn feature 追加
+- [x] ETD mel 前処理修正: slaney mel scale + slaney normalization
+- [x] ETD mel 正規化修正: (x + 4.0) / 4.0 (Whisper 互換)
+- [ ] Python WhisperFeatureExtractor との数値一致検証 (mel_accuracy テスト)
+- [ ] ETD probability が発話完了/未完了で明確に分離することを確認
+- [ ] ETD 有効化して silence_timeout 短縮によるレイテンシ改善を検証
+
+### Step 21.9: 今後の課題
+- [ ] Whisper キュー詰まり防止: stale segment drop の再有効化・閾値チューニング
+- [ ] SpeechFilter voice_ratio 閾値の環境適応 (動的調整 or キャリブレーション)
+- [ ] KWS (Keyword Spotting) 多言語対応 — wakeword とハルシネーション抑制の共存
+- [ ] Whisper モデルの選択肢 (tiny/base/large-v3-turbo) を設定から切替可能に

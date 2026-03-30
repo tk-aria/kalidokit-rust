@@ -56,6 +56,8 @@ impl SpeechRecord {
                 audio,
                 duration,
                 transcript,
+                whisper_latency_ms: _,
+                perceived_latency_ms: _,
                 end_of_turn,
                 turn_probability,
             } => SpeechRecord::VoiceEnd {

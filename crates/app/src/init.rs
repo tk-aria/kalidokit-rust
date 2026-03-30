@@ -401,6 +401,12 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
                     log::warn!("Failed to load settings script: {e}");
                 }
             }
+            let speech_log_path = std::path::Path::new("assets/scripts/speech_log.lua");
+            if speech_log_path.exists() {
+                if let Err(e) = li.load_script(speech_log_path) {
+                    log::warn!("Failed to load speech log script: {e}");
+                }
+            }
             log::info!("Lua-ImGui initialized (command buffer mode + avatar SDK)");
             Some(li)
         }
@@ -409,6 +415,9 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
             None
         }
     };
+
+    // 8. Initialize speech capture (VAD + STT)
+    let speech_capture = init_speech_capture(&avatar_handle);
 
     Ok(AppState {
         render_ctx,
@@ -463,6 +472,7 @@ pub async fn init_all(window: Arc<Window>) -> Result<AppState> {
         avatar_handle,
         avatar_on_top: false,
         spring_physics_enabled: true,
+        speech_capture,
     })
 }
 
@@ -560,4 +570,119 @@ fn init_camera() -> Result<nokhwa::Camera> {
         .context("Failed to open camera stream")?;
     log::info!("Webcam initialized: {:?}", camera.camera_format());
     Ok(camera)
+}
+
+/// Whisper model path for STT.
+const WHISPER_MODEL_PATH: &str = "models/ggml-large-v3-turbo.bin";
+
+/// Initialize speech capture (VAD + Whisper STT).
+/// Returns `None` if the model file is missing or initialization fails.
+fn init_speech_capture(
+    avatar_handle: &crate::lua_avatar::AvatarHandle,
+) -> Option<speech_capture::SpeechCapture> {
+    if !Path::new(WHISPER_MODEL_PATH).exists() {
+        log::info!("Whisper model not found at {WHISPER_MODEL_PATH}, speech capture disabled");
+        return None;
+    }
+
+    let config = speech_capture::SpeechConfig {
+        vad_threshold: 0.3,
+        silence_timeout_ms: 500,
+        emit_vad_status: true,
+        min_speech_duration_ms: 500,
+        stt: Some(speech_capture::SttConfig {
+            model_path: WHISPER_MODEL_PATH.to_string(),
+            language: Some("ja".to_string()),
+            mode: speech_capture::SttMode::Streaming {
+                interim_interval_ms: 1000,
+            },
+        }),
+        // ETD disabled: mel spectrogram preprocessing needs Python reference validation.
+        // etd: Some(speech_capture::etd::EtdConfig::default()),
+        ..Default::default()
+    };
+
+    let mut sc = match speech_capture::SpeechCapture::new(config) {
+        Ok(sc) => sc,
+        Err(e) => {
+            log::warn!("Failed to create SpeechCapture: {e}");
+            return None;
+        }
+    };
+
+    let speech_state = avatar_handle.state.clone();
+    if let Err(e) = sc.start(move |event| match event {
+        speech_capture::SpeechEvent::VoiceStart { timestamp } => {
+            log::info!("[STT] Voice start at {:.1}s", timestamp.as_secs_f64());
+            if let Ok(mut s) = speech_state.lock() {
+                s.speech.vad_active = true;
+            }
+        }
+        speech_capture::SpeechEvent::TranscriptInterim { timestamp, text } => {
+            log::info!(
+                "[STT] Interim at {:.1}s: {text}",
+                timestamp.as_secs_f64()
+            );
+            if let Ok(mut s) = speech_state.lock() {
+                s.speech.interim_text = text;
+            }
+        }
+        speech_capture::SpeechEvent::VoiceEnd {
+            duration,
+            transcript,
+            whisper_latency_ms,
+            perceived_latency_ms,
+            ..
+        } => {
+            if let Ok(mut s) = speech_state.lock() {
+                s.speech.vad_active = false;
+                s.speech.interim_text.clear();
+            }
+            match &transcript {
+                Some(text) => {
+                    let now = chrono::Local::now();
+                    let ts = now.format("%H:%M:%S").to_string();
+                    if let Ok(mut s) = speech_state.lock() {
+                        s.speech.push_transcript_dual_latency(
+                            &ts,
+                            whisper_latency_ms,
+                            perceived_latency_ms,
+                            text,
+                        );
+                    }
+                }
+                None => {
+                    log::warn!(
+                        "[STT] No transcript for {:.1}s utterance",
+                        duration.as_secs_f64()
+                    );
+                }
+            }
+        }
+        speech_capture::SpeechEvent::VadStatus {
+            timestamp,
+            probability,
+            is_voice,
+        } => {
+            if is_voice {
+                log::debug!(
+                    "[VAD] {:.1}s voice detected (prob={:.3})",
+                    timestamp.as_secs_f64(),
+                    probability
+                );
+            } else if probability > 0.1 {
+                log::debug!(
+                    "[VAD] {:.1}s non-voice (prob={:.3})",
+                    timestamp.as_secs_f64(),
+                    probability
+                );
+            }
+        }
+    }) {
+        log::warn!("Failed to start SpeechCapture: {e}");
+        return None;
+    }
+
+    log::info!("Speech capture started (VAD + Whisper STT)");
+    Some(sc)
 }

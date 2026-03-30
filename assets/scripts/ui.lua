@@ -33,4 +33,9 @@ function update(dt)
     if settings_update then
         settings_update(dt)
     end
+
+    -- Call speech log if loaded
+    if speech_log_update then
+        speech_log_update(dt)
+    end
 end

@@ -9,5 +9,5 @@ pub mod state;
 
 pub use action::{ActionQueue, AvatarAction};
 pub use state::{
-    AvatarState, DisplayState, InfoState, LightState, LightingState, TrackingState,
+    AvatarState, DisplayState, InfoState, LightState, LightingState, SpeechState, TrackingState,
 };

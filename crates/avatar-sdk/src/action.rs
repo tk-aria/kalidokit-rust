@@ -12,6 +12,8 @@ pub enum AvatarAction {
     ResetIdlePose,
     /// Open OS native file dialog for background image.
     BrowseBackgroundImage,
+    /// Reset speech capture: flush VAD queues and return to idle.
+    ResetSpeech,
 }
 
 /// Queue of pending avatar actions, drained each frame by the app.

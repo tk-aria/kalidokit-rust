@@ -246,12 +246,10 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                     if let Some(bone) = chain.bones.first() {
                         let drift = (bone.current_tail - bone.pose_location).length();
                         let vel = (bone.current_tail - bone.prev_tail).length();
-                        // pose_location movement = how much the FK rest position changed this frame
-                        let pose_vel = (bone.pose_location - bone.current_tail).length();
                         log::info!(
-                            "[spring monitor] node={} drift={:.5} vel={:.5} pose_move={:.5} stiff_norm={:.4}",
-                            bone.node_index, drift, vel, pose_vel,
-                            chain.config.stiffness / 16.0,
+                            "[spring monitor] node={} drift={:.5} vel={:.5} bone_len={:.4} stiff={:.2} grav={:.2} drag={:.2}",
+                            bone.node_index, drift, vel, bone.bone_length,
+                            chain.config.stiffness, chain.config.gravity_power, chain.config.drag_force,
                         );
                     }
                 }
@@ -1207,6 +1205,16 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                     let node_transforms = &state.vrm_model.node_transforms;
                     state.vrm_model.humanoid_bones.reset_to_bind_pose(node_transforms);
                     state.rig_dirty = true;
+                }
+                avatar_sdk::AvatarAction::ResetSpeech => {
+                    if let Some(ref sc) = state.speech_capture {
+                        sc.reset();
+                        log::info!("[App] Speech capture reset requested");
+                        if let Ok(mut s) = state.avatar_handle.state.lock() {
+                            s.speech.vad_active = false;
+                            s.speech.interim_text.clear();
+                        }
+                    }
                 }
                 avatar_sdk::AvatarAction::BrowseBackgroundImage => {
                     use dear_file_browser::{FileDialog, DialogMode, FileFilter};

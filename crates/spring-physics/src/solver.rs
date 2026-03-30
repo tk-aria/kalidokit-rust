@@ -3,7 +3,6 @@ use glam::{Mat4, Quat, Vec3};
 use crate::bone::BoneChain;
 use crate::collider::Collider;
 use crate::constraint::length_constraint;
-use crate::integrator::verlet_step;
 
 /// Solve one physics step for a bone chain (KawaiiPhysics algorithm).
 ///
@@ -41,23 +40,31 @@ pub fn solve_chain(
             Vec3::ZERO
         };
 
-        // Step 2: Verlet velocity with damping
-        let velocity = (bone.current_tail - bone.prev_tail) * (1.0 - chain.config.drag_force);
+        // Step 2: Compute velocity from position history (Verlet)
+        let velocity = bone.current_tail - bone.prev_tail;
         bone.prev_tail = bone.current_tail;
 
-        // Step 3: Apply velocity + gravity + wind
-        let gravity = chain.config.gravity_dir * chain.config.gravity_power * dt;
-        let wind_force = wind * chain.config.wind_scale * dt;
-        bone.current_tail = bone.current_tail + velocity + gravity + wind_force;
+        // Step 3: Apply forces
+        // Damping: reduces velocity to simulate air resistance
+        let damped_velocity = velocity * (1.0 - chain.config.drag_force);
 
-        // Step 4: Stiffness — pull toward pose_location (KawaiiPhysics method)
-        // VRM stiffness range is 0-4; map to a gentle pull range for visible spring effect.
-        // /16 gives: VRM 0.75 → 0.047, VRM 1.5 → 0.094, VRM 4.0 → 0.25
-        let normalized_stiffness = (chain.config.stiffness / 16.0).clamp(0.0, 0.5);
-        let exponent = dt * 60.0; // normalize to 60fps
-        let stiffness_factor = 1.0 - (1.0 - normalized_stiffness).powf(exponent);
-        bone.current_tail = bone.current_tail
-            + (bone.pose_location - bone.current_tail) * stiffness_factor;
+        // Gravity
+        let gravity = chain.config.gravity_dir * chain.config.gravity_power * dt;
+
+        // Wind
+        let wind_force = wind * chain.config.wind_scale * dt;
+
+        // Stiffness force (UniVRM method): constant-magnitude push in the rest
+        // direction.  Unlike displacement-proportional springs, this always
+        // applies the same force regardless of how close/far the bone is,
+        // creating visible inertial overshoot and oscillation.
+        //   force = normalize(pose_location - parent_location) * stiffness * dt
+        let rest_dir = (bone.pose_location - parent_location).normalize_or_zero();
+        let stiffness_force = rest_dir * chain.config.stiffness * dt;
+
+        // Integrate all forces
+        bone.current_tail =
+            bone.current_tail + damped_velocity + stiffness_force + gravity + wind_force;
 
         // Step 5: Collider resolution
         for _ in 0..2 {

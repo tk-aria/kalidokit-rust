@@ -7,6 +7,7 @@ pub struct AvatarState {
     pub display: DisplayState,
     pub tracking: TrackingState,
     pub lighting: LightingState,
+    pub speech: SpeechState,
 }
 
 impl Default for AvatarState {
@@ -16,6 +17,57 @@ impl Default for AvatarState {
             display: DisplayState::default(),
             tracking: TrackingState::default(),
             lighting: LightingState::default(),
+            speech: SpeechState::default(),
+        }
+    }
+}
+
+/// Speech recognition state (written by STT callback, read by Lua).
+#[derive(Debug, Clone, Default)]
+pub struct SpeechState {
+    /// Circular buffer of recent transcript entries ("HH:MM:SS | text").
+    pub log_entries: Vec<String>,
+    /// Whether VAD is currently detecting voice.
+    pub vad_active: bool,
+    /// Current interim (partial) transcript, if any.
+    pub interim_text: String,
+}
+
+impl SpeechState {
+    /// Maximum number of log entries to keep.
+    const MAX_ENTRIES: usize = 50;
+
+    /// Push a new final transcript entry.
+    pub fn push_transcript(&mut self, timestamp: &str, text: &str) {
+        self.log_entries.push(format!("{} | {}", timestamp, text));
+        if self.log_entries.len() > Self::MAX_ENTRIES {
+            self.log_entries.remove(0);
+        }
+    }
+
+    /// Push a new final transcript entry with latency info.
+    pub fn push_transcript_with_latency(&mut self, timestamp: &str, latency_ms: u64, text: &str) {
+        self.log_entries
+            .push(format!("{} | {}ms | {}", timestamp, latency_ms, text));
+        if self.log_entries.len() > Self::MAX_ENTRIES {
+            self.log_entries.remove(0);
+        }
+    }
+
+    /// Push a new final transcript entry with both whisper and perceived latency.
+    pub fn push_transcript_dual_latency(
+        &mut self,
+        timestamp: &str,
+        whisper_ms: u64,
+        perceived_ms: u64,
+        text: &str,
+    ) {
+        self.log_entries.push(format!(
+            "{} | whisper={}ms perceived={}ms | {}",
+            timestamp, whisper_ms, perceived_ms, text
+        ));
+        if self.log_entries.len() > Self::MAX_ENTRIES {
+            self.log_entries.remove(0);
         }
     }
 }

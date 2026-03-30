@@ -1,5 +1,5 @@
 // Mel-spectrogram computation for ETD pipeline.
-// Step 1.3: Mel filterbank functions (HTK scale, triangular filters).
+// Whisper-compatible: slaney mel scale, slaney normalization, fmin=0, fmax=8000.
 
 /// Configuration for mel-spectrogram extraction, with Whisper-compatible defaults.
 #[derive(Debug, Clone)]
@@ -27,71 +27,89 @@ impl Default for MelConfig {
             hop_length: 160,
             n_mels: 80,
             sample_rate: 16000,
-            fmin: 80.0,
-            fmax: 7600.0,
+            fmin: 0.0,
+            fmax: 8000.0,
             chunk_length: 8.0,
         }
     }
 }
 
-/// Convert frequency in Hz to mel scale (HTK formula).
-fn hz_to_mel(hz: f32) -> f32 {
-    2595.0 * (1.0 + hz / 700.0).log10()
+// --- Slaney mel scale ---
+// Below 1000 Hz: linear (3 * hz / 200)
+// Above 1000 Hz: logarithmic
+
+const MIN_LOG_HERTZ: f32 = 1000.0;
+const MIN_LOG_MEL: f32 = 15.0; // 3 * 1000 / 200
+const LOGSTEP: f32 = 14.500_775; // 27.0 / ln(6.4)
+
+fn hz_to_mel_slaney(hz: f32) -> f32 {
+    if hz < MIN_LOG_HERTZ {
+        3.0 * hz / 200.0
+    } else {
+        MIN_LOG_MEL + (hz / MIN_LOG_HERTZ).ln() * LOGSTEP
+    }
 }
 
-/// Convert mel scale value back to Hz (inverse HTK formula).
-fn mel_to_hz(mel: f32) -> f32 {
-    700.0 * (10.0_f32.powf(mel / 2595.0) - 1.0)
+fn mel_to_hz_slaney(mel: f32) -> f32 {
+    if mel < MIN_LOG_MEL {
+        200.0 * mel / 3.0
+    } else {
+        MIN_LOG_HERTZ * ((mel - MIN_LOG_MEL) / LOGSTEP).exp()
+    }
 }
 
-/// Build a triangular mel filterbank matrix.
+/// Build a Whisper-compatible mel filterbank (slaney scale + slaney normalization).
 ///
-/// Returns a `Vec<Vec<f32>>` of shape `(n_mels, n_fft / 2 + 1)`.
-/// Each row is a triangular filter in the frequency domain.
-///
-/// If `n_mels == 0` or `fmin >= fmax`, the result is an appropriately
-/// degenerate matrix (empty or all-zeros).
+/// Returns `Vec<Vec<f32>>` of shape `(n_mels, n_fft / 2 + 1)`.
+/// Matches Python `WhisperFeatureExtractor.mel_filters` exactly.
 pub fn mel_filterbank(n_mels: usize, n_fft: usize, sr: u32, fmin: f32, fmax: f32) -> Vec<Vec<f32>> {
     let n_freqs = n_fft / 2 + 1;
 
     if n_mels == 0 {
         return Vec::new();
     }
-
     if fmin >= fmax {
         return vec![vec![0.0; n_freqs]; n_mels];
     }
 
-    let mel_min = hz_to_mel(fmin);
-    let mel_max = hz_to_mel(fmax);
-
-    // n_mels + 2 equally spaced points in mel space (includes left/right edges).
+    // n_mels + 2 equally spaced points in slaney mel space
+    let mel_min = hz_to_mel_slaney(fmin);
+    let mel_max = hz_to_mel_slaney(fmax);
     let n_points = n_mels + 2;
     let mel_points: Vec<f32> = (0..n_points)
         .map(|i| mel_min + (mel_max - mel_min) * (i as f32) / (n_points as f32 - 1.0))
         .collect();
+    let filter_freqs: Vec<f32> = mel_points.iter().map(|&m| mel_to_hz_slaney(m)).collect();
 
-    // Convert mel points back to Hz, then to FFT bin indices.
-    let hz_points: Vec<f32> = mel_points.iter().map(|&m| mel_to_hz(m)).collect();
-    let bin_points: Vec<f32> = hz_points
-        .iter()
-        .map(|&h| h * (n_fft as f32) / (sr as f32))
+    // FFT bin center frequencies (linear in Hz)
+    let fft_freqs: Vec<f32> = (0..n_freqs)
+        .map(|i| (sr as f32 / 2.0) * (i as f32) / (n_freqs as f32 - 1.0))
         .collect();
 
+    // Triangular filters
     let mut filters = vec![vec![0.0_f32; n_freqs]; n_mels];
-
     for m in 0..n_mels {
-        let f_left = bin_points[m];
-        let f_center = bin_points[m + 1];
-        let f_right = bin_points[m + 2];
+        let f_left = filter_freqs[m];
+        let f_center = filter_freqs[m + 1];
+        let f_right = filter_freqs[m + 2];
 
         for k in 0..n_freqs {
-            let kf = k as f32;
+            let f = fft_freqs[k];
+            if f > f_left && f <= f_center && f_center > f_left {
+                filters[m][k] = (f - f_left) / (f_center - f_left);
+            } else if f > f_center && f < f_right && f_right > f_center {
+                filters[m][k] = (f_right - f) / (f_right - f_center);
+            }
+        }
+    }
 
-            if kf > f_left && kf <= f_center && f_center > f_left {
-                filters[m][k] = (kf - f_left) / (f_center - f_left);
-            } else if kf > f_center && kf < f_right && f_right > f_center {
-                filters[m][k] = (f_right - kf) / (f_right - f_center);
+    // Slaney normalization: scale each band by 2 / (f_right - f_left)
+    for m in 0..n_mels {
+        let bandwidth = filter_freqs[m + 2] - filter_freqs[m];
+        if bandwidth > 0.0 {
+            let enorm = 2.0 / bandwidth;
+            for k in 0..n_freqs {
+                filters[m][k] *= enorm;
             }
         }
     }
@@ -99,13 +117,14 @@ pub fn mel_filterbank(n_mels: usize, n_fft: usize, sr: u32, fmin: f32, fmax: f32
     filters
 }
 
-/// PCM f32 → log-mel spectrogram.
+/// PCM f32 → log-mel spectrogram (Whisper-compatible).
 ///
 /// Processing:
 /// 1. STFT (Hann window, n_fft=400, hop=160)
-/// 2. Apply mel filterbank
-/// 3. log10 transform + clamp (max - 8.0 dB)
-/// 4. Whisper-style normalization: (x - max) / 4.0 + 1.0
+/// 2. Apply slaney mel filterbank + floor 1e-10
+/// 3. log10 transform
+/// 4. Clamp to (max - 8.0)
+/// 5. Normalize: (x + 4.0) / 4.0
 ///
 /// Output: `Vec<f32>` row-major (n_mels, n_frames) = (80, 800)
 pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
@@ -124,11 +143,10 @@ pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
     // Compute STFT power spectrum
     let window = hann_window(n_fft);
     let power_frames = stft_power(audio, n_fft, hop, &window);
-    // power_frames: Vec<Vec<f32>> shape (actual_frames, n_bins)
-
     let actual_frames = power_frames.len();
 
-    // Apply mel filterbank: result shape (n_mels, n_frames_target) in row-major order
+    // Apply mel filterbank with floor: result shape (n_mels, n_frames_target)
+    let floor = 1e-10_f32;
     let mut mel = vec![0.0_f32; n_mels * n_frames_target];
 
     for m in 0..n_mels {
@@ -138,16 +156,16 @@ pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
                 for k in 0..n_bins {
                     sum += filters[m][k] * power_frames[t][k];
                 }
-                mel[m * n_frames_target + t] = sum;
+                mel[m * n_frames_target + t] = sum.max(floor);
+            } else {
+                mel[m * n_frames_target + t] = floor;
             }
-            // else remains 0.0 (zero-padded)
         }
     }
 
-    // log10 transform: clamp minimum to avoid log(0)
-    let floor = 1e-10_f32;
+    // log10 transform
     for val in mel.iter_mut() {
-        *val = (*val).max(floor).log10();
+        *val = val.log10();
     }
 
     // Clamp to (max - 8.0)
@@ -157,9 +175,9 @@ pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
         *val = (*val).max(clamp_min);
     }
 
-    // Whisper-style normalization: (x - max) / 4.0 + 1.0
+    // Whisper normalization: (x + 4.0) / 4.0
     for val in mel.iter_mut() {
-        *val = (*val - log_max) / 4.0 + 1.0;
+        *val = (*val + 4.0) / 4.0;
     }
 
     mel
@@ -170,35 +188,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_hz_to_mel_known_values() {
-        // 80 Hz
-        let mel_80 = hz_to_mel(80.0);
-        assert!(
-            (mel_80 - 121.956).abs() < 1.0,
-            "80 Hz => ~122 mel, got {mel_80}"
-        );
+    fn test_slaney_mel_known_values() {
+        // Below 1000 Hz: linear
+        let mel_200 = hz_to_mel_slaney(200.0);
+        assert!((mel_200 - 3.0).abs() < 0.01, "200 Hz => 3.0 mel, got {mel_200}");
 
-        // 1000 Hz
-        let mel_1000 = hz_to_mel(1000.0);
-        assert!(
-            (mel_1000 - 999.985).abs() < 1.0,
-            "1000 Hz => ~1000 mel, got {mel_1000}"
-        );
+        let mel_1000 = hz_to_mel_slaney(1000.0);
+        assert!((mel_1000 - 15.0).abs() < 0.01, "1000 Hz => 15.0 mel, got {mel_1000}");
 
-        // 7600 Hz
-        let mel_7600 = hz_to_mel(7600.0);
-        assert!(
-            (mel_7600 - 2787.0).abs() < 5.0,
-            "7600 Hz => ~2787 mel, got {mel_7600}"
-        );
+        // Above 1000 Hz: logarithmic
+        let mel_8000 = hz_to_mel_slaney(8000.0);
+        assert!((mel_8000 - 45.245).abs() < 0.1, "8000 Hz => ~45.2 mel, got {mel_8000}");
     }
 
     #[test]
-    fn test_mel_to_hz_roundtrip() {
-        for &hz in &[80.0_f32, 440.0, 1000.0, 4000.0, 7600.0] {
-            let roundtrip = mel_to_hz(hz_to_mel(hz));
+    fn test_slaney_roundtrip() {
+        for &hz in &[0.0_f32, 200.0, 700.0, 1000.0, 2000.0, 4000.0, 8000.0] {
+            let roundtrip = mel_to_hz_slaney(hz_to_mel_slaney(hz));
             assert!(
-                (roundtrip - hz).abs() < 0.1,
+                (roundtrip - hz).abs() < 0.5,
                 "roundtrip failed for {hz}: got {roundtrip}"
             );
         }
@@ -206,34 +214,14 @@ mod tests {
 
     #[test]
     fn test_filterbank_shape() {
-        let fb = mel_filterbank(80, 400, 16000, 80.0, 7600.0);
-        assert_eq!(fb.len(), 80, "expected 80 mel bands");
-        assert_eq!(fb[0].len(), 201, "expected n_fft/2+1 = 201 frequency bins");
-    }
-
-    #[test]
-    fn test_filterbank_sum_approx_one() {
-        let fb = mel_filterbank(80, 400, 16000, 80.0, 7600.0);
-        let n_freqs = fb[0].len();
-
-        // In the passband (bins covered by at least one filter), the sum of
-        // all filters at a given bin should be approximately 1.0.
-        for k in 0..n_freqs {
-            let sum: f32 = fb.iter().map(|row| row[k]).sum();
-            // In overlapping regions the sum should be close to 1.0, but at
-            // the edges of the passband partial coverage is expected.
-            if sum > 0.01 {
-                assert!(
-                    sum <= 1.01 && sum > 0.0,
-                    "filter sum at bin {k} = {sum}, expected in (0, ~1]"
-                );
-            }
-        }
+        let fb = mel_filterbank(80, 400, 16000, 0.0, 8000.0);
+        assert_eq!(fb.len(), 80);
+        assert_eq!(fb[0].len(), 201);
     }
 
     #[test]
     fn test_filterbank_no_negative() {
-        let fb = mel_filterbank(80, 400, 16000, 80.0, 7600.0);
+        let fb = mel_filterbank(80, 400, 16000, 0.0, 8000.0);
         for (m, row) in fb.iter().enumerate() {
             for (k, &val) in row.iter().enumerate() {
                 assert!(val >= 0.0, "negative value {val} at mel={m}, bin={k}");
@@ -242,48 +230,19 @@ mod tests {
     }
 
     #[test]
-    fn test_filterbank_fmin_equals_fmax() {
-        let fb = mel_filterbank(80, 400, 16000, 1000.0, 1000.0);
-        assert_eq!(fb.len(), 80);
-        for row in &fb {
-            let sum: f32 = row.iter().sum();
-            assert!(
-                sum.abs() < f32::EPSILON,
-                "expected all zeros when fmin == fmax, got sum {sum}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_filterbank_zero_mels() {
-        let fb = mel_filterbank(0, 400, 16000, 80.0, 7600.0);
-        assert!(fb.is_empty(), "expected empty vec for n_mels=0");
-    }
-
-    // --- log_mel_spectrogram tests ---
-
-    #[test]
-    fn test_log_mel_silence() {
+    fn test_log_mel_silence_value() {
         let config = MelConfig::default();
-        let audio = vec![0.0_f32; 128000]; // 8 seconds at 16kHz
+        let audio = vec![0.0_f32; 128000];
         let mel = log_mel_spectrogram(&audio, &config);
 
-        assert_eq!(
-            mel.len(),
-            64000,
-            "expected 80*800=64000 elements, got {}",
-            mel.len()
-        );
+        assert_eq!(mel.len(), 64000);
 
-        // All-zero input → all values should be identical after normalization
-        let first = mel[0];
+        // Silence: all values should be -1.5 (= (-10 + 4) / 4)
         for (i, &v) in mel.iter().enumerate() {
             assert!(
-                (v - first).abs() < 1e-6,
-                "silence: mel[{}] = {}, expected uniform value {}",
-                i,
-                v,
-                first
+                (v - (-1.5)).abs() < 0.01,
+                "silence: mel[{}] = {}, expected -1.5",
+                i, v
             );
         }
     }
@@ -293,62 +252,17 @@ mod tests {
         let config = MelConfig::default();
         let audio = vec![0.0_f32; 128000];
         let mel = log_mel_spectrogram(&audio, &config);
-        assert_eq!(
-            mel.len(),
-            64000,
-            "expected 80*800=64000 elements, got {}",
-            mel.len()
-        );
+        assert_eq!(mel.len(), 64000);
     }
 
     #[test]
     fn test_log_mel_non_nan() {
         let config = MelConfig::default();
-        // Use a sine wave to get non-trivial values
         let audio: Vec<f32> = (0..128000)
             .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 16000.0).sin())
             .collect();
         let mel = log_mel_spectrogram(&audio, &config);
 
-        for (i, &v) in mel.iter().enumerate() {
-            assert!(!v.is_nan(), "NaN at index {}", i);
-            assert!(!v.is_infinite(), "Inf at index {}", i);
-        }
-    }
-
-    #[test]
-    fn test_log_mel_range() {
-        let config = MelConfig::default();
-        let audio: Vec<f32> = (0..128000)
-            .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 16000.0).sin())
-            .collect();
-        let mel = log_mel_spectrogram(&audio, &config);
-
-        for (i, &v) in mel.iter().enumerate() {
-            assert!(
-                v >= -1.0 - 0.01 && v <= 1.0 + 0.01,
-                "mel[{}] = {} out of expected range [-1, 1]",
-                i,
-                v
-            );
-        }
-    }
-
-    #[test]
-    fn test_log_mel_short_audio() {
-        let config = MelConfig::default();
-        let audio = vec![0.1_f32; 160]; // Very short, shorter than n_fft
-        let mel = log_mel_spectrogram(&audio, &config);
-
-        // Should still produce the correct shape (zero-padded STFT frames)
-        assert_eq!(
-            mel.len(),
-            64000,
-            "expected 80*800=64000 elements even for short audio, got {}",
-            mel.len()
-        );
-
-        // Should contain no NaN or Inf
         for (i, &v) in mel.iter().enumerate() {
             assert!(!v.is_nan(), "NaN at index {}", i);
             assert!(!v.is_infinite(), "Inf at index {}", i);

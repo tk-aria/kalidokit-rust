@@ -10,6 +10,15 @@ ten-vad = { path = "../ten-vad" }
 log = { workspace = true }
 thiserror = { workspace = true }
 
+# Noise suppression (RNNoise, pure Rust)
+nnnoiseless = "0.5"
+
+# FFT for spectral speech detection
+rustfft = "6.4"
+
+# Timestamp formatting
+chrono = "0.4"
+
 # Optional: Speech-to-Text via whisper.cpp
 whisper-rs = { version = "0.16", optional = true }
 

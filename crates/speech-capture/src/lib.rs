@@ -3,8 +3,10 @@
 //! Combines `audio-capture` and `ten-vad` (vad) to detect speech segments
 //! from microphone input in real time.
 
+pub mod denoise;
 pub mod json_log;
 pub mod segmenter;
+pub mod speech_filter;
 pub mod stt_types;
 
 #[cfg(feature = "stt")]
@@ -17,6 +19,9 @@ use std::time::Duration;
 
 pub use audio_capture::{AudioConfig, AudioError};
 pub use stt_types::{SttConfig, SttMode};
+
+#[cfg(feature = "end-of-turn")]
+pub use etd;
 
 /// Events emitted during speech capture.
 #[derive(Debug, Clone)]
@@ -32,6 +37,10 @@ pub enum SpeechEvent {
         duration: Duration,
         /// Transcription text (only when STT is enabled).
         transcript: Option<String>,
+        /// Whisper inference latency in milliseconds (0 if STT not run).
+        whisper_latency_ms: u64,
+        /// Perceived latency: time from speech end to result (includes VAD timeout, filter, etc).
+        perceived_latency_ms: u64,
         /// ETD prediction: true = turn complete (only when `end-of-turn` feature is enabled).
         end_of_turn: Option<bool>,
         /// ETD raw probability in [0.0, 1.0] (only when `end-of-turn` feature is enabled).
@@ -57,6 +66,8 @@ pub struct SpeechConfig {
     /// Emit VadStatus events per frame.
     pub emit_vad_status: bool,
     pub audio: AudioConfig,
+    /// Enable noise suppression (nnnoiseless/RNNoise) before VAD.
+    pub denoise: bool,
     /// STT configuration. None = disabled, Some = enable Whisper.
     /// Requires the `stt` feature to actually run transcription.
     pub stt: Option<SttConfig>,
@@ -74,6 +85,7 @@ impl Default for SpeechConfig {
             min_speech_duration_ms: 200,
             silence_timeout_ms: 500,
             emit_vad_status: false,
+            denoise: true,
             audio: AudioConfig::default(),
             stt: None,
             #[cfg(feature = "end-of-turn")]
@@ -98,6 +110,8 @@ pub struct SpeechCapture {
     config: SpeechConfig,
     capture: audio_capture::AudioCapture,
     running: Arc<AtomicBool>,
+    /// Signal to flush all queues and reset to idle state.
+    reset_flag: Arc<AtomicBool>,
     worker: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -108,8 +122,15 @@ impl SpeechCapture {
             config,
             capture,
             running: Arc::new(AtomicBool::new(false)),
+            reset_flag: Arc::new(AtomicBool::new(false)),
             worker: None,
         })
+    }
+
+    /// Reset VAD pipeline: flush all queues, cancel pending processing,
+    /// and return to idle state. Safe to call from any thread.
+    pub fn reset(&self) {
+        self.reset_flag.store(true, Ordering::Relaxed);
     }
 
     /// Start speech capture. `callback` receives SpeechEvent.
@@ -126,10 +147,11 @@ impl SpeechCapture {
 
         let running = self.running.clone();
         running.store(true, Ordering::Relaxed);
+        let reset_flag = self.reset_flag.clone();
 
         let config = self.config.clone();
         let worker = std::thread::spawn(move || {
-            Self::vad_worker(rx, callback, &config, &running);
+            Self::vad_worker(rx, callback, &config, &running, &reset_flag);
         });
 
         self.worker = Some(worker);
@@ -141,9 +163,13 @@ impl SpeechCapture {
         mut callback: F,
         config: &SpeechConfig,
         running: &AtomicBool,
+        reset_flag: &AtomicBool,
     ) where
         F: FnMut(SpeechEvent),
     {
+        // Wall-clock time when the stream started, used to compute perceived latency.
+        let stream_start_wall = std::time::Instant::now();
+
         let mut vad_instance = match vad::TenVad::new(config.hop_size, config.vad_threshold) {
             Ok(v) => v,
             Err(e) => {
@@ -181,10 +207,17 @@ impl SpeechCapture {
             seg.set_etd_predict(Box::new(move |audio: &[i16]| {
                 let mut det = detector_for_seg.lock().unwrap();
                 match det.predict_i16(audio) {
-                    Ok(result) => Some(segmenter::EarlyCutResult {
-                        prediction: result.prediction,
-                        probability: result.probability,
-                    }),
+                    Ok(result) => {
+                        log::info!(
+                            "[ETD] early-cut: prediction={}, probability={:.4}",
+                            result.prediction,
+                            result.probability
+                        );
+                        Some(segmenter::EarlyCutResult {
+                            prediction: result.prediction,
+                            probability: result.probability,
+                        })
+                    }
                     Err(e) => {
                         log::warn!("ETD streaming early-cut failed: {e}");
                         None
@@ -219,14 +252,96 @@ impl SpeechCapture {
         #[cfg(feature = "stt")]
         let mut last_interim_time = Duration::ZERO;
 
+        // Initialize noise suppression if enabled.
+        let mut denoiser = if config.denoise {
+            log::info!("Noise suppression enabled (nnnoiseless/RNNoise)");
+            Some(denoise::AudioDenoiser::new())
+        } else {
+            None
+        };
+
+        // Re-framing buffer: denoise output may differ from VAD's expected frame size.
+        let vad_frame_size = config.hop_size.as_usize();
+        let mut reframe_buf: Vec<i16> = Vec::new();
+        // Original (pre-denoise) audio buffer for SpeechFilter and Whisper.
+        let mut raw_reframe_buf: Vec<i16> = Vec::new();
+
         while running.load(Ordering::Relaxed) {
+            // Check reset flag: flush all queues and return to idle.
+            if reset_flag.swap(false, Ordering::Relaxed) {
+                log::info!("[VAD] Reset: flushing queues and returning to idle");
+                // Drain all pending frames from the channel
+                while rx.try_recv().is_ok() {}
+                // Clear all buffers
+                reframe_buf.clear();
+                raw_reframe_buf.clear();
+                // Reset segmenter to idle state
+                seg = segmenter::VadSegmenter::new(
+                    config.min_speech_duration_ms,
+                    config.silence_timeout_ms,
+                );
+                // Re-wire ETD to new segmenter if enabled
+                #[cfg(feature = "end-of-turn")]
+                if let Some(ref detector) = etd_detector {
+                    let detector_for_seg = std::sync::Arc::clone(detector);
+                    seg.set_etd_predict(Box::new(move |audio: &[i16]| {
+                        let mut det = detector_for_seg.lock().unwrap();
+                        match det.predict_i16(audio) {
+                            Ok(result) => {
+                                log::info!(
+                                    "[ETD] early-cut: prediction={}, probability={:.4}",
+                                    result.prediction,
+                                    result.probability
+                                );
+                                Some(segmenter::EarlyCutResult {
+                                    prediction: result.prediction,
+                                    probability: result.probability,
+                                })
+                            }
+                            Err(e) => {
+                                log::warn!("ETD streaming early-cut failed: {e}");
+                                None
+                            }
+                        }
+                    }));
+                }
+                // Reset denoise state
+                if let Some(ref mut d) = denoiser {
+                    *d = denoise::AudioDenoiser::new();
+                }
+                #[cfg(feature = "stt")]
+                {
+                    last_interim_time = Duration::ZERO;
+                }
+                continue;
+            }
+
             let frame = match rx.recv_timeout(Duration::from_millis(100)) {
                 Ok(f) => f,
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(_) => break,
             };
 
-            match vad_instance.process(&frame.samples) {
+            // Keep original audio for SpeechFilter / Whisper.
+            raw_reframe_buf.extend_from_slice(&frame.samples);
+
+            // Apply noise suppression before VAD.
+            if let Some(ref mut d) = denoiser {
+                let denoised = d.process(&frame.samples);
+                if !denoised.is_empty() {
+                    reframe_buf.extend_from_slice(&denoised);
+                }
+            } else {
+                reframe_buf.extend_from_slice(&frame.samples);
+            }
+
+            // Drain reframe_buf in VAD-sized chunks.
+            // Also drain raw_reframe_buf in sync.
+            while reframe_buf.len() >= vad_frame_size && raw_reframe_buf.len() >= vad_frame_size {
+            let samples: Vec<i16> = reframe_buf.drain(..vad_frame_size).collect();
+            let raw_samples: Vec<i16> = raw_reframe_buf.drain(..vad_frame_size).collect();
+
+            match vad_instance.process(&samples) {
                 Ok(result) => {
                     if config.emit_vad_status {
                         callback(SpeechEvent::VadStatus {
@@ -252,6 +367,7 @@ impl SpeechCapture {
                                 if !accumulated.is_empty() {
                                     if let Ok(text) = engine.transcribe(accumulated) {
                                         if !text.is_empty() {
+                                            log::info!("[STT] Interim: {text}");
                                             callback(SpeechEvent::TranscriptInterim {
                                                 timestamp: frame.timestamp,
                                                 text,
@@ -265,7 +381,7 @@ impl SpeechCapture {
                     }
 
                     #[allow(unused_mut)]
-                    for mut event in seg.feed(result.is_voice, &frame.samples, frame.timestamp) {
+                    for mut event in seg.feed_with_raw(result.is_voice, &samples, &raw_samples, frame.timestamp) {
                         // Apply ETD to VoiceEnd events (Batch mode fallback).
                         // Only runs if early-cut didn't already set the fields.
                         #[cfg(feature = "end-of-turn")]
@@ -310,20 +426,104 @@ impl SpeechCapture {
                             if let Some(engine) = &whisper_engine {
                                 match &stt_mode {
                                     SttMode::Batch | SttMode::Streaming { .. } => {
-                                        let stt_start = std::time::Instant::now();
-                                        let transcript = engine.transcribe(audio).ok();
-                                        let stt_elapsed = stt_start.elapsed();
+                                        // Speech filter: check RMS + spectral before Whisper
+                                        let filter_config = speech_filter::SpeechFilterConfig::default();
+                                        let (filter_result, serial_dur, parallel_dur) =
+                                            speech_filter::analyze_with_benchmark(audio, &filter_config);
                                         log::info!(
-                                            "STT latency: {:.0}ms (audio: {:.1}s, {:.1}x realtime)",
-                                            stt_elapsed.as_millis(),
-                                            duration.as_secs_f64(),
-                                            stt_elapsed.as_secs_f64() / duration.as_secs_f64(),
+                                            "[SpeechFilter] rms={:.1} voice_ratio={:.3} f0={:.0}Hz gender={} is_speech={} serial={:.3}ms parallel={:.3}ms",
+                                            filter_result.rms,
+                                            filter_result.voice_band_ratio,
+                                            filter_result.f0_hz,
+                                            filter_result.gender,
+                                            filter_result.is_speech,
+                                            serial_dur.as_secs_f64() * 1000.0,
+                                            parallel_dur.as_secs_f64() * 1000.0,
                                         );
+
+                                        // Skip if RMS/spectral check fails
+                                        let duration_ms = duration.as_millis() as u64;
+                                        let skip_reason = if !filter_result.is_speech {
+                                            Some(format!(
+                                                "non-speech (rms={:.1}, ratio={:.3})",
+                                                filter_result.rms, filter_result.voice_band_ratio
+                                            ))
+                                        } else if filter_config.min_audio_ms > 0
+                                            && duration_ms < filter_config.min_audio_ms
+                                        {
+                                            Some(format!(
+                                                "too short ({}ms < {}ms)",
+                                                duration_ms, filter_config.min_audio_ms
+                                            ))
+                                        } else {
+                                            None
+                                        };
+
+                                        if let Some(reason) = skip_reason {
+                                            log::info!(
+                                                "[SpeechFilter] Skipped Whisper for {:.1}s segment: {}",
+                                                duration.as_secs_f64(),
+                                                reason,
+                                            );
+                                            callback(SpeechEvent::VoiceEnd {
+                                                timestamp: *timestamp,
+                                                audio: audio.clone(),
+                                                duration: *duration,
+                                                transcript: None,
+                                                whisper_latency_ms: 0,
+                                                perceived_latency_ms: 0,
+                                                end_of_turn: *end_of_turn,
+                                                turn_probability: *turn_probability,
+                                            });
+                                            #[cfg(feature = "stt")]
+                                            {
+                                                last_interim_time = Duration::ZERO;
+                                            }
+                                            continue;
+                                        }
+
+                                        // TODO: stale segment drop disabled for debugging.
+                                        // Re-enable after voice_ratio threshold is stabilized.
+                                        // let wall_now_pre = stream_start_wall.elapsed();
+                                        // let staleness = wall_now_pre.saturating_sub(*timestamp);
+                                        // const MAX_STALENESS: Duration = Duration::from_secs(10);
+                                        // if staleness > MAX_STALENESS { ... }
+
+                                        let stt_start = std::time::Instant::now();
+                                        let result = engine.transcribe_with_prob(audio);
+                                        let stt_elapsed = stt_start.elapsed();
+                                        // Perceived latency: wall-clock time since speech ended.
+                                        // VoiceEnd timestamp = stream-relative time when speech ended.
+                                        let wall_now = stream_start_wall.elapsed();
+                                        let perceived_latency = wall_now.saturating_sub(*timestamp);
+                                        let transcript = match result {
+                                            Ok(r) => {
+                                                let jst_now = chrono::Local::now().format("%H:%M:%S");
+                                                log::info!(
+                                                    "[STT] {} | whisper={}ms perceived={}ms | {}",
+                                                    jst_now,
+                                                    stt_elapsed.as_millis(),
+                                                    perceived_latency.as_millis(),
+                                                    r.text,
+                                                );
+                                                Some(r.text)
+                                            }
+                                            Err(e) => {
+                                                log::warn!(
+                                                    "[STT] Transcription failed for {:.1}s utterance (latency {:.0}ms): {e}",
+                                                    duration.as_secs_f64(),
+                                                    stt_elapsed.as_millis(),
+                                                );
+                                                None
+                                            }
+                                        };
                                         callback(SpeechEvent::VoiceEnd {
                                             timestamp: *timestamp,
                                             audio: audio.clone(),
                                             duration: *duration,
                                             transcript,
+                                            whisper_latency_ms: stt_elapsed.as_millis() as u64,
+                                            perceived_latency_ms: perceived_latency.as_millis() as u64,
                                             end_of_turn: *end_of_turn,
                                             turn_probability: *turn_probability,
                                         });
@@ -344,6 +544,7 @@ impl SpeechCapture {
                 }
                 Err(e) => log::warn!("VAD process error: {e}"),
             }
+            } // end while reframe_buf
         }
     }
 

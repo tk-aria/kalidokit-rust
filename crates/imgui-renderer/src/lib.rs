@@ -95,10 +95,35 @@ impl ImGuiRenderer {
         ctx.io_mut()
             .set_font_global_scale((1.0 / hidpi_factor) as f32);
 
-        ctx.fonts().add_font(&[FontSource::DefaultFontData {
-            size_pixels: Some(font_size),
-            config: Some(FontConfig::new()),
-        }]);
+        // Primary: Proggy Clean (default ImGui pixel font).
+        // Secondary: Merge CJK glyphs from PixelMplus12 (pixel-style Japanese font).
+        // Falls back to Noto Sans JP if PixelMplus is unavailable.
+        let cjk_font_path = if std::path::Path::new("assets/fonts/PixelMplus12-Regular.ttf").exists() {
+            Some("assets/fonts/PixelMplus12-Regular.ttf")
+        } else if std::path::Path::new("assets/fonts/NotoSansJP-Regular.ttf").exists() {
+            Some("assets/fonts/NotoSansJP-Regular.ttf")
+        } else {
+            None
+        };
+
+        if let Some(cjk_path) = cjk_font_path {
+            ctx.fonts().add_font(&[
+                FontSource::DefaultFontData {
+                    size_pixels: Some(font_size),
+                    config: Some(FontConfig::new()),
+                },
+                FontSource::TtfFile {
+                    path: cjk_path,
+                    size_pixels: Some(font_size),
+                    config: Some(FontConfig::new()),
+                },
+            ]);
+        } else {
+            ctx.fonts().add_font(&[FontSource::DefaultFontData {
+                size_pixels: Some(font_size),
+                config: Some(FontConfig::new()),
+            }]);
+        }
 
         // Dark gray style
         let style = ctx.style_mut();
