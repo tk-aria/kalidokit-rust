@@ -4,6 +4,10 @@ Cargo.lock
 *.vrm
 *.bin
 
+# Test fixtures (binary)
+*.npy
+*.raw
+
 # Build artifacts
 kalidokit-rust
 kalidokit-rust2

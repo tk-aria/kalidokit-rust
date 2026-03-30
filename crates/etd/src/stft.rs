@@ -3,9 +3,10 @@
 
 use rustfft::{num_complex::Complex, FftPlanner};
 
-/// Compute a Hann window of the given size.
+/// Compute a periodic Hann window of the given size (Whisper-compatible).
 ///
-/// w(n) = 0.5 * (1 - cos(2 * pi * n / (N - 1)))
+/// Periodic: `w(n) = 0.5 * (1 - cos(2 * pi * n / N))`
+/// This matches `np.hanning(N+1)[:-1]` used by HuggingFace's `window_function(N, "hann", periodic=True)`.
 ///
 /// Returns a `Vec<f32>` of length `size`. If `size <= 1`, returns a vec of ones.
 pub fn hann_window(size: usize) -> Vec<f32> {
@@ -13,11 +14,14 @@ pub fn hann_window(size: usize) -> Vec<f32> {
         return vec![1.0; size];
     }
     (0..size)
-        .map(|n| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * n as f32 / (size as f32 - 1.0)).cos()))
+        .map(|n| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * n as f32 / size as f32).cos()))
         .collect()
 }
 
 /// Compute the STFT power spectrum (magnitude squared) of an audio signal.
+///
+/// Uses f64 precision internally (matching Python's `np.fft.rfft` which promotes to float64),
+/// then returns results as f32.
 ///
 /// Applies the given `window` to each frame, computes the FFT via `rustfft`,
 /// and returns the squared magnitudes of the first `n_fft / 2 + 1` bins.
@@ -36,28 +40,29 @@ pub fn stft_power(audio: &[f32], n_fft: usize, hop: usize, window: &[f32]) -> Ve
     let n_bins = n_fft / 2 + 1;
     let n_frames = (audio.len() - n_fft) / hop + 1;
 
-    let mut planner = FftPlanner::<f32>::new();
+    // Use f64 precision for FFT to match Python's np.fft behavior
+    let mut planner = FftPlanner::<f64>::new();
     let fft = planner.plan_fft_forward(n_fft);
 
     let mut frames = Vec::with_capacity(n_frames);
-    let mut buffer = vec![Complex::new(0.0_f32, 0.0); n_fft];
+    let mut buffer = vec![Complex::new(0.0_f64, 0.0); n_fft];
 
     for f in 0..n_frames {
         let start = f * hop;
 
-        // Fill buffer with windowed samples.
+        // Fill buffer with windowed samples (promoted to f64).
         for i in 0..n_fft {
-            let sample = audio[start + i];
-            let w = if i < window.len() { window[i] } else { 1.0 };
+            let sample = audio[start + i] as f64;
+            let w = if i < window.len() { window[i] as f64 } else { 1.0 };
             buffer[i] = Complex::new(sample * w, 0.0);
         }
 
         fft.process(&mut buffer);
 
-        // Collect power (magnitude squared) for the first n_bins.
+        // Collect power (magnitude squared) for the first n_bins, cast back to f32.
         let power: Vec<f32> = buffer[..n_bins]
             .iter()
-            .map(|c| c.re * c.re + c.im * c.im)
+            .map(|c| (c.re * c.re + c.im * c.im) as f32)
             .collect();
 
         frames.push(power);
@@ -84,18 +89,28 @@ mod tests {
     }
 
     #[test]
-    fn test_hann_window_symmetry() {
+    fn test_hann_window_periodic_properties() {
         let n = 400;
         let w = hann_window(n);
+        // Periodic Hann: w[n] = 0.5 * (1 - cos(2*pi*n/N))
+        // Not symmetric (w[0] = 0, w[N-1] != 0), but w[0] + w[N/2] = 1
+        assert!(w[0].abs() < 1e-6, "hann[0] should be 0, got {}", w[0]);
+        assert!(
+            (w[n / 2] - 1.0).abs() < 1e-6,
+            "hann[N/2] should be 1, got {}",
+            w[n / 2]
+        );
+        // Sum of opposite half-period values should equal 1
         for i in 0..n / 2 {
-            let diff = (w[i] - w[n - 1 - i]).abs();
+            let sum = w[i] + w[i + n / 2];
             assert!(
-                diff < 1e-6,
-                "hann[{}] ({}) != hann[{}] ({})",
+                (sum - 1.0).abs() < 1e-5,
+                "hann[{}] + hann[{}] = {} + {} = {}, expected 1.0",
                 i,
+                i + n / 2,
                 w[i],
-                n - 1 - i,
-                w[n - 1 - i]
+                w[i + n / 2],
+                sum
             );
         }
     }

@@ -38,10 +38,14 @@ impl Default for MelConfig {
 // Below 1000 Hz: linear (3 * hz / 200)
 // Above 1000 Hz: logarithmic
 
+#[cfg(test)]
 const MIN_LOG_HERTZ: f32 = 1000.0;
+#[cfg(test)]
 const MIN_LOG_MEL: f32 = 15.0; // 3 * 1000 / 200
+#[cfg(test)]
 const LOGSTEP: f32 = 14.500_775; // 27.0 / ln(6.4)
 
+#[cfg(test)]
 fn hz_to_mel_slaney(hz: f32) -> f32 {
     if hz < MIN_LOG_HERTZ {
         3.0 * hz / 200.0
@@ -50,6 +54,7 @@ fn hz_to_mel_slaney(hz: f32) -> f32 {
     }
 }
 
+#[cfg(test)]
 fn mel_to_hz_slaney(mel: f32) -> f32 {
     if mel < MIN_LOG_MEL {
         200.0 * mel / 3.0
@@ -60,9 +65,9 @@ fn mel_to_hz_slaney(mel: f32) -> f32 {
 
 /// Build a Whisper-compatible mel filterbank (slaney scale + slaney normalization).
 ///
-/// Returns `Vec<Vec<f32>>` of shape `(n_mels, n_fft / 2 + 1)`.
-/// Matches Python `WhisperFeatureExtractor.mel_filters` exactly.
-pub fn mel_filterbank(n_mels: usize, n_fft: usize, sr: u32, fmin: f32, fmax: f32) -> Vec<Vec<f32>> {
+/// Computed in f64 precision to match Python's `mel_filter_bank()` which uses float64.
+/// Returns `Vec<Vec<f64>>` of shape `(n_mels, n_fft / 2 + 1)`.
+pub fn mel_filterbank(n_mels: usize, n_fft: usize, sr: u32, fmin: f32, fmax: f32) -> Vec<Vec<f64>> {
     let n_freqs = n_fft / 2 + 1;
 
     if n_mels == 0 {
@@ -72,34 +77,56 @@ pub fn mel_filterbank(n_mels: usize, n_fft: usize, sr: u32, fmin: f32, fmax: f32
         return vec![vec![0.0; n_freqs]; n_mels];
     }
 
+    // Use f64 for mel scale conversion to match Python precision
+    let fmin64 = fmin as f64;
+    let fmax64 = fmax as f64;
+
+    let min_log_hertz: f64 = 1000.0;
+    let min_log_mel: f64 = 15.0;
+    let logstep: f64 = 27.0 / (6.4_f64).ln();
+
+    let hz_to_mel = |hz: f64| -> f64 {
+        if hz < min_log_hertz {
+            3.0 * hz / 200.0
+        } else {
+            min_log_mel + (hz / min_log_hertz).ln() * logstep
+        }
+    };
+    let mel_to_hz = |mel: f64| -> f64 {
+        if mel < min_log_mel {
+            200.0 * mel / 3.0
+        } else {
+            min_log_hertz * ((mel - min_log_mel) / logstep).exp()
+        }
+    };
+
     // n_mels + 2 equally spaced points in slaney mel space
-    let mel_min = hz_to_mel_slaney(fmin);
-    let mel_max = hz_to_mel_slaney(fmax);
+    let mel_min = hz_to_mel(fmin64);
+    let mel_max = hz_to_mel(fmax64);
     let n_points = n_mels + 2;
-    let mel_points: Vec<f32> = (0..n_points)
-        .map(|i| mel_min + (mel_max - mel_min) * (i as f32) / (n_points as f32 - 1.0))
+    let mel_points: Vec<f64> = (0..n_points)
+        .map(|i| mel_min + (mel_max - mel_min) * (i as f64) / (n_points as f64 - 1.0))
         .collect();
-    let filter_freqs: Vec<f32> = mel_points.iter().map(|&m| mel_to_hz_slaney(m)).collect();
+    let filter_freqs: Vec<f64> = mel_points.iter().map(|&m| mel_to_hz(m)).collect();
 
-    // FFT bin center frequencies (linear in Hz)
-    let fft_freqs: Vec<f32> = (0..n_freqs)
-        .map(|i| (sr as f32 / 2.0) * (i as f32) / (n_freqs as f32 - 1.0))
+    // FFT bin center frequencies (linear in Hz) - matches np.linspace(0, sr//2, n_freqs)
+    let fft_freqs: Vec<f64> = (0..n_freqs)
+        .map(|i| (sr as f64 / 2.0) * (i as f64) / (n_freqs as f64 - 1.0))
         .collect();
 
-    // Triangular filters
-    let mut filters = vec![vec![0.0_f32; n_freqs]; n_mels];
+    // Triangular filters using Python's _create_triangular_filter_bank algorithm:
+    // For mel band m (0-indexed), filter_freqs indices are [m, m+1, m+2] = [left, center, right]
+    // down_slope[k,m] = (fft_freqs[k] - filter_freqs[m]) / (filter_freqs[m+1] - filter_freqs[m])
+    // up_slope[k,m]   = (filter_freqs[m+2] - fft_freqs[k]) / (filter_freqs[m+2] - filter_freqs[m+1])
+    // filter[k,m] = max(0, min(down_slope, up_slope))
+    let filter_diff: Vec<f64> = filter_freqs.windows(2).map(|w| w[1] - w[0]).collect();
+    let mut filters = vec![vec![0.0_f64; n_freqs]; n_mels];
+
     for m in 0..n_mels {
-        let f_left = filter_freqs[m];
-        let f_center = filter_freqs[m + 1];
-        let f_right = filter_freqs[m + 2];
-
         for k in 0..n_freqs {
-            let f = fft_freqs[k];
-            if f > f_left && f <= f_center && f_center > f_left {
-                filters[m][k] = (f - f_left) / (f_center - f_left);
-            } else if f > f_center && f < f_right && f_right > f_center {
-                filters[m][k] = (f_right - f) / (f_right - f_center);
-            }
+            let down_slope = (fft_freqs[k] - filter_freqs[m]) / filter_diff[m];
+            let up_slope = (filter_freqs[m + 2] - fft_freqs[k]) / filter_diff[m + 1];
+            filters[m][k] = 0.0_f64.max(down_slope.min(up_slope));
         }
     }
 
@@ -117,14 +144,42 @@ pub fn mel_filterbank(n_mels: usize, n_fft: usize, sr: u32, fmin: f32, fmax: f32
     filters
 }
 
+/// Apply reflect padding to audio, matching `np.pad(waveform, pad_width, mode='reflect')`.
+///
+/// Pads `pad` samples on each side. For reflect mode, sample at index -1 maps to index 1,
+/// index -2 maps to index 2, etc.
+fn reflect_pad(audio: &[f32], pad: usize) -> Vec<f32> {
+    let n = audio.len();
+    let mut out = Vec::with_capacity(n + 2 * pad);
+
+    // Left padding (reflect)
+    for i in (1..=pad).rev() {
+        let idx = if i < n { i } else { n - 1 };
+        out.push(audio[idx]);
+    }
+
+    // Original audio
+    out.extend_from_slice(audio);
+
+    // Right padding (reflect)
+    for i in 1..=pad {
+        let idx = if n >= i + 1 { n - 1 - i } else { 0 };
+        out.push(audio[idx]);
+    }
+
+    out
+}
+
 /// PCM f32 → log-mel spectrogram (Whisper-compatible).
 ///
-/// Processing:
-/// 1. STFT (Hann window, n_fft=400, hop=160)
-/// 2. Apply slaney mel filterbank + floor 1e-10
-/// 3. log10 transform
-/// 4. Clamp to (max - 8.0)
-/// 5. Normalize: (x + 4.0) / 4.0
+/// Processing (matches Python WhisperFeatureExtractor):
+/// 1. Center-pad audio with n_fft/2 reflect padding on each side
+/// 2. STFT (Hann window, n_fft=400, hop=160)
+/// 3. Drop last frame (to get exactly n_frames_target frames)
+/// 4. Apply slaney mel filterbank + floor 1e-10
+/// 5. log10 transform
+/// 6. Clamp to (max - 8.0)
+/// 7. Normalize: (x + 4.0) / 4.0
 ///
 /// Output: `Vec<f32>` row-major (n_mels, n_frames) = (80, 800)
 pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
@@ -137,24 +192,33 @@ pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
     let hop = config.hop_length;
     let n_bins = n_fft / 2 + 1;
 
+    // Center-pad with reflect padding (Whisper convention)
+    let pad = n_fft / 2;
+    let padded = reflect_pad(audio, pad);
+
     // Build mel filterbank: shape (n_mels, n_bins)
     let filters = mel_filterbank(n_mels, n_fft, config.sample_rate, config.fmin, config.fmax);
 
-    // Compute STFT power spectrum
+    // Compute STFT power spectrum on padded audio
     let window = hann_window(n_fft);
-    let power_frames = stft_power(audio, n_fft, hop, &window);
-    let actual_frames = power_frames.len();
+    let power_frames = stft_power(&padded, n_fft, hop, &window);
+    // Drop last frame to match Python's `log_spec[:, :-1]`
+    let actual_frames = if power_frames.len() > 0 {
+        power_frames.len() - 1
+    } else {
+        0
+    };
 
-    // Apply mel filterbank with floor: result shape (n_mels, n_frames_target)
-    let floor = 1e-10_f32;
-    let mut mel = vec![0.0_f32; n_mels * n_frames_target];
+    // Apply mel filterbank with floor in f64 (matching Python's float64 pipeline)
+    let floor = 1e-10_f64;
+    let mut mel = vec![0.0_f64; n_mels * n_frames_target];
 
     for m in 0..n_mels {
         for t in 0..n_frames_target {
             if t < actual_frames {
-                let mut sum = 0.0_f32;
+                let mut sum = 0.0_f64;
                 for k in 0..n_bins {
-                    sum += filters[m][k] * power_frames[t][k];
+                    sum += filters[m][k] * power_frames[t][k] as f64;
                 }
                 mel[m * n_frames_target + t] = sum.max(floor);
             } else {
@@ -163,24 +227,20 @@ pub fn log_mel_spectrogram(audio: &[f32], config: &MelConfig) -> Vec<f32> {
         }
     }
 
-    // log10 transform
+    // log10 transform (in f64)
     for val in mel.iter_mut() {
         *val = val.log10();
     }
 
     // Clamp to (max - 8.0)
-    let log_max = mel.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let log_max = mel.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     let clamp_min = log_max - 8.0;
     for val in mel.iter_mut() {
         *val = (*val).max(clamp_min);
     }
 
-    // Whisper normalization: (x + 4.0) / 4.0
-    for val in mel.iter_mut() {
-        *val = (*val + 4.0) / 4.0;
-    }
-
-    mel
+    // Whisper normalization: (x + 4.0) / 4.0, then cast back to f32
+    mel.iter().map(|&v| ((v + 4.0) / 4.0) as f32).collect()
 }
 
 #[cfg(test)]
