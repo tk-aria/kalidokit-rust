@@ -597,7 +597,9 @@ fn init_speech_capture(
                 interim_interval_ms: 1000,
             },
         }),
-        // ETD disabled: mel spectrogram preprocessing needs Python reference validation.
+        // ETD disabled: probability still fixed at 0.68-0.72 despite mel fix.
+        // Model may need retraining or different audio input format.
+        // Also causes Whisper Metal crash when both run simultaneously.
         // etd: Some(speech_capture::etd::EtdConfig::default()),
         ..Default::default()
     };

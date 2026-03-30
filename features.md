@@ -2978,8 +2978,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - [x] ETD mel 前処理修正: slaney mel scale + slaney normalization
 - [x] ETD mel 正規化修正: (x + 4.0) / 4.0 (Whisper 互換)
 - [x] Python WhisperFeatureExtractor との数値一致検証 (mel_accuracy テスト) <!-- 2026-03-30T19:45:00+09:00 max_diff: silence=0.000000, sine=0.000004, speech=0.000006 -->
-- [ ] ETD probability が発話完了/未完了で明確に分離することを確認
-- [ ] ETD 有効化して silence_timeout 短縮によるレイテンシ改善を検証
+- [ ] ETD probability が発話完了/未完了で明確に分離することを確認 — mel前処理修正済みだが probability 0.68-0.72 に固定。モデル再学習 or 入力フォーマット要調査
+- [ ] ETD 有効化して silence_timeout 短縮によるレイテンシ改善を検証 — ETD+Whisper 同時実行で Metal crash。ETD 無効化中
 
 ### Step 21.9: 今後の課題
 - [ ] Whisper キュー詰まり防止: stale segment drop の再有効化・閾値チューニング
