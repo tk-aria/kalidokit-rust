@@ -81,18 +81,19 @@ impl WhisperEngine {
         self.heartbeat_ms.store(now_ms, Ordering::Relaxed);
 
         // Set abort callback that updates heartbeat and checks abort flag
-        {
-            let hb = Arc::clone(&self.heartbeat_ms);
-            let af = Arc::clone(&self.abort_flag);
-            params.set_abort_callback_safe(move || {
-                let now_ms = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
-                hb.store(now_ms, Ordering::Relaxed);
-                af.load(Ordering::Relaxed)
-            });
-        }
+        // TODO: temporarily disabled to diagnose "failed to encode" crash
+        // {
+        //     let hb = Arc::clone(&self.heartbeat_ms);
+        //     let af = Arc::clone(&self.abort_flag);
+        //     params.set_abort_callback_safe(move || {
+        //         let now_ms = SystemTime::now()
+        //             .duration_since(UNIX_EPOCH)
+        //             .unwrap_or_default()
+        //             .as_millis() as u64;
+        //         hb.store(now_ms, Ordering::Relaxed);
+        //         af.load(Ordering::Relaxed)
+        //     });
+        // }
 
         let full_result = state.full(params, &audio_f32);
 

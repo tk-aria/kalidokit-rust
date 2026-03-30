@@ -63,3 +63,17 @@ LIBCLANG_PATH=/Library/Developer/CommandLineTools/usr/lib GGML_NATIVE=OFF cargo 
 
 ### 完了時刻
 2026-03-30T19:20:00+09:00
+
+---
+
+## 動作確認結果 (2026-03-30T20:55+09:00)
+
+### abort_callback による crash
+- `set_abort_callback_safe` を有効にすると `whisper_full_with_state: failed to encode` で crash
+- whisper-rs 0.16 + Metal backend との互換性問題
+- abort_callback を無効化すると正常動作
+
+### 対応
+- abort_callback をコメントアウトして保留
+- ハートビート更新は abort_callback に依存するため、ハートビート機能も一時保留
+- whisper-rs の次バージョンまたは unsafe API での回避策を要調査

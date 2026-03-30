@@ -68,7 +68,7 @@ impl Default for SpeechFilterConfig {
     fn default() -> Self {
         Self {
             rms_threshold: 200.0,
-            voice_band_ratio_threshold: 0.90,
+            voice_band_ratio_threshold: 0.80,
             min_audio_ms: 800,
         }
     }
