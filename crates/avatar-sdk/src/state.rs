@@ -31,6 +31,8 @@ pub struct SpeechState {
     pub vad_active: bool,
     /// Current interim (partial) transcript, if any.
     pub interim_text: String,
+    /// Whether Whisper inference appears stalled (heartbeat age > threshold).
+    pub whisper_stalled: bool,
 }
 
 impl SpeechState {

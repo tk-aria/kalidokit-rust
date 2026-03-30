@@ -2969,9 +2969,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Step 21.7: Whisper プログレスベース・ハートビート
 - [x] whisper_engine に heartbeat (AtomicU64) + abort_flag (AtomicBool) 追加 <!-- 2026-03-30T19:11:43+09:00 -->
 - [x] abort_callback 内で heartbeat 更新 + abort_flag チェック <!-- 2026-03-30T19:11:43+09:00 -->
-- [ ] heartbeat_age() で最後の進捗からの経過時間を取得
-- [ ] abort() で推論中断を signal
-- [ ] app 側で heartbeat_age > 閾値 → "Whisper stalled" 表示
+- [x] heartbeat_age() で最後の進捗からの経過時間を取得 <!-- 2026-03-30T19:11:43+09:00 -->
+- [x] abort() で推論中断を signal <!-- 2026-03-30T19:11:43+09:00 -->
+- [x] app 側で heartbeat_age > 閾値 → "Whisper stalled" 表示 <!-- 2026-03-30T19:20:00+09:00 -->
 
 ### Step 21.8: ETD (End-of-Turn Detection) 統合
 - [x] speech-capture に end-of-turn feature 追加

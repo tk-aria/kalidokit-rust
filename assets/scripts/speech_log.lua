@@ -17,6 +17,16 @@ local function draw_speech_log(dt)
         avatar.reset_speech()
     end
 
+    -- Whisper stalled indicator + abort button
+    local stalled = avatar.get_whisper_stalled()
+    if stalled then
+        imgui.text("[Whisper] STALLED")
+        imgui.same_line()
+        if imgui.button("Abort Whisper") then
+            avatar.abort_whisper()
+        end
+    end
+
     -- Interim (partial) transcript
     local interim = avatar.get_speech_interim()
     if interim and interim ~= "" then

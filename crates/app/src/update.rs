@@ -1216,6 +1216,12 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                         }
                     }
                 }
+                avatar_sdk::AvatarAction::AbortWhisper => {
+                    if let Some(ref sc) = state.speech_capture {
+                        sc.abort_whisper();
+                        log::info!("[App] Whisper abort requested");
+                    }
+                }
                 avatar_sdk::AvatarAction::BrowseBackgroundImage => {
                     use dear_file_browser::{FileDialog, DialogMode, FileFilter};
                     let dialog = FileDialog::new(DialogMode::OpenFile)
@@ -1243,6 +1249,20 @@ pub fn update_frame(state: &mut AppState) -> Result<()> {
                     }
                 }
             }
+        }
+    }
+
+    // 5g. Update Whisper stalled status from heartbeat
+    {
+        let stalled = if let Some(ref sc) = state.speech_capture {
+            let age = sc.whisper_heartbeat_age();
+            // Stalled if heartbeat was set (age > 0) and older than 5 seconds
+            age > Duration::from_secs(5)
+        } else {
+            false
+        };
+        if let Ok(mut s) = state.avatar_handle.state.lock() {
+            s.speech.whisper_stalled = stalled;
         }
     }
 

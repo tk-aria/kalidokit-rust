@@ -12,7 +12,7 @@ pub mod stt_types;
 #[cfg(feature = "stt")]
 mod whisper_engine;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -113,6 +113,10 @@ pub struct SpeechCapture {
     /// Signal to flush all queues and reset to idle state.
     reset_flag: Arc<AtomicBool>,
     worker: Option<std::thread::JoinHandle<()>>,
+    /// Shared heartbeat timestamp (epoch millis) updated by Whisper's abort callback.
+    whisper_heartbeat: Arc<AtomicU64>,
+    /// Shared abort flag to signal Whisper to cancel current inference.
+    whisper_abort: Arc<AtomicBool>,
 }
 
 impl SpeechCapture {
@@ -124,6 +128,8 @@ impl SpeechCapture {
             running: Arc::new(AtomicBool::new(false)),
             reset_flag: Arc::new(AtomicBool::new(false)),
             worker: None,
+            whisper_heartbeat: Arc::new(AtomicU64::new(0)),
+            whisper_abort: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -148,10 +154,12 @@ impl SpeechCapture {
         let running = self.running.clone();
         running.store(true, Ordering::Relaxed);
         let reset_flag = self.reset_flag.clone();
+        let whisper_hb = self.whisper_heartbeat.clone();
+        let whisper_af = self.whisper_abort.clone();
 
         let config = self.config.clone();
         let worker = std::thread::spawn(move || {
-            Self::vad_worker(rx, callback, &config, &running, &reset_flag);
+            Self::vad_worker(rx, callback, &config, &running, &reset_flag, &whisper_hb, &whisper_af);
         });
 
         self.worker = Some(worker);
@@ -164,6 +172,8 @@ impl SpeechCapture {
         config: &SpeechConfig,
         running: &AtomicBool,
         reset_flag: &AtomicBool,
+        whisper_heartbeat: &Arc<AtomicU64>,
+        whisper_abort: &Arc<AtomicBool>,
     ) where
         F: FnMut(SpeechEvent),
     {
@@ -230,7 +240,11 @@ impl SpeechCapture {
         #[cfg(feature = "stt")]
         let whisper_engine: Option<whisper_engine::WhisperEngine> =
             config.stt.as_ref().and_then(|stt_config| {
-                match whisper_engine::WhisperEngine::new(stt_config) {
+                match whisper_engine::WhisperEngine::new_with_arcs(
+                    stt_config,
+                    Arc::clone(whisper_heartbeat),
+                    Arc::clone(whisper_abort),
+                ) {
                     Ok(engine) => {
                         log::info!("Whisper STT engine initialized");
                         Some(engine)
@@ -558,6 +572,25 @@ impl SpeechCapture {
 
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::Relaxed)
+    }
+
+    /// Get time since last Whisper progress callback.
+    /// Returns Duration::ZERO if Whisper has never started.
+    pub fn whisper_heartbeat_age(&self) -> Duration {
+        let last = self.whisper_heartbeat.load(Ordering::Relaxed);
+        if last == 0 {
+            return Duration::ZERO;
+        }
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        Duration::from_millis(now_ms.saturating_sub(last))
+    }
+
+    /// Signal Whisper to abort current inference.
+    pub fn abort_whisper(&self) {
+        self.whisper_abort.store(true, Ordering::Relaxed);
     }
 }
 

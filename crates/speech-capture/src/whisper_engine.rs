@@ -23,6 +23,15 @@ pub struct WhisperEngine {
 
 impl WhisperEngine {
     pub fn new(config: &SttConfig) -> Result<Self, SpeechError> {
+        Self::new_with_arcs(config, Arc::new(AtomicU64::new(0)), Arc::new(AtomicBool::new(false)))
+    }
+
+    /// Create a WhisperEngine that shares externally-provided heartbeat/abort Arcs.
+    pub fn new_with_arcs(
+        config: &SttConfig,
+        heartbeat_ms: Arc<AtomicU64>,
+        abort_flag: Arc<AtomicBool>,
+    ) -> Result<Self, SpeechError> {
         let ctx = whisper_rs::WhisperContext::new_with_params(
             &config.model_path,
             whisper_rs::WhisperContextParameters::default(),
@@ -32,8 +41,8 @@ impl WhisperEngine {
         Ok(Self {
             ctx,
             language: config.language.clone(),
-            heartbeat_ms: Arc::new(AtomicU64::new(0)),
-            abort_flag: Arc::new(AtomicBool::new(false)),
+            heartbeat_ms,
+            abort_flag,
         })
     }
 

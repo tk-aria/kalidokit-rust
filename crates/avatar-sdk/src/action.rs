@@ -14,6 +14,8 @@ pub enum AvatarAction {
     BrowseBackgroundImage,
     /// Reset speech capture: flush VAD queues and return to idle.
     ResetSpeech,
+    /// Abort current Whisper inference (if stalled).
+    AbortWhisper,
 }
 
 /// Queue of pending avatar actions, drained each frame by the app.

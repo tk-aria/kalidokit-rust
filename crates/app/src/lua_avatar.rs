@@ -515,6 +515,28 @@ pub fn register(lua_imgui: &LuaImgui, handle: &AvatarHandle) -> anyhow::Result<(
         )?;
     }
 
+    // ── Whisper monitoring ──
+
+    {
+        let h = handle.state.clone();
+        avatar_table.set(
+            "get_whisper_stalled",
+            l.create_function(move |_, ()| {
+                Ok(h.lock().unwrap().speech.whisper_stalled)
+            })?,
+        )?;
+    }
+    {
+        let a = handle.actions.clone();
+        avatar_table.set(
+            "abort_whisper",
+            l.create_function(move |_, ()| {
+                a.lock().unwrap().push(AvatarAction::AbortWhisper);
+                Ok(())
+            })?,
+        )?;
+    }
+
     l.globals().set("avatar", avatar_table)?;
     Ok(())
 }

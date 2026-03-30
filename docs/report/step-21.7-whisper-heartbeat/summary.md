@@ -35,3 +35,31 @@ LIBCLANG_PATH=/Library/Developer/CommandLineTools/usr/lib GGML_NATIVE=OFF cargo 
 
 ### 完了時刻
 2026-03-30T19:11:43+09:00
+
+---
+
+## Task 3: heartbeat_age() で最後の進捗からの経過時間を取得
+## Task 4: abort() で推論中断を signal
+(Task 1-2 で実装済み)
+
+## Task 5: app 側で heartbeat_age > 閾値 → "Whisper stalled" 表示
+
+### 変更ファイル
+- `crates/speech-capture/src/whisper_engine.rs` — `new_with_arcs()` 追加 (外部 Arc を受け取る)
+- `crates/speech-capture/src/lib.rs` — whisper_heartbeat/abort Arc を SpeechCapture に追加、`whisper_heartbeat_age()` / `abort_whisper()` 公開
+- `crates/avatar-sdk/src/action.rs` — `AvatarAction::AbortWhisper` 追加
+- `crates/avatar-sdk/src/state.rs` — `SpeechState.whisper_stalled: bool` 追加
+- `crates/app/src/lua_avatar.rs` — `avatar.get_whisper_stalled()` / `avatar.abort_whisper()` バインディング追加
+- `crates/app/src/update.rs` — 毎フレーム heartbeat_age チェック + AbortWhisper アクション処理
+- `assets/scripts/speech_log.lua` — stalled 表示 + Abort Whisper ボタン
+
+### 実行コマンド
+```bash
+LIBCLANG_PATH=/Library/Developer/CommandLineTools/usr/lib GGML_NATIVE=OFF cargo check -p kalidokit-rust
+```
+
+### ビルド結果
+- `cargo check` 成功 (既存 warnings のみ)
+
+### 完了時刻
+2026-03-30T19:20:00+09:00
