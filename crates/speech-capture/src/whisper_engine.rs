@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use std::cell::RefCell;
+
 use crate::{SpeechError, SttConfig};
 
 /// Result of a Whisper transcription including confidence metadata.
@@ -15,7 +17,7 @@ pub struct TranscribeResult {
 }
 
 pub struct WhisperEngine {
-    ctx: whisper_rs::WhisperContext,
+    state: RefCell<whisper_rs::WhisperState>,
     language: Option<String>,
     heartbeat_ms: Arc<AtomicU64>,
     abort_flag: Arc<AtomicBool>,
@@ -38,8 +40,16 @@ impl WhisperEngine {
         )
         .map_err(|e| SpeechError::Stt(format!("Failed to load Whisper model: {e}")))?;
 
+        // Create state once and reuse across all transcribe calls.
+        // This avoids repeated Metal GPU init/free cycles that cause instability.
+        let state = ctx
+            .create_state()
+            .map_err(|e| SpeechError::Stt(format!("Failed to create Whisper state: {e}")))?;
+
+        log::info!("Whisper state created (reusable, Metal init once)");
+
         Ok(Self {
-            ctx,
+            state: RefCell::new(state),
             language: config.language.clone(),
             heartbeat_ms,
             abort_flag,
@@ -55,11 +65,6 @@ impl WhisperEngine {
     /// Transcribe audio and return text + no_speech_probability.
     pub fn transcribe_with_prob(&self, audio_i16: &[i16]) -> Result<TranscribeResult, SpeechError> {
         let audio_f32: Vec<f32> = audio_i16.iter().map(|&s| s as f32 / 32768.0).collect();
-
-        let mut state = self
-            .ctx
-            .create_state()
-            .map_err(|e| SpeechError::Stt(format!("Failed to create state: {e}")))?;
 
         let mut params =
             whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
@@ -80,8 +85,9 @@ impl WhisperEngine {
             .as_millis() as u64;
         self.heartbeat_ms.store(now_ms, Ordering::Relaxed);
 
-        // Set abort callback that updates heartbeat and checks abort flag
-        // TODO: temporarily disabled to diagnose "failed to encode" crash
+        // abort_callback disabled: causes "failed to encode" crash with Metal backend.
+        // whisper-rs 0.16 + Metal GPU incompatibility.
+        // Heartbeat is updated manually before/after full() instead.
         // {
         //     let hb = Arc::clone(&self.heartbeat_ms);
         //     let af = Arc::clone(&self.abort_flag);
@@ -95,6 +101,8 @@ impl WhisperEngine {
         //     });
         // }
 
+        // Reuse the persistent state (no Metal init/free per call).
+        let mut state = self.state.borrow_mut();
         let full_result = state.full(params, &audio_f32);
 
         // If aborted, return empty result instead of propagating the error
